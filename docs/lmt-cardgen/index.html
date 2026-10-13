@@ -417,6 +417,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function saveLedger() {
         try { localStorage.setItem(LEDGER_KEY, mcList.value); } catch (e) {}
         updateLedgerTip();
+        buildManifest(); // 台账变化后同步刷新在线清单 JSON，避免用户复制到过期清单
     }
 
     // 已吊销卡密清单同样自动保存：否则刷新页面就会丢失吊销记录，
@@ -449,8 +450,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function buildManifest() {
         var seen = {};
         var cards = [];
-        pairs.forEach(function (p) {
-            if (!seen[p.card]) { seen[p.card] = true; cards.push(p.card); }
+        // 直接依据「当前台账文本」重算卡密，而不是复用上一次 render() 的结果（pairs）：
+        // 否则用户新粘了机器码但还没点「生成卡密」时，复制到的在线清单仍是旧的，
+        // 新用户的卡密不在白名单里、无法激活，且不易察觉。
+        uniqueEntries(mcList.value).forEach(function (e) {
+            var card = makeCard(e.key);
+            if (!seen[card]) { seen[card] = true; cards.push(card); }
         });
         var revoked = [];
         revokeList.value.split(/\r?\n/).forEach(function (line) {
@@ -761,6 +766,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     mcList.addEventListener('input', scheduleSave);
     revokeList.addEventListener('input', function () { buildManifest(); saveRevoke(); });
     document.getElementById('copy-manifest').addEventListener('click', function () {
+        buildManifest(); // 台账输入是防抖更新的，复制前再重算一次，确保清单与当前台账一致
         copyWithFeedback(manifestOut.value, document.getElementById('copy-manifest'), '已复制清单');
     });
     document.getElementById('copy-manifest-url').addEventListener('click', function () {
