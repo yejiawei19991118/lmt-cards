@@ -188,9 +188,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     //   生成器不会联网，这里只用于界面展示 / 复制，方便你知道清单该覆盖上传到哪里。
     var MANIFEST_URL = 'https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/refs/heads/main/cards.json';
 
-    // 主程序在主源拉取失败时会自动回退到该备用镜像（jsDelivr）；此处仅作展示 / 说明。
+    // 主程序在主源拉取失败时会按顺序回退到这些备用镜像（jsDelivr）；此处仅作展示 / 说明。
     // 若更换仓库，请同步修改主程序「图文排版生成器.html」里的 MANIFEST_MIRRORS。
-    var MANIFEST_MIRROR = 'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@refs/heads/main/cards.json';
+    var MANIFEST_MIRRORS = [
+        'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@refs/heads/main/cards.json'
+    ];
 
     var ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -438,7 +440,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     var importFile = document.getElementById('import-file');
     manifestUrlEl.value = MANIFEST_URL;
     var mirrorEl = document.getElementById('manifest-mirror');
-    if (mirrorEl) mirrorEl.textContent = '备用源（主源不可达时自动回退）：' + MANIFEST_MIRROR;
+    if (mirrorEl) mirrorEl.textContent = '备用源（主源不可达时自动回退）：' + MANIFEST_MIRRORS.join('、');
     document.getElementById('secret-view').textContent = LICENSE_SECRET;
 
     var pairs = []; // 最近一次生成结果 [{ mc, card }]
