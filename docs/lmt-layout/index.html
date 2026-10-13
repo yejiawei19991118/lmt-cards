@@ -1,0 +1,1645 @@
+<html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图文排版生成器</title>
+    <!-- PWA：可安装网页应用（iPhone/iPad 用 Safari「添加到主屏幕」即当 App 使用） -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#2f6df6">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="图文排版生成器">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <!-- 引入 html2canvas 用于导出图片 -->
+    <!-- defer：html2canvas 体积较大，若同步加载会阻塞首屏渲染；改为延后执行，
+         导出按钮点击时（此时早已加载完成）才真正用到它，未加载成功时仍有兜底提示。 -->
+    <script src="./html2canvas.min.js" defer=""></script>
+    <style>
+        :root {
+            /* 导出图片背景：纯白色 */
+            --bg-color: #ffffff;
+            --red-line: rgba(255, 0, 0, 0.6);
+            /* 当前使用的手写字体，可在左侧下拉框中切换 */
+            --handwriting-font: 'Ma Shan Zheng', 'KaiTi', 'STKaiti', cursive;
+            /* 界面配色 */
+            --accent: #2f6df6;
+            --page-bg: #eef1f6;
+            --text-main: #1f2430;
+            --text-sub: #5b6472;
+            /* 字幕安全区内边距（相对 375×667 画布的像素值）。
+               原始位置为上50/左20/右80/下120，累计整体右移 0.7cm、下移 0.7cm：
+               按 CSS 标准 96dpi 换算，1cm = 96/2.54 ≈ 37.7953px。
+               右移 = 左侧内边距 +Δ、右侧内边距 -Δ；下移同理调整上/下内边距，尺寸保持不变。 */
+            --safe-top: 76.457px;     /* 50 + 0.7cm  */
+            --safe-left: 46.457px;    /* 20 + 0.7cm  */
+            --safe-right: 53.543px;   /* 80 - 0.7cm  */
+            --safe-bottom: 93.543px;  /* 120 - 0.7cm */
+        }
+        /* 移动端：禁止 iOS/安卓按屏幕宽度自动放大字号，避免固定像素排版被撑变形 */
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--page-bg);
+            display: flex;
+            justify-content: center;
+            gap: 28px;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
+            color: var(--text-main);
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            width: 330px;
+            background: #fff;
+            padding: 22px;
+            border-radius: 16px;
+            border: 1px solid #e8ecf3;
+            box-shadow: 0 8px 24px rgba(24, 33, 51, .08), 0 1px 3px rgba(24, 33, 51, .06);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+        .control-panel h2 {
+            margin: 0; font-size: 17px; letter-spacing: .5px;
+            padding-bottom: 12px; border-bottom: 1px solid #eef1f6;
+            display: flex; align-items: center; gap: 9px;
+        }
+        /* 标题前的小色条：给面板一个明确的视觉起点 */
+        .control-panel h2::before {
+            content: ''; flex: 0 0 auto; width: 4px; height: 17px; border-radius: 3px;
+            background: linear-gradient(180deg, #6f9bff, var(--accent));
+        }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        .control-group > label:not(.upload-btn) {
+            font-size: 12.5px; color: var(--text-sub); font-weight: 600; letter-spacing: .2px;
+        }
+        .control-group input[type="text"], .control-group textarea, .control-group select {
+            width: 100%; box-sizing: border-box;
+            padding: 9px 11px; border: 1px solid #dbe1ea; border-radius: 9px;
+            font-size: 14px; font-family: inherit; background: #fbfcfe; color: var(--text-main);
+            transition: border-color .15s, box-shadow .15s, background .15s;
+        }
+        .control-group input[type="text"]:focus, .control-group textarea:focus, .control-group select:focus {
+            outline: none; border-color: var(--accent); background-color: #fff;
+            box-shadow: 0 0 0 3px rgba(47, 109, 246, .12);
+        }
+        .control-group textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+        /* 下拉框：去掉系统默认外观，换成与整体风格一致的自绘箭头。
+           必须写在基础规则之后，且焦点态用 background-color 而非 background 简写，
+           否则简写会把这里设置的箭头图一并重置掉。 */
+        .control-group select {
+            cursor: pointer;
+            -webkit-appearance: none; appearance: none;
+            padding-right: 34px;
+            background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='12'%20height='12'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%235b6472'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpolyline%20points='6%209%2012%2015%2018%209'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 12px 12px;
+        }
+        .file-upload { display: none; }
+        .upload-btn {
+            display: flex; align-items: center; justify-content: center;
+            background: #f7f9fc; border: 1px dashed #c6d0de; color: var(--text-sub);
+            padding: 11px 10px; border-radius: 9px; cursor: pointer; font-size: 13px;
+            box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            transition: background .15s, border-color .15s, color .15s, transform .12s;
+        }
+        .upload-btn:hover { background: #eef4ff; border-color: var(--accent); color: var(--accent); }
+        .upload-btn:active { transform: translateY(1px); }
+        .upload-btn.done { border-style: solid; border-color: #b7e2c6; background: #f2fbf5; color: #1f8a4c; }
+        .btn-primary {
+            background: linear-gradient(180deg, #3d78f7, #2f6df6); color: #fff; border: none;
+            padding: 13px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: 700;
+            letter-spacing: 1px; margin-top: 4px;
+            box-shadow: 0 6px 16px rgba(47, 109, 246, .28);
+            transition: filter .15s, box-shadow .15s, transform .12s;
+        }
+        .btn-primary:hover { filter: brightness(1.05); box-shadow: 0 8px 20px rgba(47, 109, 246, .34); }
+        .btn-primary:active { transform: translateY(1px); }
+        .btn-primary:disabled { cursor: progress; filter: grayscale(.35) brightness(.96); box-shadow: none; }
+        .toggle-safe-zone {
+            display: flex; align-items: center; gap: 9px; font-size: 13px;
+            cursor: pointer; color: var(--text-sub); user-select: none;
+            padding: 10px 12px; border-radius: 10px;
+            background: #f7f9fc; border: 1px solid #e8ecf3;
+            box-sizing: border-box; /* 有内边距+边框后按 border-box 计算，避免撑出 2px 横向溢出 */
+            transition: background .15s, border-color .15s;
+        }
+        .toggle-safe-zone:hover { background: #eef4ff; border-color: #cfe0ff; }
+        .toggle-safe-zone input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+
+        /* 美化滚动条（桌面端 WebKit 内核）：与卡片圆角风格统一 */
+        .control-panel::-webkit-scrollbar,
+        .preview-container::-webkit-scrollbar { width: 10px; height: 10px; }
+        .control-panel::-webkit-scrollbar-track,
+        .preview-container::-webkit-scrollbar-track { background: transparent; }
+        .control-panel::-webkit-scrollbar-thumb,
+        .preview-container::-webkit-scrollbar-thumb {
+            background: #cfd8e5; border-radius: 8px;
+            border: 2px solid transparent; background-clip: padding-box;
+        }
+        .control-panel::-webkit-scrollbar-thumb:hover,
+        .preview-container::-webkit-scrollbar-thumb:hover { background: #aebbcb; background-clip: padding-box; }
+
+        /* 键盘可达性：Tab 聚焦时给出清晰外圈，鼠标点击不触发 */
+        .btn-primary:focus-visible,
+        .btn-ghost:focus-visible,
+        .toggle-safe-zone:focus-within,
+        .control-group select:focus-visible {
+            outline: 2px solid rgba(47, 109, 246, .5); outline-offset: 2px;
+        }
+
+        /* 在线字体加载状态 */
+        .font-status { font-size: 12px; line-height: 16px; min-height: 16px; color: var(--text-sub); }
+        .font-status.error { color: #b42318; }
+
+        /* 内容超出安全区提示 */
+        .overflow-warn {
+            display: none; font-size: 12px; line-height: 1.55; color: #b42318;
+            background: #fef3f2; border: 1px solid #fecdca; border-radius: 9px; padding: 9px 11px;
+        }
+        .overflow-warn.show { display: block; }
+
+        /* 预览区容器
+           说明：容器自身可纵向滚动，配合画布的 margin:auto 0 实现“安全居中”：
+           视口足够高时垂直居中；视口偏矮（如 1366×768 笔记本）时自动改为顶部对齐并可滚动，
+           避免 667px 画布被 body 的 overflow:hidden 裁掉上下两端且无法查看。 */
+        .preview-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        /* 核心：画布固定为手机尺寸，绝不拉伸 */
+        .canvas-wrapper {
+            position: relative;
+            width: 375px; /* 手机宽度 */
+            height: 667px; /* 手机高度 (9:16) */
+            background-color: var(--bg-color);
+            box-shadow: 0 14px 36px rgba(24, 33, 51, .18);
+            overflow: hidden; /* 防止任何元素溢出画布 */
+            flex-shrink: 0; /* 不因空间不足被 flex 压缩尺寸 */
+            margin: auto 0; /* 垂直方向安全居中（空间不足时自动置顶，可滚动查看） */
+        }
+        
+        /* 核心：内容严格限制在安全区内（内边距见 :root 中的 --safe-* 变量） */
+        .safe-content-area {
+            position: absolute;
+            top: var(--safe-top); 
+            left: var(--safe-left); 
+            right: var(--safe-right); 
+            bottom: var(--safe-bottom);
+            width: 275px; /* 强制固定宽度 */
+            height: 497px; /* 强制固定高度 */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between; /* 自动均匀分布各部分 */
+            z-index: 1;
+            overflow: hidden;
+        }
+
+        /* 排版样式（紧凑排版，确保塞进497px高度） */
+        .handwriting-font { font-family: var(--handwriting-font); }
+
+        /* 在线手写字体多为单一字重，强制正常字重，避免浏览器合成加粗导致笔画出虚边 */
+        .web-font .main-title,
+        .web-font .sub-title,
+        .web-font .keywords-row { font-weight: 400; }
+        /* 输入框/文本域默认 font-family: inherit，会覆盖上面的手写字体，
+           这里用更高优先级的规则显式覆盖，让左侧编辑器也用上所选字体。 */
+        .control-group input.handwriting-font,
+        .control-group textarea.handwriting-font {
+            font-family: var(--handwriting-font);
+        }
+        
+        /* 顶部总结文案：整体在安全区内水平居中，但每行文字保持左对齐（右侧自然参差） */
+        .header-summary {
+            font-size: 13px;
+            line-height: 1.55;
+            width: fit-content;
+            max-width: 100%;
+            align-self: center;
+            text-align: left;
+            color: #39404f;
+        }
+        
+        .main-title {
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-align: center;
+            color: #14181f;
+        }
+        
+        .image-row {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        
+        /* 左右模特图 1:1（cover 裁切）
+           注意：照片既不用 background-image、也不用 object-fit。
+           html2canvas 会把背景图按 1 倍栅格化再放大（导出会糊），也不支持 object-fit；
+           改为预先裁好比例后放进 <canvas> 子元素（见 .preview-photo），导出即为清晰原图。 */
+        .image-box {
+            box-sizing: border-box;
+            width: 48%;
+            aspect-ratio: 1 / 1;
+            background-color: #f4f6f9;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #a7b1be;
+            font-size: 12px;
+            letter-spacing: .5px;
+            overflow: hidden;
+        }
+        /* 未上传时的空状态：柔和渐变 + 虚线内框，一眼看出「这里可以放图」。
+           上传后由 .has-photo 接管，虚线框与底色自动移除。 */
+        .image-box:not(.has-photo) {
+            background-image: linear-gradient(180deg, #f8fafd, #eef3fa);
+            border: 1px dashed #d2dbe8;
+        }
+        
+        .keywords-row {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: .3px;
+            color: #4a5566;
+            text-align: center;
+        }
+        
+        .sub-title {
+            font-size: 20px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-align: center;
+            color: #14181f;
+        }
+        
+        /* 底部购买截图区域（并排两张，3:4，contain 完整显示不裁剪）
+           同上：照片放入 <canvas> 子元素，避免 html2canvas 把背景图放大后发糊。 */
+        .screenshot-row {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .screenshot-box {
+            box-sizing: border-box;
+            width: 48%;
+            aspect-ratio: 3 / 4;
+            background-color: #fbfcfe;
+            border: 1px solid #e3e8ef;
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #a7b1be;
+            font-size: 11px;
+            letter-spacing: .5px;
+        }
+        /* 截图框未上传时的空状态：与模特图保持一致的虚线提示 */
+        .screenshot-box:not(.has-photo) {
+            background-image: linear-gradient(180deg, #fbfcfe, #f2f6fb);
+            border-style: dashed; border-color: #d2dbe8;
+        }
+        /* 上传后的照片：预先裁好比例的 <canvas>，html2canvas 会像素级复制，导出清晰 */
+        .preview-photo {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+        }
+        /* 已上传照片后去掉占位底色，避免圆角外用底色渲染出直角方块 */
+        .image-box.has-photo,
+        .screenshot-box.has-photo {
+            background-color: transparent;
+        }
+
+        /* 安全区遮罩层 (只用来展示，导出时会自动隐藏) */
+        .safe-zone-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            box-sizing: border-box;
+            display: none;
+        }
+        .safe-zone-overlay.active { display: block; }
+        
+        /* 红线与区域标注 */
+        .safe-line { position: absolute; border: 1px dashed var(--red-line); }
+        .line-top { top: var(--safe-top); left: 0; right: 0; border-top: 1px solid var(--red-line); }
+        .line-bottom { bottom: var(--safe-bottom); left: 0; right: 0; border-bottom: 1px solid var(--red-line); }
+        .line-left { left: var(--safe-left); top: 0; bottom: 0; border-left: 1px solid var(--red-line); }
+        .line-right { right: var(--safe-right); top: 0; bottom: 0; border-right: 1px solid var(--red-line); }
+
+        .main-area-box {
+            top: var(--safe-top); left: var(--safe-left); right: var(--safe-right); bottom: var(--safe-bottom);
+            border: 1px solid var(--red-line);
+            position: absolute;
+        }
+        .main-area-label {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 35px; color: var(--red-line); font-weight: bold; writing-mode: vertical-rl;
+            letter-spacing: 15px; opacity: 0.15;
+        }
+
+        /* 文字标注 */
+        .zone-text { position: absolute; color: var(--red-line); font-size: 12px; font-weight: bold; }
+        .text-top-safe { top: calc(var(--safe-top) + 10px); left: 50%; transform: translateX(-50%); font-size: 14px; }
+        .text-bottom-safe { bottom: calc(var(--safe-bottom) + 10px); left: 50%; transform: translateX(-50%); font-size: 14px; }
+        .text-left-safe { left: calc(var(--safe-left) + 10px); top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; }
+        .text-right-safe { right: calc(var(--safe-right) + 10px); top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; }
+        
+        .text-outside-top { top: 10px; left: 50%; transform: translateX(-50%); writing-mode: vertical-rl; font-size: 10px;}
+        .text-outside-bottom { bottom: 10px; left: 50%; transform: translateX(-50%); writing-mode: vertical-rl; font-size: 10px;}
+        .text-outside-left { left: 5px; top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; font-size: 10px; }
+        .text-outside-right { right: 5px; top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; font-size: 10px; }
+
+        .interaction-zones {
+            position: absolute; right: 10px; bottom: 20px; display: flex; flex-direction: column; gap: 15px;
+        }
+        .interaction-zones span { color: var(--red-line); font-size: 13px; font-weight: bold; writing-mode: vertical-rl; }
+
+        /* 手机竖屏（移动浏览器 / 安卓 App）：上下堆叠，避免 330px 面板 + 375px 画布并排溢出。
+           画布保持 375px 原始尺寸（绝不缩放，导出尺寸不受影响），窄屏下改为横向可滚动。 */
+        @media (max-width: 780px) {
+            body {
+                flex-direction: column;
+                height: auto;
+                min-height: 100vh;
+                overflow-y: auto;
+                overflow-x: hidden;
+                align-items: center;
+                /* 左右留白交给子元素：预览区占满整屏宽度，
+                   375px 画布在 375/390px 手机上正好完整显示，不再白白多出一截横向滚动 */
+                padding: 0;
+                gap: 0;
+            }
+            .preview-container {
+                order: 1;
+                width: 100%;
+                height: auto;
+                display: block;
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                padding: 12px 0 4px;
+            }
+            .canvas-wrapper {
+                margin: 0 auto;
+            }
+            .control-panel {
+                order: 2;
+                width: calc(100% - 24px);
+                max-width: 420px;
+                box-sizing: border-box;
+                margin: 12px 0 20px;
+            }
+            /* iOS 聚焦输入框时，字号 < 16px 会自动放大整个页面，统一提到 16px 避免跳动。
+               授权门输入框的规则在下方（源码顺序更靠后），这里必须提高优先级才压得住。 */
+            .control-group input[type="text"],
+            .control-group textarea,
+            .control-group select,
+            .license-gate .license-field input { font-size: 16px; }
+        }
+
+        /* ===== 卡密授权门（未激活时显示） ===== */
+        .license-gate {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;
+            display: none; align-items: center; justify-content: center;
+            background: linear-gradient(160deg, #eef1f6, #e3e9f4 60%, #dfe7f5);
+            padding: 20px; box-sizing: border-box;
+        }
+        body.locked .license-gate { display: flex; }
+        /* 未激活时隐藏主界面（保留在 DOM 中，激活后直接显示） */
+        body.locked > .control-panel,
+        body.locked > .preview-container { visibility: hidden; }
+        .license-card {
+            width: 380px; max-width: 100%; box-sizing: border-box;
+            background: #fff; border: 1px solid #e8ecf3; border-radius: 18px;
+            padding: 26px 24px; box-shadow: 0 18px 48px rgba(24, 33, 51, .16);
+        }
+        .license-card h1 { margin: 0 0 6px; font-size: 19px; letter-spacing: .5px; }
+        .license-sub { margin: 0 0 20px; font-size: 13px; color: var(--text-sub); }
+        .license-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px; }
+        .license-field label { font-size: 12.5px; font-weight: 600; color: var(--text-sub); }
+        .license-mc-row { display: flex; gap: 8px; }
+        .license-mc-row input { flex: 1; min-width: 0; }
+        .license-field input {
+            width: 100%; box-sizing: border-box; padding: 10px 12px;
+            border: 1px solid #dbe1ea; border-radius: 9px; font-size: 15px;
+            font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+            letter-spacing: 1px; background: #fbfcfe; color: var(--text-main);
+        }
+        .license-field input:focus {
+            outline: none; border-color: var(--accent); background: #fff;
+            box-shadow: 0 0 0 3px rgba(47, 109, 246, .12);
+        }
+        .license-field input[readonly] { background: #f2f5fa; color: #44506a; }
+        .btn-ghost {
+            flex: 0 0 auto; padding: 0 14px; border: 1px solid #dbe1ea; background: #f7f9fc;
+            border-radius: 9px; cursor: pointer; font-size: 13px; color: var(--text-sub);
+            font-family: inherit; transition: background .15s, border-color .15s, color .15s;
+        }
+        .btn-ghost:hover { background: #eef4ff; border-color: var(--accent); color: var(--accent); }
+        .license-gate .btn-primary { width: 100%; margin-top: 6px; }
+        .license-msg { min-height: 18px; margin-top: 12px; font-size: 13px; line-height: 1.5; color: #b42318; }
+        .license-msg.ok { color: #1f8a4c; }
+        .license-msg.info { color: var(--text-sub); }
+        .license-net { margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
+
+        /* 导出失败的内联提示：移动端 WebView 里 alert() 可能被静默忽略，
+           改用页内提示，保证用户一定看得到反馈。 */
+        .export-msg {
+            display: none; font-size: 12px; line-height: 1.55; color: #b42318;
+            background: #fef3f2; border: 1px solid #fecdca; border-radius: 9px; padding: 9px 11px;
+        }
+        .export-msg.show { display: block; }
+
+        /* ===== 移动端交互兜底 ===== */
+        /* 去掉 iOS/安卓 300ms 点击延迟与灰色高亮闪烁，保证每次点击都有即时反馈 */
+        button, .upload-btn, select, .toggle-safe-zone { touch-action: manipulation; }
+        button { -webkit-tap-highlight-color: rgba(47, 109, 246, .15); }
+
+        /* 复制兜底浮层：安卓 WebView / 非 https 环境下自动复制可能整体失效，
+           此时弹出本浮层让用户长按文本自行复制，避免「点了复制没反应」。 */
+        .manual-copy-mask {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 100000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px; box-sizing: border-box; background: rgba(15, 23, 42, .45);
+        }
+        .manual-copy-card {
+            width: 420px; max-width: 100%; max-height: 100%; overflow-y: auto; box-sizing: border-box;
+            background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 18px 48px rgba(24, 33, 51, .24);
+        }
+        .manual-copy-card h3 { margin: 0 0 6px; font-size: 16px; }
+        .manual-copy-card p { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
+        .manual-copy-card textarea {
+            width: 100%; box-sizing: border-box; min-height: 108px; resize: vertical;
+            padding: 10px 12px; border: 1px solid #dbe1ea; border-radius: 9px;
+            font-size: 14px; line-height: 1.6; color: var(--text-main); background: #fbfcfe;
+            font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+            -webkit-user-select: text; user-select: text;
+        }
+        .manual-copy-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+        .manual-copy-actions button {
+            font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+            padding: 9px 16px; border-radius: 9px; border: 1px solid #dbe1ea; background: #f7f9fc; color: var(--text-sub);
+        }
+        /* 导出完成后的图片浮层：移动端 <a download> 常被忽略（点了没反应），
+           这里给出可视化出口，长按图片即可保存到相册。桌面端不会出现。 */
+        .img-preview-card {
+            width: 92vw; max-width: 420px; max-height: 100%; overflow-y: auto; box-sizing: border-box;
+            background: #fff; border-radius: 16px; padding: 16px; text-align: center;
+            box-shadow: 0 18px 48px rgba(24, 33, 51, .24);
+        }
+        .img-preview-card img {
+            display: block; width: 100%; max-height: 60vh; object-fit: contain;
+            border-radius: 10px; border: 1px solid #e8ecf3; background: #fff;
+        }
+        .img-preview-card p { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
+
+        /* 必须放在 .license-gate 之后：同优先级下源码顺序靠后的规则才会生效 */
+        @media (max-width: 780px) {
+            .license-gate {
+                align-items: flex-start;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                padding: 20px 16px;
+            }
+            .license-card { margin: auto 0; }
+            /* 触屏目标尺寸：复制/激活这类关键按钮不小于 44px，避免手指点不中 */
+            .license-field input { padding: 12px; }
+            .license-gate .btn-ghost { min-height: 46px; padding: 0 16px; font-size: 14px; }
+            .license-gate .btn-primary { min-height: 50px; }
+            .control-panel .btn-primary { min-height: 48px; }
+            .manual-copy-actions button { min-height: 44px; padding: 10px 18px; }
+        }
+    </style>
+</head>
+<body class="locked">
+
+    <!-- 卡密授权门：未激活时覆盖全屏，激活后隐藏 -->
+    <div class="license-gate" id="license-gate">
+        <div class="license-card">
+            <h1>图文排版生成器</h1>
+            <p class="license-sub">本软件需激活后使用（一卡一机）</p>
+
+            <div class="license-field">
+                <label>本机机器码</label>
+                <div class="license-mc-row">
+                    <input type="text" id="license-mc" readonly="">
+                    <button type="button" class="btn-ghost" id="license-copy">复制</button>
+                </div>
+            </div>
+
+            <div class="license-field">
+                <label>卡密</label>
+                <input type="text" id="license-input" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
+            </div>
+
+            <button type="button" class="btn-primary" id="license-activate">激 活</button>
+            <div class="license-msg" id="license-msg"></div>
+            <div class="license-net" id="license-net">校验方式：在线清单连接失败（主源与备用镜像均不可达，无法激活）</div>
+        </div>
+    </div>
+
+    <!-- 左侧控制面板 -->
+    <div class="control-panel">
+        <h2>内容编辑</h2>
+        
+        <div class="control-group">
+            <label>顶部总结文案</label>
+            <textarea id="input-summary" class="handwriting-font">总结一下：
+宽松灰开衫弱化肩背臃肿感，不挑上身
+深色阔腿牛仔裤重感在线，拉长腿线
+平衡上下身比例，藏肉又显利落</textarea>
+        </div>
+
+        <div class="control-group">
+            <label>主标题</label>
+            <input type="text" id="input-title" class="handwriting-font" value="菜头的橱窗">
+        </div>
+
+        <div class="control-group">
+            <label>关键词 (用空格分隔)</label>
+            <input type="text" id="input-keywords" class="handwriting-font" value="🔍 黑色原牛复古直筒裤 🔍 老钱风毛衣">
+        </div>
+        
+        <div class="control-group">
+            <label>副标题 (我的尺码)</label>
+            <input type="text" id="input-subtitle" class="handwriting-font" value="我的尺码">
+        </div>
+
+        <div class="control-group">
+            <label>手写字体</label>
+            <select id="font-select">
+                <option value="'Ma Shan Zheng', 'KaiTi', cursive" data-web="Ma+Shan+Zheng" data-family="Ma Shan Zheng">马善政毛笔楷书</option>
+                <option value="'ZCOOL KuaiLe', 'KaiTi', cursive" data-web="ZCOOL+KuaiLe" data-family="ZCOOL KuaiLe">站酷快乐体</option>
+            </select>
+            <div class="font-status" id="font-status">在线字体已加载</div>
+        </div>
+
+        <div class="control-group">
+            <label>左侧模特图 (1:1)</label>
+            <label for="upload-left" class="upload-btn">点击上传图片</label>
+            <input type="file" id="upload-left" class="file-upload" accept="image/*">
+        </div>
+
+        <div class="control-group">
+            <label>右侧模特图 (1:1)</label>
+            <label for="upload-right" class="upload-btn">点击上传图片</label>
+            <input type="file" id="upload-right" class="file-upload" accept="image/*">
+        </div>
+
+        <div class="control-group">
+            <label>底部左侧截图 (3:4)</label>
+            <label for="upload-screenshot-left" class="upload-btn">点击上传图片</label>
+            <input type="file" id="upload-screenshot-left" class="file-upload" accept="image/*">
+        </div>
+
+        <div class="control-group">
+            <label>底部右侧截图 (3:4)</label>
+            <label for="upload-screenshot-right" class="upload-btn">点击上传图片</label>
+            <input type="file" id="upload-screenshot-right" class="file-upload" accept="image/*">
+        </div>
+
+        <label class="toggle-safe-zone">
+            <input type="checkbox" id="toggle-safe" checked=""> 显示字幕安全区辅助线
+        </label>
+
+        <div class="overflow-warn" id="overflow-warn">
+            内容已超出安全区，导出后超出部分会被裁掉，请精简文案。
+        </div>
+
+        <button class="btn-primary" id="export-btn">导出为图片</button>
+        <div class="export-msg" id="export-msg"></div>
+    </div>
+
+    <!-- 右侧预览区 -->
+    <div class="preview-container">
+        <div class="canvas-wrapper web-font" id="canvas-wrapper">
+            
+            <!-- 核心：只有这个区域内的内容会被导出，并且已被死死限制在红线内 -->
+            <div class="safe-content-area" id="export-target">
+                <div class="header-summary handwriting-font" id="preview-summary">
+                    总结一下：<br>
+                    宽松灰开衫弱化肩背臃肿感，不挑上身<br>
+                    深色阔腿牛仔裤重感在线，拉长腿线<br>
+                    平衡上下身比例，藏肉又显利落
+                </div>
+                
+                <div class="main-title handwriting-font" id="preview-title">菜头的橱窗</div>
+                
+                <div class="image-row">
+                    <div class="image-box" id="preview-img-left">左图 (1:1)</div>
+                    <div class="image-box" id="preview-img-right">右图 (1:1)</div>
+                </div>
+                
+                <div class="keywords-row handwriting-font" id="preview-keywords">
+                    🔍 黑色原牛复古直筒裤 🔍 老钱风毛衣
+                </div>
+                
+                <div class="sub-title handwriting-font" id="preview-subtitle">我的尺码</div>
+                
+                <div class="screenshot-row">
+                    <div class="screenshot-box" id="preview-screenshot-left">左截图 (3:4)</div>
+                    <div class="screenshot-box" id="preview-screenshot-right">右截图 (3:4)</div>
+                </div>
+            </div>
+
+            <!-- 安全区遮罩层 (只做视觉参考，不参与导出) -->
+            <div class="safe-zone-overlay active" id="safe-zone">
+                <div class="safe-line line-top"></div>
+                <div class="safe-line line-bottom"></div>
+                <div class="safe-line line-left"></div>
+                <div class="safe-line line-right"></div>
+                
+                <div class="main-area-box">
+                    <div class="main-area-label">主体位置</div>
+                </div>
+
+                <div class="zone-text text-top-safe">字幕安全区</div>
+                <div class="zone-text text-bottom-safe">字幕安全区</div>
+                <div class="zone-text text-left-safe">字幕安全区</div>
+                <div class="zone-text text-right-safe">字幕安全区</div>
+
+                <div class="zone-text text-outside-top">超出安全区域</div>
+                <div class="zone-text text-outside-bottom">超出安全区域</div>
+                <div class="zone-text text-outside-left">超出安全区域</div>
+                <div class="zone-text text-outside-right">超出安全区域</div>
+
+                <div class="interaction-zones">
+                    <span>点赞</span>
+                    <span>评论</span>
+                    <span>收藏</span>
+                    <span>转发</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ===== 卡密授权模块（一卡一机 · 离线校验 · 零依赖） =====
+         原理：机器码 = SHA256(设备指纹 + 本机安装ID)；卡密 = HMAC-SHA256(密钥, 机器码)。
+         激活时用本机机器码重算卡密并与输入比对；同一张卡密换到别的机器（机器码不同）即失效。
+         注意：纯前端校验只能做到“防君子”，无法阻挡有能力修改代码/内存的人。
+         ★★★ 请务必把下面 LICENSE_SECRET 改成你自己的密钥，并与「卡密生成器.html」保持一致 ★★★ -->
+    <script>
+    (function () {
+        'use strict';
+
+        // ★★★ 请自行修改：授权密钥（生成器里必须填同一串）★★★
+        var LICENSE_SECRET = 'aca0d140848ed9718184e7341d3c6ed7ff68283b50574258';
+
+        // ★★★ 请自行修改：静态卡密清单的网址（联网时拉取，用于白名单校验与在线吊销）。
+        //   留空 = 不启用在线清单，保持纯离线校验（默认，开箱即用）。
+        //   推荐免费托管：GitHub 仓库（必须 public）+ raw 地址。
+        //   地址形如 'https://raw.githubusercontent.com/用户名/仓库名/refs/heads/main/cards.json'
+        //   （若国内直连被重置，可改用 jsDelivr 镜像：
+        //    'https://cdn.jsdelivr.net/gh/用户名/仓库名@main/cards.json'）
+        //   清单格式（由「卡密生成器.html」生成）：
+        //   { "updated": "2026-10-13", "cards": ["卡密1","卡密2"], "revoked": ["要吊销的卡密"] }
+        //   注意：一旦启用清单，所有有效卡密都必须出现在 cards 里，否则会被判定为无效（空清单 = 所有人都激活不了）。
+        var MANIFEST_URL = 'https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/refs/heads/main/cards.json';
+
+        // 备用镜像：主源拉取失败（国内直连 raw.githubusercontent.com 常被重置/挂起）时按顺序回退。
+        // 任一源成功返回清单即视为成功；全部失败才算「拉取失败」（此时按规则拒绝激活）。
+        // jsDelivr 用 @refs/heads/main 引用分支、约 12 小时缓存，更新有延迟，故只作兜底，不建议设为主源。
+        var MANIFEST_MIRRORS = [
+            'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@refs/heads/main/cards.json'
+        ];
+
+        var ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // 32 字符，去掉易混淆的 I/L/O/U
+        var STAT_KEY = 'lmt_license';
+        var ID_KEY = 'lmt_install_id';
+
+        // ---------- 基础工具 ----------
+        function utf8Bytes(str) {
+            var bin = unescape(encodeURIComponent(String(str)));
+            var out = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) & 0xff;
+            return out;
+        }
+        function bytesToHex(bytes) {
+            var s = '';
+            for (var i = 0; i < bytes.length; i++) s += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+            return s;
+        }
+        function hexToBytes(hex) {
+            var out = new Uint8Array(hex.length / 2);
+            for (var i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+            return out;
+        }
+        function rotr(x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; }
+        function concat(a, b) {
+            var out = new Uint8Array(a.length + b.length);
+            out.set(a, 0); out.set(b, a.length);
+            return out;
+        }
+
+        // ---------- SHA-256（纯 JS 同步实现，不依赖 crypto.subtle） ----------
+        var K256 = new Uint32Array([
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        ]);
+
+        function sha256Bytes(bytes) {
+            var l = bytes.length;
+            var withOne = l + 1;
+            var padZeros = (56 - (withOne % 64) + 64) % 64;
+            var total = withOne + padZeros + 8;
+            var msg = new Uint8Array(total);
+            msg.set(bytes, 0);
+            msg[l] = 0x80;
+            var bits = l * 8;
+            var hi = Math.floor(bits / 4294967296);
+            var lo = bits >>> 0;
+            msg[total - 8] = (hi >>> 24) & 0xff;
+            msg[total - 7] = (hi >>> 16) & 0xff;
+            msg[total - 6] = (hi >>> 8) & 0xff;
+            msg[total - 5] = hi & 0xff;
+            msg[total - 4] = (lo >>> 24) & 0xff;
+            msg[total - 3] = (lo >>> 16) & 0xff;
+            msg[total - 2] = (lo >>> 8) & 0xff;
+            msg[total - 1] = lo & 0xff;
+
+            var H = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+            var w = new Uint32Array(64);
+            for (var off = 0; off < total; off += 64) {
+                for (var t = 0; t < 16; t++) {
+                    w[t] = ((msg[off + t * 4] << 24) | (msg[off + t * 4 + 1] << 16) | (msg[off + t * 4 + 2] << 8) | msg[off + t * 4 + 3]) >>> 0;
+                }
+                for (t = 16; t < 64; t++) {
+                    var s0 = (rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3)) >>> 0;
+                    var s1 = (rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10)) >>> 0;
+                    w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+                }
+                var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+                for (t = 0; t < 64; t++) {
+                    var S1 = (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) >>> 0;
+                    var ch = ((e & f) ^ (~e & g)) >>> 0;
+                    var t1 = (h + S1 + ch + K256[t] + w[t]) >>> 0;
+                    var S0 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) >>> 0;
+                    var maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+                    var t2 = (S0 + maj) >>> 0;
+                    h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+                }
+                H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+                H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+            }
+            var out = new Uint8Array(32);
+            for (var i = 0; i < 8; i++) {
+                out[i * 4] = (H[i] >>> 24) & 0xff;
+                out[i * 4 + 1] = (H[i] >>> 16) & 0xff;
+                out[i * 4 + 2] = (H[i] >>> 8) & 0xff;
+                out[i * 4 + 3] = H[i] & 0xff;
+            }
+            return out;
+        }
+
+        function sha256Hex(str) { return bytesToHex(sha256Bytes(utf8Bytes(str))); }
+
+        // ---------- HMAC-SHA256 ----------
+        function hmacSha256Hex(keyStr, msgStr) {
+            var block = 64;
+            var key = utf8Bytes(keyStr);
+            if (key.length > block) key = sha256Bytes(key);
+            var k = new Uint8Array(block); k.set(key, 0);
+            var ipad = new Uint8Array(block), opad = new Uint8Array(block);
+            for (var i = 0; i < block; i++) { ipad[i] = k[i] ^ 0x36; opad[i] = k[i] ^ 0x5c; }
+            var inner = sha256Bytes(concat(ipad, utf8Bytes(msgStr)));
+            return bytesToHex(sha256Bytes(concat(opad, inner)));
+        }
+
+        // ---------- Base32（自定义 32 字符表） ----------
+        function base32Encode(bytes, len) {
+            var s = '', buffer = 0, bits = 0;
+            for (var i = 0; i < bytes.length && s.length < len; i++) {
+                buffer = (buffer << 8) | bytes[i];
+                bits += 8;
+                while (bits >= 5 && s.length < len) {
+                    bits -= 5;
+                    s += ALPHABET[(buffer >>> bits) & 31];
+                }
+                buffer = buffer & ((1 << bits) - 1);
+            }
+            return s;
+        }
+        function group(str, n) {
+            var out = [];
+            for (var i = 0; i < str.length; i += n) out.push(str.substr(i, n));
+            return out.join('-');
+        }
+        function normalize(code) { return String(code == null ? '' : code).toUpperCase().replace(/[^0-9A-Z]/g, ''); }
+
+        // ---------- 本机机器码 ----------
+        function storage() { try { return window.localStorage; } catch (e) { return null; } }
+        var memId = null;
+        function randomId() {
+            var s = '';
+            for (var i = 0; i < 4; i++) s += (Math.random() * 0x100000000 >>> 0).toString(16);
+            return s + Date.now().toString(16);
+        }
+        function installId() {
+            var ls = storage();
+            if (ls) {
+                try {
+                    var v = ls.getItem(ID_KEY);
+                    if (v) return v;
+                    v = randomId();
+                    ls.setItem(ID_KEY, v);
+                    return v;
+                } catch (e) { /* 存储不可用则退回内存 ID */ }
+            }
+            if (!memId) memId = randomId();
+            return memId;
+        }
+        function machineCode() {
+            var nav = (window.navigator || {});
+            // 仅保留跨会话稳定的环境特征参与指纹：
+            //   屏幕尺寸 / devicePixelRatio 会随调整分辨率、浏览器缩放、外接显示器而变；
+            //   时区偏移会随夏令时、出差跨时区而变；userAgent 会随浏览器每月升级而变版本号。
+            // 这些字段一旦参与指纹，同一台机器的机器码就会漂移，导致已激活的卡密被误判失效，
+            // 因此一律剔除。保留操作系统家族、CPU 核心数、语言，再叠加本地持久化的安装 ID。
+            var fp = [
+                nav.platform || '',
+                String(nav.hardwareConcurrency || 0),
+                nav.language || ''
+            ].join('|');
+            var hex = sha256Hex(fp + '|' + installId());
+            return group(base32Encode(hexToBytes(hex), 16), 4); // XXXX-XXXX-XXXX-XXXX
+        }
+
+        // ---------- 卡密 ----------
+        function makeCard(mc) {
+            var mac = hmacSha256Hex(LICENSE_SECRET, normalize(mc));
+            return group(base32Encode(hexToBytes(mac), 20), 4); // 5 组，共 20 位
+        }
+        function constEq(a, b) {
+            if (a.length !== b.length) return false;
+            var r = 0;
+            for (var i = 0; i < a.length; i++) r |= (a.charCodeAt(i) ^ b.charCodeAt(i));
+            return r === 0;
+        }
+        // 本地校验（离线兜底）：卡密是否等于「本机机器码」应得的卡密 → 维持一卡一机
+        function hmacOk(card) {
+            var expect = normalize(makeCard(machineCode()));
+            return constEq(normalize(card), expect);
+        }
+        function verifyCard(card) { return hmacOk(card); }
+
+        // ---------- 在线清单（联网校验 + 在线吊销；已配置时断网将拒绝激活） ----------
+        var manifest = null; // { updated, cards:{卡密:true}, revoked:{卡密:true} }
+        function setManifestUrl(u) { MANIFEST_URL = String(u == null ? '' : u); }
+        // 参与拉取的地址列表：主源 + 备用镜像。
+        // 仅当配置了主源时才启用镜像；主源留空 = 关闭在线清单，此时不应再尝试镜像。
+        function manifestSourceList() {
+            if (!MANIFEST_URL) return [];
+            var list = [MANIFEST_URL];
+            for (var i = 0; i < MANIFEST_MIRRORS.length; i++) {
+                if (MANIFEST_MIRRORS[i] && MANIFEST_MIRRORS[i] !== MANIFEST_URL) list.push(MANIFEST_MIRRORS[i]);
+            }
+            return list;
+        }
+        function getManifest() { return manifest; }
+
+        function parseManifest(data) {
+            var cards = {}, revoked = {}, i;
+            var list = (data && data.cards) || [];
+            for (i = 0; i < list.length; i++) {
+                var c = normalize(typeof list[i] === 'string' ? list[i] : (list[i] && list[i].card));
+                if (c) cards[c] = true;
+            }
+            var rev = (data && data.revoked) || [];
+            for (i = 0; i < rev.length; i++) {
+                var r = normalize(typeof rev[i] === 'string' ? rev[i] : (rev[i] && rev[i].card));
+                if (r) revoked[r] = true;
+            }
+            return { updated: (data && data.updated) || '', cards: cards, revoked: revoked };
+        }
+
+        // 拉取清单；url 传 '' 则清空（回到纯离线）。任何失败都返回 null（是否放行交由 onlineDecision 判定）。
+        // 自增令牌：启动时的后台拉取可能比后发的请求更晚返回，
+        // 若不加约束，旧响应会把「刚清空/刚更新」的清单状态覆盖回去（吊销状态回滚、误锁用户）。
+        var manifestReqToken = 0;
+        // 抓取单个源 → 返回原始数据；失败/超时/结构异常返回 null。
+        // 10 秒超时：部分网络下请求会长时间挂起（既不返回也不报错）。
+        function fetchOneManifest(u, token) {
+            var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var timer = 0;
+            if (ctrl) timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 10000);
+            var opts = { cache: 'no-store' };
+            if (ctrl) opts.signal = ctrl.signal;
+            function done(v) { if (timer) { clearTimeout(timer); timer = 0; } return v; }
+            return fetch(u, opts).then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).then(function (data) {
+                // 结构校验：必须是含 cards 数组的对象。否则视为该源失败并回退下一个，
+                // 避免 CDN 返回的错误页/异常 JSON 被当成「空清单」而把所有人判为无效。
+                if (!data || typeof data !== 'object' || !Array.isArray(data.cards)) return null;
+                return token === manifestReqToken ? data : null; // 已被更新的请求取代，丢弃过期结果
+            })['catch'](function () { return null; })['then'](done);
+        }
+        // 依次尝试主源与备用镜像，任一成功即写入 manifest 并返回；全部失败返回 null（保留原 manifest）。
+        // 自增令牌：启动时的后台拉取可能比后发的请求更晚返回，旧响应必须丢弃，
+        // 否则会把「刚清空/刚更新」的清单状态覆盖回去（吊销状态回滚、误锁用户）。
+        function fetchManifest(url) {
+            var token = ++manifestReqToken;
+            // url 传 ''（或主源留空）= 清空清单、回到纯离线；url 省略 = 主源 + 备用镜像
+            if (url != null && !String(url)) { manifest = null; return Promise.resolve(null); }
+            var sources = (url == null) ? manifestSourceList() : [String(url)];
+            if (!sources.length || typeof fetch !== 'function') { manifest = null; return Promise.resolve(null); }
+            var i = 0;
+            function next() {
+                if (token !== manifestReqToken) return Promise.resolve(null); // 已被更新的请求取代
+                if (i >= sources.length) return Promise.resolve(null);       // 所有源均失败
+                var u = sources[i++];
+                if (!u) return next();
+                return fetchOneManifest(u, token).then(function (data) {
+                    if (token !== manifestReqToken) return null;
+                    if (data) { manifest = parseManifest(data); return manifest; }
+                    return next(); // 该源失败 → 回退下一个
+                });
+            }
+            return next();
+        }
+
+        // 在线判定：
+        //   · 未配置 MANIFEST_URL：不启用在线清单，纯本地校验（decided=false）
+        //   · 已配置但清单未加载成功（断网 / 拉取失败）：一律拒绝激活，
+        //     避免「断网即可绕过白名单」；已激活用户不受影响（isActivated 有 manifest 守卫）
+        //   · 清单已加载：按白名单 / 吊销名单判定
+        function onlineDecision(card) {
+            if (!MANIFEST_URL) return { decided: false, ok: true, msg: '' };
+            if (!manifest) return { decided: true, ok: false, msg: '无法连接校验服务器，请联网后重试' };
+            var c = normalize(card);
+            if (manifest.revoked[c]) return { decided: true, ok: false, msg: '该卡密已被吊销' };
+            if (manifest.cards[c]) return { decided: true, ok: true, msg: '' };
+            return { decided: true, ok: false, msg: '卡密不在有效清单中' };
+        }
+
+        // ---------- 授权状态（持久化到 localStorage） ----------
+        function readStat() {
+            var ls = storage(); if (!ls) return null;
+            try { var raw = ls.getItem(STAT_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+        }
+        function writeStat(o) { var ls = storage(); if (ls) { try { ls.setItem(STAT_KEY, JSON.stringify(o)); } catch (e) {} } }
+        function clearStat() { var ls = storage(); if (ls) { try { ls.removeItem(STAT_KEY); } catch (e) {} } }
+
+        // 已激活 = 有记录 且 记录的机器码与当前机器一致 且 卡密校验通过 且（若已联网）未被名单吊销
+        // 「记录里的机器码与当前机器不一致」正是“一卡一机”的核心：把存储拷到别的机器即失效
+        function isActivated() {
+            var rec = readStat();
+            if (!rec || !rec.mc || !rec.card) return false;
+            if (rec.mc !== machineCode()) return false;
+            if (!hmacOk(rec.card)) return false;
+            if (manifest && !onlineDecision(rec.card).ok) return false; // 在线清单判定失效（如已吊销）
+            return true;
+        }
+        function activate(card) {
+            var c = normalize(card);
+            if (!c) return { ok: false, msg: '请输入卡密' };
+            if (!hmacOk(c)) return { ok: false, msg: '卡密不正确，或与本机不匹配' };
+            var d = onlineDecision(c); // 若清单已加载，做白名单/吊销判定
+            if (!d.ok) return { ok: false, msg: d.msg };
+            writeStat({ mc: machineCode(), card: c });
+            return { ok: true, msg: '激活成功' + (d.decided ? '（已联网校验）' : '（离线校验）'), online: d.decided };
+        }
+        function deactivate() { clearStat(); }
+
+        // ---------- 复制（移动端优先走同步 execCommand） ----------
+        // 顺序很关键：execCommand('copy') 必须在用户手势的同步调用栈里执行。
+        // 一旦挪进 Promise.then / setTimeout，iOS Safari 与安卓 WebView 会因为「选区已丢失」而静默失败。
+        // navigator.clipboard 只在 https / localhost 可用，且部分 WebView 返回的 Promise 永不 settle，
+        // 表现就是「点了复制没有任何反应」，所以它只作兜底，并加超时保护。
+        // iPadOS 13+ 的 UA 与 macOS 相同，只能靠触点数区分
+        function isIOSLike() {
+            var ua = navigator.userAgent || '';
+            return /iPad|iPhone|iPod/.test(ua) ||
+                (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+        }
+        function syncCopy(text) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', ''); // 只读：避免 iOS 弹出软键盘
+            ta.setAttribute('aria-hidden', 'true');
+            // 固定在视口中央的 1×1 透明元素：display:none 或完全移出屏幕的元素，
+            // 在部分安卓 WebView 上根本复制不到，所以必须留在视口内；
+            // 同时用 focus({preventScroll}) 避免 iOS 聚焦时把整页滚到顶部。
+            ta.style.position = 'fixed';
+            ta.style.top = '50%';
+            ta.style.left = '50%';
+            ta.style.width = '1px';
+            ta.style.height = '1px';
+            ta.style.padding = '0';
+            ta.style.margin = '0';
+            ta.style.border = 'none';
+            ta.style.outline = 'none';
+            ta.style.boxShadow = 'none';
+            ta.style.background = 'transparent';
+            ta.style.color = 'transparent';
+            ta.style.opacity = '0';
+            ta.style.fontSize = '12pt'; // 字号过小会让 iOS 的选区不可靠
+            document.body.appendChild(ta);
+            var ok = false;
+            var sel = window.getSelection ? window.getSelection() : null;
+            var saved = (sel && sel.rangeCount) ? sel.getRangeAt(0) : null;
+            try {
+                try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
+                ta.select();
+                try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+                if (isIOSLike() && sel) {
+                    // iOS Safari 对 readonly 文本域只调 select() 常常「复制不到内容但 execCommand 仍返回 true」，
+                    // 用户看到按钮变成已复制、粘贴却是空的；官方做法是改用 contentEditable + Range 选中。
+                    ta.removeAttribute('readonly');
+                    ta.contentEditable = 'true';
+                    var range = document.createRange();
+                    range.selectNodeContents(ta);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+                ok = document.execCommand('copy');
+            } catch (e) { ok = false; }
+            document.body.removeChild(ta);
+            // 还原用户原本的选区，避免复制后在页面上残留一块高亮
+            try {
+                if (sel) { sel.removeAllRanges(); if (saved) sel.addRange(saved); }
+            } catch (e) {}
+            return ok;
+        }
+        function copyText(text, onDone) {
+            text = String(text == null ? '' : text);
+            if (syncCopy(text)) { onDone(true); return; }
+            var clip = navigator.clipboard;
+            if (clip && typeof clip.writeText === 'function') {
+                var settled = false;
+                var finish = function (ok) { if (!settled) { settled = true; onDone(ok); } };
+                try {
+                    clip.writeText(text).then(function () { finish(true); }, function () { finish(false); });
+                } catch (e) { finish(false); return; }
+                // 少数 WebView 的 writeText 永不 settle，超时兜底，避免界面一直无反馈
+                setTimeout(function () { finish(false); }, 900);
+                return;
+            }
+            onDone(false);
+        }
+        // 自动复制彻底不可用时的兜底出口（安卓 WebView 常见）
+        function showManualCopy(text, title) {
+            var mask = document.createElement('div');
+            mask.className = 'manual-copy-mask';
+            var card = document.createElement('div');
+            card.className = 'manual-copy-card';
+            var h = document.createElement('h3');
+            h.textContent = title || '请手动复制';
+            var p = document.createElement('p');
+            p.textContent = '当前环境不允许自动复制。请长按下面的文本框 →「全选」→「复制」；也可点右下角「全选」后再长按。';
+            var ta = document.createElement('textarea');
+            ta.readOnly = true;
+            ta.value = String(text == null ? '' : text);
+            var actions = document.createElement('div');
+            actions.className = 'manual-copy-actions';
+            var close = document.createElement('button');
+            close.type = 'button';
+            close.textContent = '关闭';
+            close.addEventListener('click', function () { document.body.removeChild(mask); });
+            // 触屏上手动框选等宽字符串很费劲：给一个「全选」按钮，
+            // 点完直接调起系统菜单里的复制即可
+            var selectAll = document.createElement('button');
+            selectAll.type = 'button';
+            selectAll.textContent = '全选';
+            selectAll.addEventListener('click', function () {
+                try { ta.focus(); ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+            });
+            actions.appendChild(close);
+            actions.appendChild(selectAll);
+            card.appendChild(h);
+            card.appendChild(p);
+            card.appendChild(ta);
+            card.appendChild(actions);
+            mask.appendChild(card);
+            mask.addEventListener('click', function (e) { if (e.target === mask) document.body.removeChild(mask); });
+            document.body.appendChild(mask);
+            try { ta.focus(); ta.select(); } catch (e) {} // 桌面端可直接 Ctrl/Cmd+C
+        }
+
+        // 统一的按钮文案反馈：无论成功还是失败，都必须有肉眼可见的变化。
+        // （移动端没有 hover 态，alert() 在 WebView 里还可能被静默忽略）
+        // 原始文案只在首次点击时记下来，避免连点时把「已复制」当成原始文案而回不去。
+        function flashButton(btn, text, restoreText) {
+            if (!btn) return;
+            if (btn.__flashLabel == null) btn.__flashLabel = btn.textContent;
+            if (btn.__flashTimer) clearTimeout(btn.__flashTimer);
+            btn.textContent = text;
+            btn.__flashTimer = setTimeout(function () {
+                btn.__flashTimer = null;
+                btn.textContent = restoreText || btn.__flashLabel;
+            }, 1500);
+        }
+
+        // 复制 + 按钮反馈 + 失败兜底浮层：任何环境都必定有可见反馈
+        function copyWithFeedback(text, btn, okText) {
+            flashButton(btn, '复制中…'); // 先立刻变文案：即使后面通道静默失败，用户也知道点到了
+            copyText(text, function (ok) {
+                flashButton(btn, ok ? (okText || '已复制') : '请手动复制');
+                if (!ok) showManualCopy(text);
+            });
+        }
+
+        // ---------- 授权门 UI 与启动 ----------
+        var bootFn = null;
+        function unlock() {
+            document.body.classList.remove('locked');
+            if (typeof bootFn === 'function') { var f = bootFn; bootFn = null; f(); }
+        }
+        function boot(fn) {
+            if (typeof fn === 'function') bootFn = fn;
+            var mcInput = document.getElementById('license-mc');
+            var cardInput = document.getElementById('license-input');
+            var copyBtn = document.getElementById('license-copy');
+            var actBtn = document.getElementById('license-activate');
+            var msg = document.getElementById('license-msg');
+            var netEl = document.getElementById('license-net');
+            if (mcInput) {
+                mcInput.value = machineCode();
+                // 点一下自动全选：即便系统/WebView 拦掉了自动复制，
+                // 用户也能直接用系统菜单的「复制」把机器码发给作者
+                mcInput.addEventListener('click', function () { try { mcInput.select(); } catch (e) {} });
+            }
+
+            function setMsg(text, kind) {
+                if (!msg) return;
+                msg.textContent = text || '';
+                msg.className = 'license-msg' + (kind && kind !== 'error' ? ' ' + kind : '');
+            }
+            function updateNetStatus() {
+                if (!netEl) return;
+                if (!MANIFEST_URL) { netEl.textContent = '校验方式：离线（未配置在线清单）'; return; }
+                netEl.textContent = manifest
+                    ? ('校验方式：在线清单已同步' + (manifest.updated ? '（更新于 ' + manifest.updated + '）' : ''))
+                    : '校验方式：在线清单连接失败（主源与备用镜像均不可达，无法激活）';
+            }
+
+            // 激活：先尽力同步在线清单，再做校验（成功解锁）
+            function doActivate() {
+                if (actBtn) actBtn.disabled = true;
+                setMsg('正在校验…', 'info');
+                var p = (MANIFEST_URL && !manifest) ? fetchManifest() : Promise.resolve(manifest);
+                p.then(function () {
+                    updateNetStatus();
+                    var r = activate(cardInput ? cardInput.value : '');
+                    setMsg(r.msg, r.ok ? 'ok' : 'error');
+                    if (actBtn) actBtn.disabled = false;
+                    if (r.ok) unlock();
+                }, function () {
+                    if (actBtn) actBtn.disabled = false;
+                    setMsg('校验失败，请重试', 'error');
+                });
+            }
+            if (actBtn) actBtn.addEventListener('click', doActivate);
+            if (cardInput) cardInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') doActivate(); });
+            if (copyBtn) copyBtn.addEventListener('click', function () {
+                copyWithFeedback(mcInput ? mcInput.value : '', copyBtn, '已复制');
+            });
+
+            updateNetStatus();
+            if (isActivated()) unlock();
+            else document.body.classList.add('locked');
+
+            // 后台同步在线清单：若已激活的卡密在新清单里被吊销/移出，则立即重新上锁
+            if (MANIFEST_URL) {
+                fetchManifest().then(function () {
+                    updateNetStatus();
+                    if (!isActivated()) document.body.classList.add('locked');
+                });
+            }
+        }
+
+        // 暴露给主程序启动与单元测试页
+        window.__license = {
+            sha256Hex: sha256Hex, hmacSha256Hex: hmacSha256Hex, base32Encode: base32Encode,
+            normalize: normalize, machineCode: machineCode, makeCard: makeCard,
+            verifyCard: verifyCard, isActivated: isActivated, activate: activate,
+            deactivate: deactivate, boot: boot,
+            setManifestUrl: setManifestUrl, getManifest: getManifest,
+            fetchManifest: fetchManifest, onlineDecision: onlineDecision,
+            copyText: copyText, showManualCopy: showManualCopy,
+            copyWithFeedback: copyWithFeedback, flashButton: flashButton, isIOSLike: isIOSLike
+        };
+    })();
+    </script>
+
+    <script>
+    // 主程序：全部初始化逻辑集中在 bootApp() 内，由授权模块在激活成功后调用
+    function bootApp() {
+        // 获取DOM元素
+        const inputSummary = document.getElementById('input-summary');
+        const inputTitle = document.getElementById('input-title');
+        const inputKeywords = document.getElementById('input-keywords');
+        const inputSubtitle = document.getElementById('input-subtitle');
+        
+        const previewSummary = document.getElementById('preview-summary');
+        const previewTitle = document.getElementById('preview-title');
+        const previewKeywords = document.getElementById('preview-keywords');
+        const previewSubtitle = document.getElementById('preview-subtitle');
+        
+        // 图片上传相关元素
+        const uploadLeft = document.getElementById('upload-left');
+        const uploadRight = document.getElementById('upload-right');
+        const uploadScreenshotLeft = document.getElementById('upload-screenshot-left');
+        const uploadScreenshotRight = document.getElementById('upload-screenshot-right');
+        
+        const previewImgLeft = document.getElementById('preview-img-left');
+        const previewImgRight = document.getElementById('preview-img-right');
+        const previewScreenshotLeft = document.getElementById('preview-screenshot-left');
+        const previewScreenshotRight = document.getElementById('preview-screenshot-right');
+        
+        const toggleSafe = document.getElementById('toggle-safe');
+        const safeZone = document.getElementById('safe-zone');
+        const exportBtn = document.getElementById('export-btn');
+        const fontSelect = document.getElementById('font-select');
+        
+        // 导出目标是整个 canvas-wrapper，而不是只截取内部
+        const canvasWrapper = document.getElementById('canvas-wrapper');
+        const exportTarget = document.getElementById('export-target');
+        const overflowWarn = document.getElementById('overflow-warn');
+
+        // 1. 文本实时同步
+        // 转义 HTML，避免输入 < > & 时被当成标签解析
+        const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        inputSummary.addEventListener('input', (e) => {
+            previewSummary.innerHTML = escapeHtml(e.target.value).replace(/\n/g, '<br>');
+        });
+
+        inputTitle.addEventListener('input', (e) => {
+            previewTitle.textContent = e.target.value;
+        });
+
+        inputKeywords.addEventListener('input', (e) => {
+            previewKeywords.textContent = e.target.value;
+        });
+
+        inputSubtitle.addEventListener('input', (e) => {
+            previewSubtitle.textContent = e.target.value;
+        });
+
+        // 1.5 手写字体切换（同时作用于预览与左侧编辑器）
+        // 在线字体按需加载：只有被选中时才下载，避免一次性拉取多套中文字库
+        const WEB_FONT_CDNS = [
+            (f) => 'https://fonts.googleapis.com/css2?family=' + f + '&display=swap',
+            (f) => 'https://fonts.loli.net/css2?family=' + f + '&display=swap' // 国内镜像兜底
+        ];
+        const fontStatus = document.getElementById('font-status');
+        const webFontCache = {};
+
+        // 单个字体源的最长等待时间：国内直连 fonts.googleapis.com 时常出现
+        // 「TCP 连得上但迟迟不返回」的情况，link.onerror 可能几十秒都不触发，
+        // 界面会长期停在「正在加载在线字体…」。加超时兜底，到点即切到镜像源。
+        const FONT_LOAD_TIMEOUT = 6000;
+        function loadWebFont(cssParam) {
+            if (!webFontCache[cssParam]) {
+                webFontCache[cssParam] = new Promise((resolve) => {
+                    let i = 0;
+                    (function attempt() {
+                        if (i >= WEB_FONT_CDNS.length) { resolve(false); return; }
+                        const link = document.createElement('link');
+                        link.rel = 'stylesheet';
+                        link.href = WEB_FONT_CDNS[i++](cssParam);
+                        let settled = false, timer = null;
+                        const settle = (ok) => {
+                            if (settled) return;
+                            settled = true;
+                            clearTimeout(timer);
+                            if (ok) { resolve(true); return; }
+                            link.remove(); // 失败/超时：移除本次 link，再试下一个源
+                            attempt();
+                        };
+                        timer = setTimeout(() => settle(false), FONT_LOAD_TIMEOUT);
+                        link.onload = () => settle(true);
+                        link.onerror = () => settle(false);
+                        document.head.appendChild(link);
+                    })();
+                });
+            }
+            return webFontCache[cssParam];
+        }
+
+        // 记录最近一次字体请求：快速连续切换时，丢弃较早请求的过期异步结果，
+        // 避免状态提示被旧结果覆盖
+        let fontReqToken = 0;
+
+        async function applyHandwritingFont(option) {
+            const token = ++fontReqToken;
+            const web = option.dataset.web;
+            const family = option.dataset.family;
+
+            document.documentElement.style.setProperty('--handwriting-font', option.value);
+            // 保留下来的两款字体都是在线手写字体（单一字重），统一上 web-font 以固定字重 400
+            canvasWrapper.classList.add('web-font');
+            checkContentFit();
+
+            fontStatus.textContent = '正在加载在线字体…';
+            fontStatus.classList.remove('error');
+            const ok = await loadWebFont(web);
+            if (token !== fontReqToken) return; // 已被更新的选择取代
+            if (ok) {
+                // 触发实际字形下载并等待就绪，否则导出时会回退成系统字体
+                try { await document.fonts.load('16px "' + family + '"', '菜头的橱窗总结一下我的尺码'); } catch (err) {}
+                if (token !== fontReqToken) return;
+                fontStatus.textContent = '在线字体已加载';
+            } else {
+                fontStatus.textContent = '在线字体加载失败，已回退到系统字体';
+                fontStatus.classList.add('error');
+            }
+            await document.fonts.ready;
+            if (token !== fontReqToken) return;
+            checkContentFit();
+        }
+
+        fontSelect.addEventListener('change', (e) => {
+            applyHandwritingFont(e.target.selectedOptions[0]);
+        });
+
+        // 内容是否超出安全区（超出部分导出后会被裁掉，这里给出提示）
+        function checkContentFit() {
+            overflowWarn.classList.toggle('show', exportTarget.scrollHeight > exportTarget.clientHeight + 1);
+        }
+        // 输入框每敲一个字都会触发 input 事件；checkContentFit 会读取 scrollHeight 强制回流，
+        // 用 requestAnimationFrame 合并同一帧内的多次调用，避免连续输入时反复重排。
+        let fitRaf = 0;
+        function scheduleFit() {
+            if (fitRaf) return;
+            fitRaf = requestAnimationFrame(() => { fitRaf = 0; checkContentFit(); });
+        }
+
+        // 2. 图片上传预览
+        // 说明：html2canvas 会把 background-image 按 1 倍栅格化后再放大（实测条纹被抹成灰色），
+        // 导致导出照片发糊；它同样不支持 object-fit。因此改为：把照片预先按图片框的宽高比
+        // 裁切/缩放后绘制到一个 <canvas> 子元素里。画布位图按导出分辨率(EXPORT_SCALE)生成，
+        // html2canvas 对 <canvas> 是像素级复制，导出即为清晰原图。
+        const EXPORT_SCALE = 4;
+        // 各图片框的导出像素尺寸（CSS 尺寸 132×132 / 132×176，乘以 EXPORT_SCALE）
+        const BOX_SIZE = {
+            cover: [132 * EXPORT_SCALE, 132 * EXPORT_SCALE],   // 模特图：铺满方框
+            contain: [132 * EXPORT_SCALE, 176 * EXPORT_SCALE]  // 截图：完整显示不裁剪
+        };
+
+        // 纯函数：计算照片在给定框内的等比绘制矩形（绝不拉伸变形）。
+        //   mode='cover'   等比放大到铺满框，居中裁剪（超出部分由 clip 裁掉）
+        //   mode='contain' 等比缩小到完整放入框，多余部分留白
+        function computeDrawRect(imgW, imgH, boxW, boxH, mode) {
+            const scale = mode === 'contain'
+                ? Math.min(boxW / imgW, boxH / imgH)
+                : Math.max(boxW / imgW, boxH / imgH);
+            const dw = imgW * scale, dh = imgH * scale;
+            return { dx: (boxW - dw) / 2, dy: (boxH - dh) / 2, dw: dw, dh: dh };
+        }
+
+        function handleImageUpload(inputElement, targetElement, mode) {
+            const label = document.querySelector('label[for="' + inputElement.id + '"]');
+            // 每次选择自增令牌：连续快速更换图片时，较早一次的解码可能较晚完成，
+            // 若不丢弃过期结果，旧图会覆盖掉后选的图片。
+            let uploadToken = 0;
+            inputElement.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                // 立即清空 value：浏览器在 value 未变化时不会再触发 change，
+                // 清空后才能再次选择同一张图片进行替换
+                e.target.value = '';
+                if (!file) return;
+                const token = ++uploadToken;
+                // 大图解码需要时间，先给一个「读取中」反馈，避免用户以为点了没反应
+                if (label) { label.textContent = '读取中…'; label.classList.remove('done'); }
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onerror = function() {
+                        // 选到的文件无法解码（非图片/已损坏）：给出反馈，避免“点了没反应”
+                        if (token !== uploadToken) return;
+                        if (label) { label.textContent = '图片读取失败，请重试'; label.classList.remove('done'); }
+                    };
+                    img.onload = function() {
+                        if (token !== uploadToken) return; // 已被更新的选择取代，丢弃过期结果
+                        if (!img.width || !img.height) return; // 解码异常（空尺寸）图片：忽略
+                        const tw = BOX_SIZE[mode][0], th = BOX_SIZE[mode][1];
+                        const canvas = document.createElement('canvas');
+                        canvas.width = tw;
+                        canvas.height = th;
+                        const ctx = canvas.getContext('2d');
+                        // 圆角半径与 CSS 保持一致(10px × EXPORT_SCALE)，直接烘焙进位图。
+                        // 这样即使 html2canvas 不裁剪 <canvas> 子元素的 border-radius，
+                        // 导出图的圆角也一定正确（圆角外为透明，露出白色导出背景）。
+                        const r = 10 * EXPORT_SCALE;
+                        ctx.beginPath();
+                        ctx.moveTo(r, 0);
+                        ctx.arcTo(tw, 0, tw, th, r);
+                        ctx.arcTo(tw, th, 0, th, r);
+                        ctx.arcTo(0, th, 0, 0, r);
+                        ctx.arcTo(0, 0, tw, 0, r);
+                        ctx.closePath();
+                        ctx.clip();
+                        if (mode === 'contain') {
+                            // 完整显示整张图，多余部分留白
+                            ctx.fillStyle = '#fbfcfe';
+                            ctx.fillRect(0, 0, tw, th);
+                        }
+                        // 等比绘制矩形由纯函数统一计算，保证不拉伸
+                        const rect = computeDrawRect(img.width, img.height, tw, th, mode);
+                        ctx.drawImage(img, rect.dx, rect.dy, rect.dw, rect.dh);
+                        canvas.className = 'preview-photo';
+                        targetElement.textContent = '';
+                        targetElement.classList.add('has-photo');
+                        targetElement.appendChild(canvas);
+                        if (label) {
+                            label.textContent = '已上传：' + file.name;
+                            label.classList.add('done');
+                        }
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        handleImageUpload(uploadLeft, previewImgLeft, 'cover');
+        handleImageUpload(uploadRight, previewImgRight, 'cover');
+        handleImageUpload(uploadScreenshotLeft, previewScreenshotLeft, 'contain');
+        handleImageUpload(uploadScreenshotRight, previewScreenshotRight, 'contain');
+
+        // 3. 安全区开关
+        toggleSafe.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                safeZone.classList.add('active');
+            } else {
+                safeZone.classList.remove('active');
+            }
+        });
+
+        // 4. 导出图片（导出完整的9:16背景，隐藏红线）
+        // 移动端（安卓 WebView / 部分手机浏览器）会静默忽略 <a download>，
+        // 表现为「点了导出没反应」，因此触屏设备导出后额外弹出图片浮层供长按保存。
+        const exportMsgEl = document.getElementById('export-msg');
+        const setExportMsg = (t) => {
+            if (!exportMsgEl) return;
+            exportMsgEl.textContent = t || '';
+            exportMsgEl.classList.toggle('show', !!t);
+        };
+        // 纯函数便于单元测试：不能只靠 (pointer: coarse) 判断移动端，
+        // 部分安卓 WebView / 浏览器桌面模式会把它误报成 fine，导致导出浮层不出现、点了导出像没反应。
+        const isMobileUA = (ua) => {
+            if (ua == null) {
+                // iPadOS 13+ 的 UA 与 macOS 桌面版完全相同，只能靠触点数区分
+                if (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1) return true;
+                ua = navigator.userAgent || '';
+            }
+            return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|HarmonyOS/i.test(String(ua));
+        };
+        const isTouchPrimary = () => {
+            if (isMobileUA()) return true;
+            const touch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            return touch && !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        };
+        const triggerDownload = (href, fileName) => {
+            // 下载 link 需挂到文档中，兼容 Firefox
+            const link = document.createElement('a');
+            link.download = fileName;
+            link.href = href;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+        const showImagePreview = (dataUrl, fileName) => {
+            const mask = document.createElement('div');
+            mask.className = 'manual-copy-mask';
+            const card = document.createElement('div');
+            card.className = 'img-preview-card';
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.alt = fileName;
+            const tip = document.createElement('p');
+            tip.textContent = '长按上方图片即可保存到相册；若已自动下载，可在「下载」目录中找到。';
+            const actions = document.createElement('div');
+            actions.className = 'manual-copy-actions';
+            actions.style.justifyContent = 'center';
+            const again = document.createElement('button');
+            again.type = 'button';
+            again.textContent = '再次下载';
+            again.addEventListener('click', () => triggerDownload(dataUrl, fileName));
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.textContent = '关闭';
+            close.addEventListener('click', () => document.body.removeChild(mask));
+            actions.appendChild(again);
+            actions.appendChild(close);
+            card.appendChild(img);
+            card.appendChild(tip);
+            card.appendChild(actions);
+            mask.appendChild(card);
+            mask.addEventListener('click', (e) => { if (e.target === mask) document.body.removeChild(mask); });
+            document.body.appendChild(mask);
+        };
+
+        exportBtn.addEventListener('click', async () => {
+            // 导出时始终隐藏安全区辅助线（避免被截进图片）；
+            // 恢复时以复选框“当前”状态为准，避免导出过程中用户切换勾选导致遮罩与勾选状态不一致。
+            const restore = () => {
+                safeZone.classList.toggle('active', toggleSafe.checked);
+                exportBtn.disabled = false;
+                exportBtn.textContent = '导出为图片';
+            };
+
+            setExportMsg('');
+            if (typeof html2canvas !== 'function') {
+                setExportMsg('导出组件未加载成功（需要联网加载），请连网后刷新页面重试。');
+                return;
+            }
+
+            safeZone.classList.remove('active');
+            exportBtn.disabled = true;
+            exportBtn.textContent = '导出中…';
+
+            // 截取整个画布容器。scale 决定导出分辨率：
+            // 375×667 × scale 4 = 1500×2668，图片区域约 528px，
+            // 才能保住上传照片的细节（scale 2 时只有 264px，会明显发糊）。
+            try {
+                // 关键：等在线手写字体的字形真正下载完成再截图，
+                // 否则 html2canvas 拿到尚未就绪的 Web Font，导出图会回退成系统字体。
+                if (document.fonts && document.fonts.ready) {
+                    await document.fonts.ready;
+                }
+
+                const canvas = await html2canvas(canvasWrapper, {
+                    scale: EXPORT_SCALE,
+                    backgroundColor: '#ffffff', // 导出背景：纯白色
+                    logging: false,
+                    width: 375, // 强制截取完整宽度
+                    height: 667, // 强制截取完整高度
+                });
+
+                restore();
+
+                const dataUrl = canvas.toDataURL('image/png');
+                const fileName = '排版图_' + new Date().getTime() + '.png';
+                triggerDownload(dataUrl, fileName);
+                if (isTouchPrimary()) showImagePreview(dataUrl, fileName);
+            } catch (err) {
+                console.error('导出失败:', err);
+                // 不用 alert：移动端 WebView 未接管弹窗时会静默无提示
+                setExportMsg('导出失败：' + ((err && err.message) || err || '未知错误'));
+                restore();
+            }
+        });
+
+        // 5. 内容变化后重新检查是否超出安全区
+        const panel = document.querySelector('.control-panel');
+        panel.addEventListener('input', scheduleFit);
+        panel.addEventListener('change', checkContentFit);
+        window.addEventListener('load', checkContentFit);
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(checkContentFit);
+        }
+
+        // 首次加载：应用默认选中的字体（在线字体按需加载）
+        applyHandwritingFont(fontSelect.selectedOptions[0]);
+
+        // 暴露纯函数，供单元测试页（图文排版生成器.tests.html）在 iframe 中直接复用
+        window.__layoutTool = { escapeHtml: escapeHtml, computeDrawRect: computeDrawRect, isMobileUA: isMobileUA, isTouchPrimary: isTouchPrimary };
+    }
+
+    // 启动：先校验卡密（未激活则显示授权门），激活成功后再初始化主程序
+    window.__license.boot(bootApp);
+    </script>
+
+<script>
+    // PWA：注册 Service Worker，实现离线可用（需 http/https 环境，file:// 不生效）
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('./sw.js').catch(function () {});
+        });
+    }
+</script>
+</body></html>

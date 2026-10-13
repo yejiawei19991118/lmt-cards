@@ -1,0 +1,853 @@
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>卡密生成器</title>
+<!-- PWA：可安装网页应用（iPhone/iPad 用 Safari「添加到主屏幕」即当 App 使用） -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#2f6df6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="卡密生成器">
+<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<style>
+    :root { --accent: #2f6df6; --text-main: #1f2430; --text-sub: #5b6472; }
+    * { box-sizing: border-box; }
+    body {
+        -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+        margin: 0; padding: 28px 20px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", Arial, sans-serif;
+        background: #eef1f6; color: var(--text-main);
+    }
+    .wrap { max-width: 680px; margin: 0 auto; }
+    .card {
+        background: #fff; border: 1px solid #e8ecf3; border-radius: 16px;
+        padding: 24px; box-shadow: 0 8px 24px rgba(24, 33, 51, .08);
+    }
+    h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: .5px; }
+    .sub { font-size: 13px; color: var(--text-sub); margin: 0 0 18px; line-height: 1.6; }
+    .warn {
+        font-size: 12.5px; line-height: 1.6; color: #b42318; background: #fef3f2;
+        border: 1px solid #fecdca; border-radius: 9px; padding: 10px 12px; margin-bottom: 18px;
+    }
+    label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-sub); margin-bottom: 7px; }
+    textarea {
+        width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical;
+        padding: 11px 12px; border: 1px solid #dbe1ea; border-radius: 9px;
+        font-size: 14px; line-height: 1.6; background: #fbfcfe; color: var(--text-main);
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+    textarea:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
+    input[type="text"] {
+        width: 100%; box-sizing: border-box;
+        padding: 11px 12px; border: 1px solid #dbe1ea; border-radius: 9px;
+        font-size: 13px; background: #fbfcfe; color: var(--text-main);
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+    input[type="text"]:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
+    .row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    .btn {
+        border: none; border-radius: 10px; cursor: pointer; font-size: 14.5px; font-weight: 700;
+        padding: 11px 20px; letter-spacing: .5px; font-family: inherit; transition: filter .15s, transform .12s;
+    }
+    .btn-primary { background: linear-gradient(180deg, #3d78f7, #2f6df6); color: #fff; box-shadow: 0 6px 16px rgba(47,109,246,.28); }
+    .btn-primary:hover { filter: brightness(1.05); }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-ghost { background: #f7f9fc; color: var(--text-sub); border: 1px solid #dbe1ea; }
+    .btn-ghost:hover { background: #eef4ff; border-color: var(--accent); color: var(--accent); }
+    .out { margin-top: 20px; }
+    .out h2 { font-size: 14px; margin: 0 0 10px; color: var(--text-sub); font-weight: 600; }
+    .item {
+        display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+        border: 1px solid #e8ecf3; border-radius: 10px; margin-bottom: 8px; background: #fbfcfe;
+    }
+    .item .mc, .item .card-code {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 13px; letter-spacing: .5px; white-space: nowrap;
+    }
+    .item .mc { color: var(--text-sub); flex: 0 0 auto; }
+    .item .arrow { color: #b7c1d1; flex: 0 0 auto; }
+    .item .card-code { color: #14181f; font-weight: 700; flex: 1 1 auto; overflow-x: auto; }
+    .item .note { font-size: 12px; color: #8a94a3; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item .btn-ghost { padding: 6px 12px; font-size: 12.5px; font-weight: 600; }
+    .empty { font-size: 13px; color: #a7b1be; padding: 6px 2px; }
+    .ledger-tip { font-size: 12px; color: var(--text-sub); margin-top: 8px; line-height: 1.6; }
+    .secret { font-size: 12px; color: var(--text-sub); margin-top: 18px; line-height: 1.6; }
+    code { background: #f2f5fa; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+    /* 手机端：结果行原本是「机器码 → 卡密 → 备注 → 复制」横排，
+       19 位机器码 + 24 位卡密这类等宽字符串会直接撑破窄屏，这里改为换行堆叠；
+       同时把输入字号提到 16px，避免 iOS 聚焦输入框时自动放大整页。 */
+    @media (max-width: 560px) {
+        body { padding: 16px 12px; }
+        textarea, input[type="text"] { font-size: 16px; }
+        /* 触屏目标：复制/导入这类按钮不小于 44px，避免手指点不中 */
+        .btn { min-height: 46px; }
+        .item { flex-wrap: wrap; gap: 6px 10px; }
+        .item .mc, .item .card-code { white-space: normal; overflow-wrap: anywhere; }
+        .item .card-code { flex: 1 1 100%; }
+        .item .note { flex: 1 1 100%; }
+        .item .btn-ghost { margin-left: auto; min-height: 40px; padding: 8px 16px; }
+        /* 提高选择器优先级：manual-copy 的样式定义在本段媒体查询之后 */
+        .manual-copy-card .manual-copy-actions button { min-height: 44px; padding: 10px 18px; }
+    }
+
+    /* ===== 移动端交互兜底 ===== */
+    /* 去掉 iOS/安卓 300ms 点击延迟与灰色高亮闪烁，保证每次点击都有即时反馈 */
+    button, input, textarea, select { touch-action: manipulation; }
+    button { -webkit-tap-highlight-color: rgba(47, 109, 246, .15); }
+
+    /* 复制兜底浮层：安卓 WebView / 非 https 环境下自动复制可能整体失效，
+       此时弹出本浮层让用户长按文本自行复制，避免「点了复制没反应」。 */
+    .manual-copy-mask {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 100000;
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px; box-sizing: border-box; background: rgba(15, 23, 42, .45);
+    }
+    .manual-copy-card {
+        width: 460px; max-width: 100%; max-height: 100%; overflow-y: auto; box-sizing: border-box;
+        background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 18px 48px rgba(24, 33, 51, .24);
+    }
+    .manual-copy-card h3 { margin: 0 0 6px; font-size: 16px; }
+    .manual-copy-card p { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
+    .manual-copy-card textarea {
+        width: 100%; box-sizing: border-box; min-height: 108px; resize: vertical;
+        padding: 10px 12px; border: 1px solid #dbe1ea; border-radius: 9px;
+        font-size: 13px; line-height: 1.6; color: var(--text-main); background: #fbfcfe;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        -webkit-user-select: text; user-select: text;
+    }
+    .manual-copy-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+    .manual-copy-actions button {
+        font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+        padding: 9px 16px; border-radius: 9px; border: 1px solid #dbe1ea; background: #f7f9fc; color: var(--text-sub);
+    }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="card">
+        <h1>卡密生成器</h1>
+        <p class="sub">把用户在软件里看到的「机器码」粘贴到下面（每行一个，支持批量），点击生成即可得到对应卡密。</p>
+        <div class="warn">
+            本工具仅供作者使用，请勿外传。密钥必须与主程序「图文排版生成器.html」中的 <code>LICENSE_SECRET</code> 完全一致，否则卡密无法通过校验。
+        </div>
+
+        <label for="mc-list">机器码台账（每行一个，可在机器码后加「,备注」，如 <code>XXXX-XXXX-XXXX-XXXX,张三</code>；自动保存到本浏览器）</label>
+        <textarea id="mc-list" placeholder="XXXX-XXXX-XXXX-XXXX,张三
+YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
+
+        <div class="row">
+            <button type="button" class="btn btn-primary" id="gen-btn">生成卡密</button>
+            <button type="button" class="btn btn-ghost" id="copy-all">复制全部</button>
+            <button type="button" class="btn btn-ghost" id="export-btn">导出台账</button>
+            <button type="button" class="btn btn-ghost" id="import-btn">导入台账</button>
+            <button type="button" class="btn btn-ghost" id="template-btn">下载模板</button>
+            <button type="button" class="btn btn-ghost" id="clear-btn">清空台账</button>
+        </div>
+        <div class="ledger-tip" id="ledger-tip">台账共 2 位用户 · 已自动保存到本浏览器</div>
+        <input type="file" id="import-file" accept=".csv,.txt,text/plain,text/csv" style="display:none">
+
+        <div class="out">
+            <h2 id="out-title">生成结果（2 条）</h2>
+            <div id="out"><div class="item"><span class="mc">D3J7-RC4Y-93VV-W61D</span><span class="arrow">→</span><span class="card-code">H7S0-6M3M-GMA1-Y7T2-VNRM</span><span class="note">菜头</span><button type="button" class="btn btn-ghost">复制卡密</button></div><div class="item"><span class="mc">WF31-AKW0-G0W5-HT1K</span><span class="arrow">→</span><span class="card-code">QDGK-CP94-AF9N-GPCG-C3C6</span><span class="note">菜头</span><button type="button" class="btn btn-ghost">复制卡密</button></div></div>
+        </div>
+
+        <label for="revoke-list" style="margin-top:18px;">已吊销卡密（可选，每行一个）</label>
+        <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并上传覆盖，即可在线吊销" spellcheck="false"></textarea>
+
+        <div class="out">
+            <h2>在线清单 JSON（复制后覆盖上传到下面这个地址，约 5 分钟生效）</h2>
+            <textarea id="manifest-out" readonly="" spellcheck="false" style="min-height:160px;"></textarea>
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="copy-manifest">复制清单 JSON</button>
+            </div>
+            <label for="manifest-url" style="margin-top:14px;">清单托管地址（MANIFEST_URL，需与主程序保持一致）</label>
+            <input type="text" id="manifest-url" readonly="" spellcheck="false">
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="copy-manifest-url">复制地址</button>
+            </div>
+            <p class="sub" id="manifest-mirror" style="margin-top:10px;">备用源（主源不可达时自动回退）：https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@refs/heads/main/cards.json</p>
+        </div>
+
+        <p class="secret">
+            当前密钥：<code id="secret-view">aca0d140848ed9718184e7341d3c6ed7ff68283b50574258</code>
+        </p>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    // ★★★ 请自行修改：必须与「图文排版生成器.html」里的 LICENSE_SECRET 保持一致 ★★★
+    var LICENSE_SECRET = 'aca0d140848ed9718184e7341d3c6ed7ff68283b50574258';
+
+    // ★★★ 请自行修改：在线清单的托管地址，必须与「图文排版生成器.html」里的 MANIFEST_URL 完全一致 ★★★
+    //   生成器不会联网，这里只用于界面展示 / 复制，方便你知道清单该覆盖上传到哪里。
+    var MANIFEST_URL = 'https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/refs/heads/main/cards.json';
+
+    // 主程序在主源拉取失败时会自动回退到该备用镜像（jsDelivr）；此处仅作展示 / 说明。
+    // 若更换仓库，请同步修改主程序「图文排版生成器.html」里的 MANIFEST_MIRRORS。
+    var MANIFEST_MIRROR = 'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@refs/heads/main/cards.json';
+
+    var ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+    // ---------- 与主程序完全一致的算法实现 ----------
+    function utf8Bytes(str) {
+        var bin = unescape(encodeURIComponent(String(str)));
+        var out = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) & 0xff;
+        return out;
+    }
+    function bytesToHex(bytes) {
+        var s = '';
+        for (var i = 0; i < bytes.length; i++) s += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+        return s;
+    }
+    function hexToBytes(hex) {
+        var out = new Uint8Array(hex.length / 2);
+        for (var i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+        return out;
+    }
+    function rotr(x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; }
+    function concat(a, b) {
+        var out = new Uint8Array(a.length + b.length);
+        out.set(a, 0); out.set(b, a.length);
+        return out;
+    }
+
+    var K256 = new Uint32Array([
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ]);
+
+    function sha256Bytes(bytes) {
+        var l = bytes.length;
+        var withOne = l + 1;
+        var padZeros = (56 - (withOne % 64) + 64) % 64;
+        var total = withOne + padZeros + 8;
+        var msg = new Uint8Array(total);
+        msg.set(bytes, 0);
+        msg[l] = 0x80;
+        var bits = l * 8;
+        var hi = Math.floor(bits / 4294967296);
+        var lo = bits >>> 0;
+        msg[total - 8] = (hi >>> 24) & 0xff;
+        msg[total - 7] = (hi >>> 16) & 0xff;
+        msg[total - 6] = (hi >>> 8) & 0xff;
+        msg[total - 5] = hi & 0xff;
+        msg[total - 4] = (lo >>> 24) & 0xff;
+        msg[total - 3] = (lo >>> 16) & 0xff;
+        msg[total - 2] = (lo >>> 8) & 0xff;
+        msg[total - 1] = lo & 0xff;
+
+        var H = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+        var w = new Uint32Array(64);
+        for (var off = 0; off < total; off += 64) {
+            for (var t = 0; t < 16; t++) {
+                w[t] = ((msg[off + t * 4] << 24) | (msg[off + t * 4 + 1] << 16) | (msg[off + t * 4 + 2] << 8) | msg[off + t * 4 + 3]) >>> 0;
+            }
+            for (t = 16; t < 64; t++) {
+                var s0 = (rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3)) >>> 0;
+                var s1 = (rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10)) >>> 0;
+                w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+            }
+            var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+            for (t = 0; t < 64; t++) {
+                var S1 = (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) >>> 0;
+                var ch = ((e & f) ^ (~e & g)) >>> 0;
+                var t1 = (h + S1 + ch + K256[t] + w[t]) >>> 0;
+                var S0 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) >>> 0;
+                var maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+                var t2 = (S0 + maj) >>> 0;
+                h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+            }
+            H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+            H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+        }
+        var out = new Uint8Array(32);
+        for (var i = 0; i < 8; i++) {
+            out[i * 4] = (H[i] >>> 24) & 0xff;
+            out[i * 4 + 1] = (H[i] >>> 16) & 0xff;
+            out[i * 4 + 2] = (H[i] >>> 8) & 0xff;
+            out[i * 4 + 3] = H[i] & 0xff;
+        }
+        return out;
+    }
+
+    function hmacSha256Hex(keyStr, msgStr) {
+        var block = 64;
+        var key = utf8Bytes(keyStr);
+        if (key.length > block) key = sha256Bytes(key);
+        var k = new Uint8Array(block); k.set(key, 0);
+        var ipad = new Uint8Array(block), opad = new Uint8Array(block);
+        for (var i = 0; i < block; i++) { ipad[i] = k[i] ^ 0x36; opad[i] = k[i] ^ 0x5c; }
+        var inner = sha256Bytes(concat(ipad, utf8Bytes(msgStr)));
+        return bytesToHex(sha256Bytes(concat(opad, inner)));
+    }
+
+    function base32Encode(bytes, len) {
+        var s = '', buffer = 0, bits = 0;
+        for (var i = 0; i < bytes.length && s.length < len; i++) {
+            buffer = (buffer << 8) | bytes[i];
+            bits += 8;
+            while (bits >= 5 && s.length < len) {
+                bits -= 5;
+                s += ALPHABET[(buffer >>> bits) & 31];
+            }
+            buffer = buffer & ((1 << bits) - 1);
+        }
+        return s;
+    }
+    function group(str, n) {
+        var out = [];
+        for (var i = 0; i < str.length; i += n) out.push(str.substr(i, n));
+        return out.join('-');
+    }
+    function normalize(code) { return String(code == null ? '' : code).toUpperCase().replace(/[^0-9A-Z]/g, ''); }
+
+    function makeCard(mc) {
+        var mac = hmacSha256Hex(LICENSE_SECRET, normalize(mc));
+        return group(base32Encode(hexToBytes(mac), 20), 4);
+    }
+
+    // ---------- 机器码台账（自动保存 + 导入/导出 + 用户备注） ----------
+    var LEDGER_KEY = 'lmt_ledger_v1';
+    var REVOKE_KEY = 'lmt_revoke_v1';
+
+    // 按 CSV 规则切分一行：逗号/分号/制表符/全角逗号分隔；双引号包裹的字段可含分隔符，"" 表示一个引号。
+    // 这样导出后再导入，备注里的逗号/引号/换行都能原样还原（与 exportLedger 的 csvCell 转义对应）。
+    // 注意：只有当引号出现在「字段开头」时才进入引用状态（标准 CSV 行为）；
+    // 字段中间/结尾的引号按普通字符处理，避免「5'6"」这类备注被吞掉引号。
+    function splitFields(line) {
+        var s = String(line == null ? '' : line);
+        var out = [], cur = '', q = false;
+        for (var i = 0; i < s.length; i++) {
+            var ch = s.charAt(i);
+            if (q) {
+                if (ch === '"') {
+                    if (s.charAt(i + 1) === '"') { cur += '"'; i++; } else { q = false; }
+                } else { cur += ch; }
+            } else if (ch === '"' && cur === '') {
+                q = true;
+            } else if (ch === ',' || ch === '\t' || ch === ';' || ch === '，' || ch === '；') {
+                out.push(cur); cur = '';
+            } else {
+                cur += ch;
+            }
+        }
+        out.push(cur);
+        return out;
+    }
+
+    // 解析一行台账：机器码，后面可选「,备注」。
+    // 兼容带卡密的 CSV 行（机器码,卡密,备注）：紧跟机器码那一列的卡密（20 位）会被自动丢弃。
+    // 返回 { key: 无分隔符机器码, mc: 分组显示, note: 备注 }；无法识别返回 null。
+    function parseEntry(line) {
+        var s = String(line == null ? '' : line).trim();
+        if (!s) return null;
+        var fields = splitFields(s);
+        if (fields.length === 1) {
+            // 兼容「机器码 备注」这种以空白分隔的写法（备注为空时仍只有一列）
+            var m = fields[0].match(/^(\S+)(?:[\s]+([\s\S]*))?$/);
+            fields = (m && m[2]) ? [m[1], m[2]] : [fields[0]];
+        }
+        var n = normalize(fields[0]);
+        if (n.length !== 16) return null;
+        var rest = fields.slice(1);
+        if (rest.length && normalize(rest[0]).length === 20) rest.shift(); // 丢掉卡密列
+        // 丢掉首尾的空列（如模板里的卡密列为空、或 CSV 行尾多出逗号）
+        while (rest.length && !String(rest[0]).trim()) rest.shift();
+        while (rest.length && !String(rest[rest.length - 1]).trim()) rest.pop();
+        return { key: n, mc: group(n, 4), note: rest.join(',').trim() };
+    }
+
+    // 逐行解析（不去重）
+    function parseEntries(text) {
+        var out = [];
+        String(text == null ? '' : text).split(/\r?\n/).forEach(function (line) {
+            var e = parseEntry(line);
+            if (e) out.push(e);
+        });
+        return out;
+    }
+
+    // 按机器码去重（保留首次出现的顺序；后出现的有备注而先前没有时补上备注）
+    function uniqueEntries(text) {
+        var seen = {}, order = [];
+        parseEntries(text).forEach(function (e) {
+            var prev = seen[e.key];
+            if (prev) { if (!prev.note && e.note) prev.note = e.note; return; }
+            seen[e.key] = e; order.push(e);
+        });
+        return order;
+    }
+
+    function entryLine(e) { return e.note ? (e.mc + ',' + csvCell(e.note)) : e.mc; }
+
+    // 兼容旧调用：返回去重后的机器码数组
+    function extractMc(text) { return uniqueEntries(text).map(function (e) { return e.mc; }); }
+
+    // 合并两份台账文本（按机器码去重，保留原顺序与备注）
+    function mergeCodes(existingText, incomingText) {
+        var seen = {}, order = [];
+        function add(e) {
+            var prev = seen[e.key];
+            if (prev) { if (!prev.note && e.note) prev.note = e.note; return; }
+            seen[e.key] = e; order.push(e);
+        }
+        parseEntries(existingText).forEach(add);
+        parseEntries(incomingText).forEach(add);
+        return order.map(entryLine).join('\n');
+    }
+
+    function loadLedger() {
+        try { return localStorage.getItem(LEDGER_KEY) || ''; } catch (e) { return ''; }
+    }
+    function saveLedger() {
+        try { localStorage.setItem(LEDGER_KEY, mcList.value); } catch (e) {}
+        updateLedgerTip();
+    }
+
+    // 已吊销卡密清单同样自动保存：否则刷新页面就会丢失吊销记录，
+    // 重新生成的清单 revoked 变为空，被吊销的卡密会悄悄恢复可用。
+    function loadRevoke() {
+        try { return localStorage.getItem(REVOKE_KEY) || ''; } catch (e) { return ''; }
+    }
+    function saveRevoke() {
+        try { localStorage.setItem(REVOKE_KEY, revokeList.value); } catch (e) {}
+    }
+
+    // ---------- 界面逻辑 ----------
+    var mcList = document.getElementById('mc-list');
+    var out = document.getElementById('out');
+    var outTitle = document.getElementById('out-title');
+    var copyAllBtn = document.getElementById('copy-all');
+    var revokeList = document.getElementById('revoke-list');
+    var manifestOut = document.getElementById('manifest-out');
+    var manifestUrlEl = document.getElementById('manifest-url');
+    var ledgerTip = document.getElementById('ledger-tip');
+    var importFile = document.getElementById('import-file');
+    manifestUrlEl.value = MANIFEST_URL;
+    var mirrorEl = document.getElementById('manifest-mirror');
+    if (mirrorEl) mirrorEl.textContent = '备用源（主源不可达时自动回退）：' + MANIFEST_MIRROR;
+    document.getElementById('secret-view').textContent = LICENSE_SECRET;
+
+    var pairs = []; // 最近一次生成结果 [{ mc, card }]
+
+    // 生成在线清单 JSON（含白名单 + 吊销名单），供上传到静态空间
+    function buildManifest() {
+        var seen = {};
+        var cards = [];
+        pairs.forEach(function (p) {
+            if (!seen[p.card]) { seen[p.card] = true; cards.push(p.card); }
+        });
+        var revoked = [];
+        revokeList.value.split(/\r?\n/).forEach(function (line) {
+            var n = normalize(line);
+            if (n) revoked.push(group(n, 4));
+        });
+        // 用本地日期而非 toISOString()（UTC）：东八区在 08:00 之前 UTC 仍是前一天，
+        // 会导致清单里的「更新于」日期比实际早一天，容易让人误判清单是否为最新。
+        var now = new Date();
+        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        manifestOut.value = JSON.stringify({
+            updated: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()),
+            cards: cards,
+            revoked: revoked
+        }, null, 2);
+    }
+
+    // ---------- 复制（移动端优先走同步 execCommand） ----------
+    // 顺序很关键：execCommand('copy') 必须在用户手势的同步调用栈里执行。
+    // 一旦挪进 Promise.then / setTimeout，iOS Safari 与安卓 WebView 会因为「选区已丢失」而静默失败。
+    // navigator.clipboard 只在 https / localhost 可用，且部分 WebView 返回的 Promise 永不 settle，
+    // 表现就是「点了复制没有任何反应」，所以它只作兜底，并加超时保护。
+    // iPadOS 13+ 的 UA 与 macOS 相同，只能靠触点数区分
+    function isIOSLike() {
+        var ua = navigator.userAgent || '';
+        return /iPad|iPhone|iPod/.test(ua) ||
+            (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+    }
+    function syncCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', ''); // 只读：避免 iOS 弹出软键盘
+        ta.setAttribute('aria-hidden', 'true');
+        // 固定在视口中央的 1×1 透明元素：display:none 或完全移出屏幕的元素，
+        // 在部分安卓 WebView 上根本复制不到，所以必须留在视口内；
+        // 同时用 focus({preventScroll}) 避免 iOS 聚焦时把整页滚到顶部。
+        ta.style.position = 'fixed';
+        ta.style.top = '50%';
+        ta.style.left = '50%';
+        ta.style.width = '1px';
+        ta.style.height = '1px';
+        ta.style.padding = '0';
+        ta.style.margin = '0';
+        ta.style.border = 'none';
+        ta.style.outline = 'none';
+        ta.style.boxShadow = 'none';
+        ta.style.background = 'transparent';
+        ta.style.color = 'transparent';
+        ta.style.opacity = '0';
+        ta.style.fontSize = '12pt'; // 字号过小会让 iOS 的选区不可靠
+        document.body.appendChild(ta);
+        var ok = false;
+        var sel = window.getSelection ? window.getSelection() : null;
+        var saved = (sel && sel.rangeCount) ? sel.getRangeAt(0) : null;
+        try {
+            try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
+            ta.select();
+            try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+            if (isIOSLike() && sel) {
+                // iOS Safari 对 readonly 文本域只调 select() 常常「复制不到内容但 execCommand 仍返回 true」，
+                // 用户看到按钮变成已复制、粘贴却是空的；官方做法是改用 contentEditable + Range 选中。
+                ta.removeAttribute('readonly');
+                ta.contentEditable = 'true';
+                var range = document.createRange();
+                range.selectNodeContents(ta);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+            ok = document.execCommand('copy');
+        } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        // 还原用户原本的选区，避免复制后在页面上残留一块高亮
+        try {
+            if (sel) { sel.removeAllRanges(); if (saved) sel.addRange(saved); }
+        } catch (e) {}
+        return ok;
+    }
+    function copyText(text, onDone) {
+        text = String(text == null ? '' : text);
+        if (syncCopy(text)) { onDone(true); return; }
+        var clip = navigator.clipboard;
+        if (clip && typeof clip.writeText === 'function') {
+            var settled = false;
+            var finish = function (ok) { if (!settled) { settled = true; onDone(ok); } };
+            try {
+                clip.writeText(text).then(function () { finish(true); }, function () { finish(false); });
+            } catch (e) { finish(false); return; }
+            // 少数 WebView 的 writeText 永不 settle，超时兜底，避免界面一直无反馈
+            setTimeout(function () { finish(false); }, 900);
+            return;
+        }
+        onDone(false);
+    }
+    // 自动复制彻底不可用时的兜底出口（安卓 WebView 常见）
+    function showManualCopy(text, title) {
+        var mask = document.createElement('div');
+        mask.className = 'manual-copy-mask';
+        var card = document.createElement('div');
+        card.className = 'manual-copy-card';
+        var h = document.createElement('h3');
+        h.textContent = title || '请手动复制';
+        var p = document.createElement('p');
+        p.textContent = '当前环境不允许自动复制。请长按下面的文本框 →「全选」→「复制」；也可点右下角「全选」后再长按。';
+        var ta = document.createElement('textarea');
+        ta.readOnly = true;
+        ta.value = String(text == null ? '' : text);
+        var actions = document.createElement('div');
+        actions.className = 'manual-copy-actions';
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = '关闭';
+        close.addEventListener('click', function () { document.body.removeChild(mask); });
+        // 触屏上手动框选 24 位等宽卡密很费劲：给一个「全选」按钮，
+        // 点完直接调起系统菜单里的复制即可
+        var selectAll = document.createElement('button');
+        selectAll.type = 'button';
+        selectAll.textContent = '全选';
+        selectAll.addEventListener('click', function () {
+            try { ta.focus(); ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+        });
+        actions.appendChild(close);
+        actions.appendChild(selectAll);
+        card.appendChild(h);
+        card.appendChild(p);
+        card.appendChild(ta);
+        card.appendChild(actions);
+        mask.appendChild(card);
+        mask.addEventListener('click', function (e) { if (e.target === mask) document.body.removeChild(mask); });
+        document.body.appendChild(mask);
+        try { ta.focus(); ta.select(); } catch (e) {} // 桌面端可直接 Ctrl/Cmd+C
+    }
+    // 统一的「复制 + 按钮反馈 + 失败兜底」：任何环境都必定有可见反馈
+    function copyWithFeedback(text, btn, okText) {
+        flashButton(btn, '复制中…'); // 先立刻变文案：即使后面通道静默失败，用户也知道点到了
+        copyText(text, function (ok) {
+            flashButton(btn, ok ? (okText || '已复制') : '请手动复制');
+            if (!ok) showManualCopy(text);
+        });
+    }
+
+    function updateLedgerTip() {
+        if (!ledgerTip) return;
+        var entries = parseEntries(mcList.value);
+        var users = uniqueEntries(mcList.value).length;
+        var lines = mcList.value.split(/\r?\n/).filter(function (l) { return l.trim(); }).length;
+        var bad = lines - entries.length;
+        ledgerTip.textContent = '台账共 ' + users + ' 位用户' +
+            (bad > 0 ? '（' + bad + ' 行无法识别，将被忽略）' : '') + ' · 已自动保存到本浏览器';
+    }
+
+    var saveTimer = null;
+    function scheduleSave() {
+        updateLedgerTip();
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveLedger, 300);
+    }
+
+    function downloadFile(name, text) {
+        var supportsDownload = 'download' in document.createElement('a');
+        if (!supportsDownload) return false; // 不支持则交给调用方回退（见 exportLedger / 模板下载）
+        var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+        return true;
+    }
+
+    // CSV 单元格转义：只要包含 splitFields 认得的任一分隔符（半角/全角逗号、分号、制表符）
+    // 或引号/换行，就用双引号包裹并把内部引号翻倍。否则导出的备注在重新导入时会被当成多列，
+    // 导致「张三，李四」被静默改写成「张三,李四」这类往返数据损坏。
+    function csvCell(v) {
+        v = String(v == null ? '' : v);
+        return /["\t,;\r\n，；]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    }
+
+    // 导出台账为 CSV（机器码,卡密,备注），带 BOM 便于 Excel 正确识别中文
+    function buildLedgerCsv() {
+        render(); // 先用当前台账重算，保证导出的卡密是最新的
+        var rows = [['机器码', '卡密', '备注']];
+        pairs.forEach(function (p) { rows.push([group(p.mc, 4), p.card, p.note || '']); });
+        return '\uFEFF' + rows.map(function (r) {
+            return r.map(csvCell).join(',');
+        }).join('\r\n');
+    }
+    function ledgerFileName() {
+        var d = new Date();
+        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        return '卡密台账_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.csv';
+    }
+    // 返回 undefined 表示已成功触发下载；返回字符串表示浏览器不支持下载（移动端 WebView），
+    // 由调用方改用「手动复制」浮层兜底。
+    function exportLedger() {
+        var csv = buildLedgerCsv();
+        return downloadFile(ledgerFileName(), csv) ? undefined : csv;
+    }
+
+    // 按钮文案反馈：原始文案只在首次点击时记下来。
+    // 旧实现每次点击都读取「当前」文案，连点两次后按钮会永久停在「已复制」上。
+    function flashButton(btn, text, restoreText) {
+        if (!btn) return;
+        if (btn.__flashLabel == null) btn.__flashLabel = btn.textContent;
+        if (btn.__flashTimer) clearTimeout(btn.__flashTimer);
+        btn.textContent = text;
+        btn.__flashTimer = setTimeout(function () {
+            btn.__flashTimer = null;
+            btn.textContent = restoreText || btn.__flashLabel;
+        }, 1500);
+    }
+
+    // 移动端识别（纯函数便于单元测试）：不能只看 (pointer: coarse)，
+    // 部分安卓 WebView / 桌面模式会误报为 fine。
+    // 手机/平板浏览器普遍静默忽略 <a download>，所以导出必须额外给手动保存出口。
+    function isMobileUA(ua) {
+        if (ua == null) {
+            // iPadOS 13+ 的 UA 与 macOS 桌面版完全相同，只能靠触点数区分
+            if (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1) return true;
+            ua = navigator.userAgent || '';
+        }
+        return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|HarmonyOS/i.test(String(ua));
+    }
+
+    // 导入模板：与导出台账同格式（机器码,卡密,备注）。卡密列导入时会被自动忽略，
+    // 所以办理台账时可只填机器码和备注，卡密列留空或保留占位符都不影响。
+    function buildTemplateCsv() {
+        var rows = [
+            ['机器码', '卡密', '备注'],
+            ['ABCD-EFGH-JKMN-PQRS', 'XXXX-XXXX-XXXX-XXXX-XXXX', '张三'],
+            ['STVW-XYZ0-1234-5678', 'XXXX-XXXX-XXXX-XXXX-XXXX', '李四'],
+            ['WXYZ-0123-4567-89AB', '', '王五']
+        ];
+        return '\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
+    }
+
+    function render() {
+        out.textContent = '';
+        pairs = [];
+        // 只处理有效机器码（4 组共 16 位）；无法识别的行被忽略，也不会进入在线清单
+        uniqueEntries(mcList.value).forEach(function (e) {
+            var mc = e.key;
+            var card = makeCard(mc);
+            pairs.push({ mc: mc, card: card, note: e.note });
+
+            var item = document.createElement('div');
+            item.className = 'item';
+
+            var mcEl = document.createElement('span');
+            mcEl.className = 'mc';
+            mcEl.textContent = e.mc;
+
+            var arrow = document.createElement('span');
+            arrow.className = 'arrow';
+            arrow.textContent = '→';
+
+            var cardEl = document.createElement('span');
+            cardEl.className = 'card-code';
+            cardEl.textContent = card;
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-ghost';
+            btn.textContent = '复制卡密';
+            btn.addEventListener('click', function () {
+                copyWithFeedback(card, btn, '已复制');
+            });
+
+            item.appendChild(mcEl);
+            item.appendChild(arrow);
+            item.appendChild(cardEl);
+            if (e.note) {
+                var noteEl = document.createElement('span');
+                noteEl.className = 'note';
+                noteEl.textContent = e.note;
+                item.appendChild(noteEl);
+            }
+            item.appendChild(btn);
+            out.appendChild(item);
+        });
+
+        if (pairs.length === 0) {
+            var empty = document.createElement('div');
+            empty.className = 'empty';
+            empty.textContent = '暂无结果，请先粘贴机器码。';
+            out.appendChild(empty);
+            outTitle.textContent = '生成结果';
+        } else {
+            outTitle.textContent = '生成结果（' + pairs.length + ' 条）';
+        }
+        buildManifest();
+    }
+
+    document.getElementById('gen-btn').addEventListener('click', render);
+    mcList.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) render();
+    });
+    mcList.addEventListener('input', scheduleSave);
+    revokeList.addEventListener('input', function () { buildManifest(); saveRevoke(); });
+    document.getElementById('copy-manifest').addEventListener('click', function () {
+        copyWithFeedback(manifestOut.value, document.getElementById('copy-manifest'), '已复制清单');
+    });
+    document.getElementById('copy-manifest-url').addEventListener('click', function () {
+        copyWithFeedback(MANIFEST_URL, document.getElementById('copy-manifest-url'), '已复制地址');
+    });
+    copyAllBtn.addEventListener('click', function () {
+        if (pairs.length === 0) { flashButton(copyAllBtn, '无结果'); return; }
+        var text = pairs.map(function (p) { return group(p.mc, 4) + '\t' + p.card + (p.note ? '\t' + p.note : ''); }).join('\n');
+        copyWithFeedback(text, copyAllBtn, '已复制全部');
+    });
+    document.getElementById('export-btn').addEventListener('click', function () {
+        var b = document.getElementById('export-btn');
+        if (extractMc(mcList.value).length === 0) { flashButton(b, '台账为空'); return; }
+        // exportLedger 在浏览器不支持 a[download]（移动端 WebView 常见）时会返回 CSV 文本，
+        // 此时改用「手动复制」浮层兜底，避免点了导出毫无反应。
+        // 另外手机/平板浏览器即便「支持」download 也常把它静默忽略，所以触屏环境一律再给一个出口。
+        var res = exportLedger();
+        if (typeof res === 'string' || isMobileUA()) {
+            var csv = (typeof res === 'string') ? res : buildLedgerCsv();
+            flashButton(b, typeof res === 'string' ? '请手动复制' : '已导出');
+            showManualCopy(csv, typeof res === 'string' ? '导出台账（请手动保存为 CSV）' : '导出台账（若未自动保存，请长按复制）');
+            return;
+        }
+        flashButton(b, '已导出');
+    });
+    document.getElementById('import-btn').addEventListener('click', function () { importFile.click(); });
+    importFile.addEventListener('change', function () {
+        var f = importFile.files && importFile.files[0];
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+            var before = extractMc(mcList.value).length;
+            mcList.value = mergeCodes(mcList.value, String(reader.result || ''));
+            var after = extractMc(mcList.value).length;
+            saveLedger();
+            render();
+            flashButton(document.getElementById('import-btn'), after > before ? ('已导入 +' + (after - before)) : '无新机器码');
+            importFile.value = ''; // 读完后清空，允许重复导入同一个文件
+        };
+        reader.onerror = function () { flashButton(document.getElementById('import-btn'), '读取失败'); importFile.value = ''; };
+        reader.readAsText(f);
+    });
+    document.getElementById('template-btn').addEventListener('click', function () {
+        var b = document.getElementById('template-btn');
+        var csv = buildTemplateCsv();
+        // 手机端 <a download> 同样可能被静默忽略，一并给出手动保存出口
+        if (!downloadFile('卡密导入模板.csv', csv) || isMobileUA()) {
+            flashButton(b, '请手动复制');
+            showManualCopy(csv, '导入模板（长按复制，保存为 .csv）');
+            return;
+        }
+        flashButton(b, '已下载');
+    });
+    document.getElementById('clear-btn').addEventListener('click', function () {
+        mcList.value = '';
+        saveLedger();
+        render();
+        mcList.focus();
+    });
+
+    // 启动：恢复上次保存的台账与吊销清单
+    if (!normalize(mcList.value)) mcList.value = loadLedger();
+    revokeList.value = loadRevoke();
+    updateLedgerTip();
+    render();
+
+    // 页面被隐藏/关闭时立即落盘：台账保存有 300ms 防抖，避免最后一次输入来不及写入
+    function flushSave() {
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveLedger(); }
+    }
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') flushSave();
+    });
+    window.addEventListener('beforeunload', flushSave);
+
+    // 暴露给自动化测试
+    window.__cardGen = {
+        normalize: normalize, makeCard: makeCard, extractMc: extractMc, mergeCodes: mergeCodes,
+        parseEntry: parseEntry, parseEntries: parseEntries, uniqueEntries: uniqueEntries, entryLine: entryLine,
+        LEDGER_KEY: LEDGER_KEY, loadLedger: loadLedger, saveLedger: saveLedger, exportLedger: exportLedger,
+        REVOKE_KEY: REVOKE_KEY, loadRevoke: loadRevoke, saveRevoke: saveRevoke, buildManifest: buildManifest,
+        MANIFEST_URL: MANIFEST_URL,
+        buildTemplateCsv: buildTemplateCsv, buildLedgerCsv: buildLedgerCsv, ledgerFileName: ledgerFileName,
+        copyText: copyText, copyWithFeedback: copyWithFeedback, showManualCopy: showManualCopy,
+        flashButton: flashButton, isIOSLike: isIOSLike, isMobileUA: isMobileUA,
+        getPairs: function () { return pairs; }, setLedger: function (t) { mcList.value = t; }, render: render
+    };
+})();
+</script>
+
+
+<script>
+    // PWA：注册 Service Worker，实现离线可用（需 http/https 环境，file:// 不生效）
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('./sw.js').catch(function () {});
+        });
+    }
+</script>
+</body></html>
