@@ -41,14 +41,15 @@
         font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
     }
     textarea:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
-    input[type="text"] {
+    input[type="text"], input[type="password"] {
         width: 100%; box-sizing: border-box;
         padding: 11px 12px; border: 1px solid #dbe1ea; border-radius: 9px;
         font-size: 13px; background: #fbfcfe; color: var(--text-main);
         font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
     }
-    input[type="text"]:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
+    input[type="text"]:focus, input[type="password"]:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
     .row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    .inline-check { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; cursor: pointer; }
     .btn {
         border: none; border-radius: 10px; cursor: pointer; font-size: 14.5px; font-weight: 700;
         padding: 11px 20px; letter-spacing: .5px; font-family: inherit; transition: filter .15s, transform .12s;
@@ -87,7 +88,7 @@
        同时把输入字号提到 16px，避免 iOS 聚焦输入框时自动放大整页。 */
     @media (max-width: 560px) {
         body { padding: 16px 12px; }
-        textarea, input[type="text"] { font-size: 16px; }
+        textarea, input[type="text"], input[type="password"] { font-size: 16px; }
         /* 触屏目标：复制/导入这类按钮不小于 44px，避免手指点不中 */
         .btn { min-height: 46px; }
         .item { flex-wrap: wrap; gap: 6px 10px; }
@@ -178,6 +179,17 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             <div class="row">
                 <button type="button" class="btn btn-ghost" id="copy-manifest">复制清单 JSON</button>
             </div>
+            <div class="row">
+                <button type="button" class="btn btn-primary" id="upload-btn">上传到 GitHub</button>
+                <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（台账变化后自动提交）</label>
+            </div>
+            <label for="gh-token" style="margin-top:14px;">GitHub 令牌（细粒度 PAT，仅需本仓库的 Contents 读写权限；只保存在本机）</label>
+            <input type="password" id="gh-token" placeholder="粘贴令牌后点「保存令牌」" spellcheck="false" autocomplete="off">
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="gh-token-save">保存令牌</button>
+                <button type="button" class="btn btn-ghost" id="gh-token-clear">清除令牌</button>
+            </div>
+            <div class="ledger-tip" id="upload-tip"></div>
             <label for="manifest-url" style="margin-top:14px;">清单托管地址（MANIFEST_URL，需与主程序保持一致）</label>
             <input type="text" id="manifest-url" readonly="" spellcheck="false">
             <div class="row">
@@ -208,6 +220,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     var MANIFEST_MIRRORS = [
         'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@refs/heads/main/cards.json'
     ];
+
+    // 「上传到 GitHub」用到的常量与本地存储键。
+    // 令牌只保存在本机 localStorage，绝不写入清单、绝不上传到别处、绝不打印到控制台。
+    var GH_API = 'https://api.github.com';
+    var UPLOAD_TOKEN_KEY = 'lmt_gh_token_v1';
+    var AUTO_UPLOAD_KEY = 'lmt_gh_auto_v1';
 
     var ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -472,6 +490,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         try { localStorage.setItem(LEDGER_KEY, mcList.value); } catch (e) {}
         updateLedgerTip();
         buildManifest(); // 台账变化后同步刷新在线清单 JSON，避免用户复制到过期清单
+        scheduleAutoUpload(); // 开了「自动上传」时，台账变化后防抖提交
     }
 
     // 已吊销卡密清单同样自动保存：否则刷新页面就会丢失吊销记录，
@@ -481,6 +500,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
     function saveRevoke() {
         try { localStorage.setItem(REVOKE_KEY, revokeList.value); } catch (e) {}
+        scheduleAutoUpload(); // 开了「自动上传」时，吊销名单变化后防抖提交
     }
 
     // ---------- 界面逻辑 ----------
@@ -504,8 +524,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 为 null 表示尚未对照过，此时不显示状态徽标。
     var onlineStatus = null;
 
-    // 生成在线清单 JSON（含白名单 + 吊销名单），供上传到静态空间
-    function buildManifest() {
+    // 依据「当前台账 + 吊销名单」组装在线清单对象（白名单 + 吊销名单 + 日期 + 签名）。
+    // 与 buildManifest 拆开的原因：上传前需要先拿到本地对象、与远端合并后再重新签名。
+    function buildManifestObj() {
         var seen = {};
         var cards = [];
         // 直接依据「当前台账文本」重算卡密，而不是复用上一次 render() 的结果（pairs）：
@@ -527,12 +548,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var updated = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
         // sig 覆盖「更新日期 + 白名单 + 吊销名单」；主程序验签不通过会拒绝该清单。
         var sig = manifestSignature(updated, cards, revoked);
-        manifestOut.value = JSON.stringify({
-            updated: updated,
-            cards: cards,
-            revoked: revoked,
-            sig: sig
-        }, null, 2);
+        return { updated: updated, cards: cards, revoked: revoked, sig: sig };
+    }
+
+    // 生成在线清单 JSON 文本（含白名单 + 吊销名单），供上传到静态空间；返回该文本。
+    function buildManifest() {
+        manifestOut.value = JSON.stringify(buildManifestObj(), null, 2);
+        return manifestOut.value;
     }
 
     // ---------- 复制（移动端优先走同步 execCommand） ----------
@@ -894,6 +916,171 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         });
     }
 
+    // ---------- 上传到 GitHub（细粒度 PAT，令牌仅存本机） ----------
+    // 目标仓库/分支/路径直接从 MANIFEST_URL 解析，无需额外配置。
+    function parseManifestTarget() {
+        var m = /^https?:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/(?:refs\/heads\/)?([^\/]+)\/(.+)$/
+            .exec(String(MANIFEST_URL || ''));
+        if (!m) return null;
+        return { owner: m[1], repo: m[2].replace(/\.git$/, ''), branch: m[3], path: m[4] };
+    }
+
+    // GitHub 令牌读写（仅本机）：空值即清除。
+    function getToken() {
+        try { return localStorage.getItem(UPLOAD_TOKEN_KEY) || ''; } catch (e) { return ''; }
+    }
+    function setToken(t) {
+        try {
+            if (t) localStorage.setItem(UPLOAD_TOKEN_KEY, t);
+            else localStorage.removeItem(UPLOAD_TOKEN_KEY);
+        } catch (e) {}
+    }
+
+    // base64 编解码（UTF-8 安全）：GitHub Contents API 的 content 要求 base64；
+    // 清单含中文/换行，直接 btoa(str) 会因字符 >255 抛错，故先转 UTF-8 字节。
+    function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(String(str)))); }
+    function base64ToUtf8(b64) { return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, '')))); }
+
+    // 上传前与远端清单合并：白名单取并集、吊销名单取并集（归一化去重后重新分组 + 重签名）。
+    // 目的：本机没记录的卡密（例如另一台机器加的）不会被覆盖删除，避免误锁用户。
+    function mergeWithRemote(local, remote) {
+        var cardSeen = {}, cards = [];
+        function addCard(code) {
+            var n = normalize(code);
+            if (!n || cardSeen[n]) return;
+            cardSeen[n] = true;
+            cards.push(group(n, 4));
+        }
+        (local.cards || []).forEach(addCard);
+        ((remote && remote.cards) || []).forEach(addCard);
+        var revSeen = {}, revoked = [];
+        function addRev(code) {
+            var n = normalize(code);
+            if (!n || revSeen[n]) return;
+            revSeen[n] = true;
+            revoked.push(group(n, 4));
+        }
+        (local.revoked || []).forEach(addRev);
+        ((remote && remote.revoked) || []).forEach(addRev);
+        var updated = local.updated;
+        return { updated: updated, cards: cards, revoked: revoked, sig: manifestSignature(updated, cards, revoked) };
+    }
+
+    // 读取远端 cards.json：用 API 而非 raw CDN，避免 CDN 缓存拿到过期内容。
+    // 返回 { sha, cards, revoked }；文件不存在返回 { sha: null, cards: [], revoked: [] }。
+    function ghGetFile(target) {
+        var url = GH_API + '/repos/' + target.owner + '/' + target.repo + '/contents/' + target.path +
+            '?ref=' + encodeURIComponent(target.branch);
+        return fetch(url, { headers: { 'Authorization': 'Bearer ' + getToken() }, cache: 'no-store' })
+            .then(function (r) {
+                if (r.status === 404) return { sha: null, cards: [], revoked: [] };
+                if (r.status === 401 || r.status === 403) throw new Error('令牌无效或权限不足（HTTP ' + r.status + '）');
+                if (!r.ok) throw new Error('读取远端清单失败（HTTP ' + r.status + '）');
+                return r.json().then(function (d) {
+                    var mf = null;
+                    if (d && d.content) {
+                        try { mf = JSON.parse(base64ToUtf8(d.content)); } catch (e) { mf = null; }
+                    }
+                    if (!mf || !Array.isArray(mf.cards)) mf = { cards: [], revoked: [] };
+                    return { sha: (d && d.sha) || null, cards: mf.cards || [], revoked: mf.revoked || [] };
+                });
+            });
+    }
+
+    // 提交文件；返回 { ok, conflict, status }。conflict=true 表示远端已被改动（sha 过期）。
+    function ghPutFile(target, text, sha, message) {
+        var body = { message: message, content: utf8ToBase64(text), branch: target.branch };
+        if (sha) body.sha = sha;
+        return fetch(GH_API + '/repos/' + target.owner + '/' + target.repo + '/contents/' + target.path, {
+            method: 'PUT',
+            headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        }).then(function (r) {
+            if (r.ok) return { ok: true, conflict: false, status: r.status };
+            return { ok: false, conflict: (r.status === 409 || r.status === 422), status: r.status };
+        });
+    }
+
+    var uploadBusy = false;
+    var autoUploadTimer = 0;
+    var lastUploadedJson = null; // 最近一次成功上传的清单文本，用于避免自动上传重复提交
+
+    function setUploadTip(msg) {
+        var tip = document.getElementById('upload-tip');
+        if (tip) tip.textContent = msg || '';
+    }
+
+    // 自动上传开关是否开启
+    function autoUploadEnabled() {
+        var cb = document.getElementById('auto-upload');
+        return !!(cb && cb.checked);
+    }
+
+    // 台账/吊销名单变化后按防抖触发自动上传（避免每次输入都提交一次）
+    function scheduleAutoUpload() {
+        if (!autoUploadEnabled() || !getToken()) return;
+        if (autoUploadTimer) clearTimeout(autoUploadTimer);
+        autoUploadTimer = setTimeout(function () { autoUploadTimer = 0; uploadManifest(false); }, 3000);
+    }
+
+    // 上传当前清单到 GitHub（与远端取并集合并 + 重新签名）。
+    // manual=true 表示用户主动点击：即使内容未变化也要给出反馈。
+    function uploadManifest(manual) {
+        var btn = document.getElementById('upload-btn');
+        var target = parseManifestTarget();
+        if (!target) {
+            if (manual) { flashButton(btn, '无法上传'); setUploadTip('MANIFEST_URL 不是可识别的 GitHub raw 地址，无法自动上传。'); }
+            return Promise.resolve(false);
+        }
+        if (!getToken()) {
+            if (manual) { flashButton(btn, '需先填令牌'); setUploadTip('请先粘贴 GitHub 令牌并点「保存令牌」。'); }
+            return Promise.resolve(false);
+        }
+        if (uploadBusy) return Promise.resolve(false);
+        uploadBusy = true;
+        if (manual) flashButton(btn, '上传中…');
+        setUploadTip('正在读取远端清单…');
+
+        var local = buildManifestObj();
+        var pending = null;
+        var message = '';
+        return ghGetFile(target).then(function (remote) {
+            pending = mergeWithRemote(local, remote);
+            var text = JSON.stringify(pending, null, 2);
+            if (!manual && text === lastUploadedJson) {
+                setUploadTip('清单无变化，跳过自动上传。');
+                return false;
+            }
+            message = '更新 cards.json：白名单 ' + pending.cards.length + ' 张 / 吊销 ' + pending.revoked.length + ' 张';
+            setUploadTip('正在提交到 GitHub…');
+            return ghPutFile(target, text, remote.sha, message).then(function (res) {
+                if (res.ok) { lastUploadedJson = text; manifestOut.value = text; return true; }
+                if (!res.conflict) throw new Error('提交失败（HTTP ' + res.status + '）');
+                // sha 过期（远端刚被改动）：重新读取并合并后重试一次
+                return ghGetFile(target).then(function (again) {
+                    pending = mergeWithRemote(local, again);
+                    var text2 = JSON.stringify(pending, null, 2);
+                    return ghPutFile(target, text2, again.sha, message).then(function (r2) {
+                        if (!r2.ok) throw new Error('提交失败（HTTP ' + r2.status + '）');
+                        lastUploadedJson = text2;
+                        manifestOut.value = text2;
+                        return true;
+                    });
+                });
+            });
+        }).then(function (ok) {
+            if (!ok) return false;
+            if (btn) flashButton(btn, '已上传');
+            setUploadTip('已上传到 GitHub（白名单 ' + pending.cards.length + ' 张 / 吊销 ' + pending.revoked.length +
+                ' 张）。raw / jsDelivr CDN 约 5 分钟生效。');
+            return true;
+        })['catch'](function (err) {
+            if (btn) flashButton(btn, '上传失败');
+            setUploadTip('上传失败：' + (err && err.message ? err.message : '网络错误'));
+            return false;
+        })['then'](function (r) { uploadBusy = false; return r; });
+    }
+
     function render() {
         out.textContent = '';
         pairs = [];
@@ -1060,10 +1247,43 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         reader.readAsText(f);
     });
     document.getElementById('online-check-btn').addEventListener('click', runOnlineCheck);
+    document.getElementById('upload-btn').addEventListener('click', function () { uploadManifest(true); });
+    document.getElementById('gh-token-save').addEventListener('click', function () {
+        var b = document.getElementById('gh-token-save');
+        var input = document.getElementById('gh-token');
+        var t = (input.value || '').trim();
+        if (!t) { flashButton(b, '令牌为空'); return; }
+        setToken(t);
+        input.value = ''; // 保存后立即清空输入框，避免令牌停留在 DOM 里
+        input.placeholder = '已保存令牌（如需更换可重新粘贴）';
+        flashButton(b, '已保存');
+        setUploadTip('令牌已保存在本机，可随时点「清除令牌」删除。');
+    });
+    document.getElementById('gh-token-clear').addEventListener('click', function () {
+        var b = document.getElementById('gh-token-clear');
+        setToken('');
+        var input = document.getElementById('gh-token');
+        input.value = '';
+        input.placeholder = '粘贴令牌后点「保存令牌」';
+        flashButton(b, '已清除');
+        setUploadTip('令牌已从本机清除。');
+    });
+    document.getElementById('auto-upload').addEventListener('change', function () {
+        var cb = document.getElementById('auto-upload');
+        try { localStorage.setItem(AUTO_UPLOAD_KEY, cb.checked ? '1' : '0'); } catch (e) {}
+        setUploadTip(cb.checked ? (getToken() ? '已开启自动上传。' : '已开启自动上传，但还没有保存令牌。') : '已关闭自动上传。');
+    });
 
     // 启动：恢复上次保存的台账与吊销清单
     if (!normalize(mcList.value)) mcList.value = loadLedger();
     revokeList.value = loadRevoke();
+    // 恢复「自动上传」开关与令牌状态提示（令牌本身不回填到输入框）
+    (function () {
+        var cb = document.getElementById('auto-upload');
+        try { cb.checked = localStorage.getItem(AUTO_UPLOAD_KEY) === '1'; } catch (e) {}
+        if (getToken()) document.getElementById('gh-token').placeholder = '已保存令牌（如需更换可重新粘贴）';
+        if (cb.checked) setUploadTip(getToken() ? '已开启自动上传。' : '已开启自动上传，但还没有保存令牌。');
+    })();
     updateLedgerTip();
     render();
 
@@ -1087,6 +1307,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         setRevoke: function (t) { revokeList.value = t; },
         LEDGER_KEY: LEDGER_KEY, loadLedger: loadLedger, saveLedger: saveLedger, exportLedger: exportLedger,
         REVOKE_KEY: REVOKE_KEY, loadRevoke: loadRevoke, saveRevoke: saveRevoke, buildManifest: buildManifest,
+        buildManifestObj: buildManifestObj, parseManifestTarget: parseManifestTarget, mergeWithRemote: mergeWithRemote,
+        ghGetFile: ghGetFile, ghPutFile: ghPutFile, uploadManifest: uploadManifest,
+        utf8ToBase64: utf8ToBase64, base64ToUtf8: base64ToUtf8,
+        getToken: getToken, setToken: setToken, scheduleAutoUpload: scheduleAutoUpload,
         MANIFEST_URL: MANIFEST_URL,
         buildTemplateCsv: buildTemplateCsv, buildLedgerCsv: buildLedgerCsv, ledgerFileName: ledgerFileName,
         copyText: copyText, copyWithFeedback: copyWithFeedback, showManualCopy: showManualCopy,
