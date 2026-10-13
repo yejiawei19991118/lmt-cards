@@ -1,5 +1,5 @@
 // PWA Service Worker：缓存应用外壳，实现离线可用（仅同源资源，跨域请求直接走网络）
-const CACHE = 'lmt-cardgen-v4';
+const CACHE = 'lmt-cardgen-v5';
 const ASSETS = [
   './index.html',
   './manifest.json',
