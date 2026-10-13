@@ -724,9 +724,9 @@
 
         // 备用镜像：主源拉取失败（国内直连 raw.githubusercontent.com 常被重置/挂起）时按顺序回退。
         // 任一源成功返回清单即视为成功；全部失败才算「拉取失败」（此时按规则拒绝激活）。
-        // jsDelivr 用 @refs/heads/main 引用分支、约 12 小时缓存，更新有延迟，故只作兜底，不建议设为主源。
+        // jsDelivr 用 @main 引用分支、约 12 小时缓存，更新有延迟，故只作兜底，不建议设为主源。
         var MANIFEST_MIRRORS = [
-            'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@refs/heads/main/cards.json'
+            'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json'
         ];
 
         var ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // 32 字符，去掉易混淆的 I/L/O/U
