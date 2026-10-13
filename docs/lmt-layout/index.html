@@ -557,7 +557,7 @@
 
             <button type="button" class="btn-primary" id="license-activate">激 活</button>
             <div class="license-msg" id="license-msg"></div>
-            <div class="license-net" id="license-net">校验方式：在线清单连接失败（主源与备用镜像均不可达，无法激活）</div>
+            <div class="license-net" id="license-net">校验方式：正在同步在线清单…</div>
         </div>
     </div>
 
@@ -1196,20 +1196,30 @@
                 msg.textContent = text || '';
                 msg.className = 'license-msg' + (kind && kind !== 'error' ? ' ' + kind : '');
             }
+            // 在线清单正在拉取中：此时既不能报「已同步」，也不该报「连接失败」，
+            // 否则联网正常的用户会在首屏几秒内看到「无法激活」而误以为卡密或网络有问题。
+            var manifestSyncing = false;
             function updateNetStatus() {
                 if (!netEl) return;
                 if (!MANIFEST_URL) { netEl.textContent = '校验方式：离线（未配置在线清单）'; return; }
-                netEl.textContent = manifest
-                    ? ('校验方式：在线清单已同步' + (manifest.updated ? '（更新于 ' + manifest.updated + '）' : ''))
-                    : '校验方式：在线清单连接失败（主源与备用镜像均不可达，无法激活）';
+                if (manifest) {
+                    netEl.textContent = '校验方式：在线清单已同步' + (manifest.updated ? '（更新于 ' + manifest.updated + '）' : '');
+                } else if (manifestSyncing) {
+                    netEl.textContent = '校验方式：正在同步在线清单…';
+                } else {
+                    netEl.textContent = '校验方式：在线清单连接失败（主源与备用镜像均不可达，无法激活）';
+                }
             }
 
             // 激活：先尽力同步在线清单，再做校验（成功解锁）
             function doActivate() {
                 if (actBtn) actBtn.disabled = true;
                 setMsg('正在校验…', 'info');
-                var p = (MANIFEST_URL && !manifest) ? fetchManifest() : Promise.resolve(manifest);
+                var needFetch = !!(MANIFEST_URL && !manifest);
+                if (needFetch) manifestSyncing = true;
+                var p = needFetch ? fetchManifest() : Promise.resolve(manifest);
                 p.then(function () {
+                    manifestSyncing = false;
                     updateNetStatus();
                     var r = activate(cardInput ? cardInput.value : '');
                     setMsg(r.msg, r.ok ? 'ok' : 'error');
@@ -1226,6 +1236,7 @@
                 copyWithFeedback(mcInput ? mcInput.value : '', copyBtn, '已复制');
             });
 
+            if (MANIFEST_URL) manifestSyncing = true;
             updateNetStatus();
             if (isActivated()) unlock();
             else document.body.classList.add('locked');
@@ -1233,6 +1244,7 @@
             // 后台同步在线清单：若已激活的卡密在新清单里被吊销/移出，则立即重新上锁
             if (MANIFEST_URL) {
                 fetchManifest().then(function () {
+                    manifestSyncing = false;
                     updateNetStatus();
                     if (!isActivated()) document.body.classList.add('locked');
                 });

@@ -1,5 +1,5 @@
 // PWA Service Worker：缓存应用外壳，实现离线可用（仅同源资源，跨域请求直接走网络）
-const CACHE = 'lmt-cardgen-v3';
+const CACHE = 'lmt-cardgen-v4';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -7,11 +7,17 @@ const ASSETS = [
   './icon-192.png',
   './icon-512.png'
 ];
+// 预缓存请求：cache:'reload' 强制绕过浏览器 HTTP 缓存（GitHub Pages 默认 max-age=600）。
+// 否则版本号升级后，install 仍可能把 HTTP 缓存里的旧 index.html 存进新缓存，
+// 导致「已发布新版本但用户刷新后还是旧界面」。
+const PRECACHE = ASSETS.map(function (u) {
+  return new Request(new URL(u, self.location.href), { cache: 'reload' });
+});
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches.open(CACHE)
-      .then(function (c) { return c.addAll(ASSETS); })
+      .then(function (c) { return c.addAll(PRECACHE); })
       .then(function () { return self.skipWaiting(); })
   );
 });

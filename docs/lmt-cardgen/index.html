@@ -593,10 +593,18 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     function updateLedgerTip() {
         if (!ledgerTip) return;
-        var entries = parseEntries(mcList.value);
-        var users = uniqueEntries(mcList.value).length;
-        var lines = mcList.value.split(/\r?\n/).filter(function (l) { return l.trim(); }).length;
-        var bad = lines - entries.length;
+        // 单次遍历统计：本函数在输入框每次 input 时都会执行（防抖落盘时还会再跑一次），
+        // 原实现把整份台账解析两遍（parseEntries + uniqueEntries），台账较长时会明显拖慢输入。
+        var seen = {}, users = 0, ok = 0, lines = 0;
+        String(mcList.value == null ? '' : mcList.value).split(/\r?\n/).forEach(function (line) {
+            if (!line.trim()) return;
+            lines++;
+            var e = parseEntry(line);
+            if (!e) return;
+            ok++;
+            if (!seen[e.key]) { seen[e.key] = true; users++; }
+        });
+        var bad = lines - ok;
         ledgerTip.textContent = '台账共 ' + users + ' 位用户' +
             (bad > 0 ? '（' + bad + ' 行无法识别，将被忽略）' : '') + ' · 已自动保存到本浏览器';
     }
