@@ -659,19 +659,20 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var saved = (sel && sel.rangeCount) ? sel.getRangeAt(0) : null;
         try {
             try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
+            // 关键：textarea 可复制的内容来自它的 value 属性，而不是子节点。
+            // 旧代码在 iOS 分支用 Range.selectNodeContents(textarea) 去选，选到的是空内容，
+            // 于是 execCommand 返回 true（按钮显示「已复制」）但剪贴板其实是空的。
+            // 必须始终用文本域自身的 select()/setSelectionRange() 选中 value。
             ta.select();
             try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
-            if (isIOSLike() && sel) {
-                // iOS Safari 对 readonly 文本域只调 select() 常常「复制不到内容但 execCommand 仍返回 true」，
-                // 用户看到按钮变成已复制、粘贴却是空的；官方做法是改用 contentEditable + Range 选中。
-                ta.removeAttribute('readonly');
-                ta.contentEditable = 'true';
-                var range = document.createRange();
-                range.selectNodeContents(ta);
-                sel.removeAllRanges();
-                sel.addRange(range);
-            }
             ok = document.execCommand('copy');
+            // iOS 少数版本对 readonly 文本域的选区不生效：去掉 readonly 再试一次。
+            // 仍在上一次用户手势的同步调用栈内，所以这次重试依然有效。
+            if (!ok && isIOSLike()) {
+                ta.removeAttribute('readonly');
+                try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+                ok = document.execCommand('copy');
+            }
         } catch (e) { ok = false; }
         document.body.removeChild(ta);
         // 还原用户原本的选区，避免复制后在页面上残留一块高亮
