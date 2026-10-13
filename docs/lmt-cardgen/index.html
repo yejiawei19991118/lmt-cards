@@ -130,9 +130,28 @@
         font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
         padding: 9px 16px; border-radius: 9px; border: 1px solid #dbe1ea; background: #f7f9fc; color: var(--text-sub);
     }
+    /* 登录层：未登录时以不透明遮罩盖住整个应用（纯前端门槛，可被绕过，仅防随手使用） */
+    .auth-gate {
+        position: fixed; inset: 0; z-index: 9999; background: #eef1f6;
+        display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .auth-gate .card { width: 100%; max-width: 360px; }
+    .auth-err { font-size: 12.5px; color: #b42318; margin: 10px 0 0; min-height: 16px; }
 </style>
 </head>
 <body>
+<div class="auth-gate" id="auth-gate">
+    <div class="card">
+        <h1>卡密生成器</h1>
+        <p class="sub">本工具仅供作者使用，请先登录。</p>
+        <label for="auth-user">账号</label>
+        <input type="text" id="auth-user" autocomplete="username" spellcheck="false">
+        <label for="auth-pass" style="margin-top:12px;">密码</label>
+        <input type="password" id="auth-pass" autocomplete="current-password">
+        <p class="auth-err" id="auth-err"></p>
+        <div class="row"><button type="button" class="btn btn-primary" id="auth-btn" style="width:100%;">登录</button></div>
+    </div>
+</div>
 <div class="wrap">
     <div class="card">
         <h1>卡密生成器</h1>
@@ -201,6 +220,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         <p class="secret">
             当前密钥：<code id="secret-view">aca0d140848ed9718184e7341d3c6ed7ff68283b50574258</code>
         </p>
+        <div class="row">
+            <button type="button" class="btn btn-ghost" id="logout-btn">退出登录</button>
+        </div>
     </div>
 </div>
 
@@ -226,6 +248,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     var GH_API = 'https://api.github.com';
     var UPLOAD_TOKEN_KEY = 'lmt_gh_token_v1';
     var AUTO_UPLOAD_KEY = 'lmt_gh_auto_v1';
+
+    // 「登录校验」常量：只存随机盐 + 哈希，不在源码里保存明文账号密码。
+    // 校验用与本页其余算法同款的 HMAC-SHA256（纯 JS 实现，Android WebView 的 file:// 环境亦可用）。
+    // 日后修改账号或密码：在浏览器控制台执行 __cardGen.hashAuth('账号','新密码')，
+    // 把得到的 64 位小写 hex 覆盖下面的 AUTH_HASH（两份 index.html 需同步，再跑 web-sync -Bump）。
+    var AUTH_SALT = 'c2ea15bc7091eb795fcc7a5640eae3ac';
+    var AUTH_HASH = '2618451b8cd34ddbc37849e361805a6eaa5e22c2fc854944c2f581b3733211a8';
+    var AUTH_KEY = 'lmt_auth_v1';
 
     var ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -362,6 +392,39 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             cards.map(normalize).join(',') + '\n' +
             revoked.map(normalize).join(',');
         return hmacSha256Hex(LICENSE_SECRET, payload);
+    }
+
+    // ---------- 登录校验（纯前端门槛） ----------
+    // 只比对 HMAC 哈希，源码里没有明文账号密码；登录态存本机 localStorage，直到手动退出。
+    // 注意：这是静态页面的客户端校验，任何人可查看源码 / 改 DOM / 改 localStorage 绕过，仅作门槛。
+    function hashAuth(user, pass) { return hmacSha256Hex(AUTH_SALT, String(user) + '\n' + String(pass)); }
+    function isLoggedIn() {
+        try { return localStorage.getItem(AUTH_KEY) === AUTH_HASH; } catch (e) { return false; }
+    }
+    function setLoggedIn(v) {
+        try { if (v) localStorage.setItem(AUTH_KEY, AUTH_HASH); else localStorage.removeItem(AUTH_KEY); } catch (e) {}
+    }
+    function showApp() { var g = document.getElementById('auth-gate'); if (g) g.style.display = 'none'; }
+    function showGate() {
+        var g = document.getElementById('auth-gate');
+        if (g) g.style.display = 'flex';
+        var u = document.getElementById('auth-user');
+        if (u) u.focus();
+    }
+    function tryLogin() {
+        var u = document.getElementById('auth-user');
+        var p = document.getElementById('auth-pass');
+        var err = document.getElementById('auth-err');
+        // 账号去除首尾空白（数字账号在手机键盘上易误带空格）；密码原样比对。
+        var tryHash = hashAuth((u ? u.value : '').trim(), p ? p.value : '');
+        if (tryHash === AUTH_HASH) {
+            setLoggedIn(true);
+            if (err) err.textContent = '';
+            if (p) p.value = '';
+            showApp();
+        } else if (err) {
+            err.textContent = '账号或密码错误';
+        }
     }
 
     // ---------- 机器码台账（自动保存 + 导入/导出 + 用户备注） ----------
@@ -1274,6 +1337,18 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         setUploadTip(cb.checked ? (getToken() ? '已开启自动上传。' : '已开启自动上传，但还没有保存令牌。') : '已关闭自动上传。');
     });
 
+    // 登录层事件
+    document.getElementById('auth-btn').addEventListener('click', tryLogin);
+    document.getElementById('auth-user').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.keyCode === 13) tryLogin(); });
+    document.getElementById('auth-pass').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.keyCode === 13) tryLogin(); });
+    document.getElementById('logout-btn').addEventListener('click', function () {
+        setLoggedIn(false);
+        location.reload();
+    });
+
+    // 登录门：未登录则显示登录层盖住整个应用（应用仍照常初始化，只是被遮住）
+    if (isLoggedIn()) showApp(); else showGate();
+
     // 启动：恢复上次保存的台账与吊销清单
     if (!normalize(mcList.value)) mcList.value = loadLedger();
     revokeList.value = loadRevoke();
@@ -1312,6 +1387,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         utf8ToBase64: utf8ToBase64, base64ToUtf8: base64ToUtf8,
         getToken: getToken, setToken: setToken, scheduleAutoUpload: scheduleAutoUpload,
         MANIFEST_URL: MANIFEST_URL,
+        hashAuth: hashAuth, isLoggedIn: isLoggedIn, setLoggedIn: setLoggedIn,
+        AUTH_SALT: AUTH_SALT, AUTH_HASH: AUTH_HASH,
         buildTemplateCsv: buildTemplateCsv, buildLedgerCsv: buildLedgerCsv, ledgerFileName: ledgerFileName,
         copyText: copyText, copyWithFeedback: copyWithFeedback, showManualCopy: showManualCopy,
         flashButton: flashButton, isIOSLike: isIOSLike, isMobileUA: isMobileUA,
