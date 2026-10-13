@@ -23,7 +23,7 @@
             --bg-color: #ffffff;
             --red-line: rgba(255, 0, 0, 0.6);
             /* 当前使用的手写字体，可在左侧下拉框中切换 */
-            --handwriting-font: 'Ma Shan Zheng', 'KaiTi', 'STKaiti', cursive;
+            --handwriting-font: 'ZCOOL KuaiLe', 'KaiTi', 'STKaiti', cursive;
             /* 界面配色 */
             --accent: #2f6df6;
             --page-bg: #eef1f6;
@@ -93,6 +93,12 @@
             box-shadow: 0 0 0 3px rgba(47, 109, 246, .12);
         }
         .control-group textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+        /* 示例内容以半透明占位提示呈现：输入框不再预填真实值，用户输入后即被替换 */
+        .control-group input::placeholder,
+        .control-group textarea::placeholder {
+            color: rgba(91, 100, 114, .5);
+            opacity: 1;
+        }
         /* 下拉框：去掉系统默认外观，换成与整体风格一致的自绘箭头。
            必须写在基础规则之后，且焦点态用 background-color 而非 background 简写，
            否则简写会把这里设置的箭头图一并重置掉。 */
@@ -631,38 +637,34 @@
         <div class="control-group">
             <label>排版模板</label>
             <select id="template-select">
-                <option value="window">橱窗排版（双模特图 + 双截图）</option>
-                <option value="three">三图竖排（总结 + 3 张宽图）</option>
+                <option value="window">橱窗排版</option>
+                <option value="three">三图竖排</option>
             </select>
         </div>
 
         <div class="control-group">
             <label>顶部总结文案</label>
-            <textarea id="input-summary" class="handwriting-font">总结一下：
-宽松灰开衫弱化肩背臃肿感，不挑上身
-深色阔腿牛仔裤重感在线，拉长腿线
-平衡上下身比例，藏肉又显利落</textarea>
+            <textarea id="input-summary" class="handwriting-font" placeholder="总结一下：&#10;宽松灰开衫弱化肩背臃肿感，不挑上身&#10;深色阔腿牛仔裤重感在线，拉长腿线&#10;平衡上下身比例，藏肉又显利落"></textarea>
         </div>
 
         <div class="control-group">
             <label>主标题</label>
-            <input type="text" id="input-title" class="handwriting-font" value="菜头的橱窗">
+            <input type="text" id="input-title" class="handwriting-font" placeholder="菜头的橱窗">
         </div>
 
         <div class="control-group" data-tpl="window">
             <label>关键词 (用空格分隔)</label>
-            <input type="text" id="input-keywords" class="handwriting-font" value="🔍 黑色原牛复古直筒裤 🔍 老钱风毛衣">
+            <input type="text" id="input-keywords" class="handwriting-font" placeholder="🔍 黑色原牛复古直筒裤 🔍 老钱风毛衣">
         </div>
         
         <div class="control-group" data-tpl="window">
             <label>副标题 (我的尺码)</label>
-            <input type="text" id="input-subtitle" class="handwriting-font" value="我的尺码">
+            <input type="text" id="input-subtitle" class="handwriting-font" placeholder="我的尺码">
         </div>
 
         <div class="control-group">
             <label>手写字体</label>
             <select id="font-select">
-                <option value="'Ma Shan Zheng', 'KaiTi', cursive" data-web="Ma+Shan+Zheng" data-family="Ma Shan Zheng">马善政毛笔楷书</option>
                 <option value="'ZCOOL KuaiLe', 'KaiTi', cursive" data-web="ZCOOL+KuaiLe" data-family="ZCOOL KuaiLe">站酷快乐体</option>
             </select>
             <div class="font-status" id="font-status">在线字体已加载</div>
@@ -700,7 +702,7 @@
 
         <div class="control-group" data-tpl="three">
             <label>小标题一（支持换行）</label>
-            <textarea id="input-cap-1" class="handwriting-font" rows="2"></textarea>
+            <textarea id="input-cap-1" class="handwriting-font" rows="2" placeholder="宽松灰开衫 · 弱化肩背臃肿感"></textarea>
         </div>
 
         <div class="control-group" data-tpl="three">
@@ -711,7 +713,7 @@
 
         <div class="control-group" data-tpl="three">
             <label>小标题二（支持换行）</label>
-            <textarea id="input-cap-2" class="handwriting-font" rows="2"></textarea>
+            <textarea id="input-cap-2" class="handwriting-font" rows="2" placeholder="深色阔腿牛仔 · 拉长腿线"></textarea>
         </div>
 
         <div class="control-group" data-tpl="three">
@@ -722,7 +724,7 @@
 
         <div class="control-group" data-tpl="three">
             <label>小标题三（支持换行）</label>
-            <textarea id="input-cap-3" class="handwriting-font" rows="2"></textarea>
+            <textarea id="input-cap-3" class="handwriting-font" rows="2" placeholder="上下身平衡 · 藏肉显利落"></textarea>
         </div>
 
         <label class="toggle-safe-zone">
@@ -1538,7 +1540,7 @@
             const family = option.dataset.family;
 
             document.documentElement.style.setProperty('--handwriting-font', option.value);
-            // 保留下来的两款字体都是在线手写字体（单一字重），统一上 web-font 以固定字重 400
+            // 保留的在线手写字体为单一字重，统一上 web-font 以固定字重 400
             canvasWrapper.classList.add('web-font');
             checkContentFit();
 
