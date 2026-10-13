@@ -342,7 +342,8 @@
         }
         /* 已上传照片后去掉占位底色，避免圆角外用底色渲染出直角方块 */
         .image-box.has-photo,
-        .screenshot-box.has-photo {
+        .screenshot-box.has-photo,
+        .wide-box.has-photo {
             background-color: transparent;
         }
 
@@ -379,8 +380,9 @@
             border: 1px dashed #d2dbe8;
         }
         .wide-caption {
-            font-size: calc(15px * var(--fit));
-            line-height: 1.45;
+            /* 小标题字体大小与顶部总结文案保持一致（13px × --fit） */
+            font-size: calc(13px * var(--fit));
+            line-height: 1.55;
             text-align: left;
             color: #39404f;
             margin-top: 6px;
@@ -1598,8 +1600,8 @@
         const BOX_SIZE = {
             cover: [132 * EXPORT_SCALE, 132 * EXPORT_SCALE],   // 模特图：铺满方框
             contain: [132 * EXPORT_SCALE, 176 * EXPORT_SCALE], // 截图：完整显示不裁剪
-            // 模板二宽图：按“安全区整宽”预留分辨率，显示更小时 html2canvas 自动降采样，仍清晰
-            wide: [275 * EXPORT_SCALE, Math.round(275 * 596 / 1440 * EXPORT_SCALE)]
+            // 模板二缺角图：包围盒 1440×596，按“安全区整宽”预留分辨率，显示更小时自动降采样
+            notch: [275 * EXPORT_SCALE, Math.round(275 * 596 / 1440 * EXPORT_SCALE)]
         };
 
         // 纯函数：计算照片在给定框内的等比绘制矩形（绝不拉伸变形）。
@@ -1648,11 +1650,26 @@
                         // 导出图的圆角也一定正确（圆角外为透明，露出白色导出背景）。
                         const r = 10 * EXPORT_SCALE;
                         ctx.beginPath();
-                        ctx.moveTo(r, 0);
-                        ctx.arcTo(tw, 0, tw, th, r);
-                        ctx.arcTo(tw, th, 0, th, r);
-                        ctx.arcTo(0, th, 0, 0, r);
-                        ctx.arcTo(0, 0, tw, 0, r);
+                        if (mode === 'notch') {
+                            // 缺角图：在 1440×596 的包围盒内裁掉右下角 812×308，仅保留 L 形区域
+                            const nw = tw * (812 / 1440);
+                            const nh = th * (308 / 596);
+                            ctx.moveTo(r, 0);
+                            ctx.arcTo(tw, 0, tw, th, r);      // 右上圆角
+                            ctx.lineTo(tw, th - nh);          // 右边下行到缺口上沿
+                            ctx.lineTo(tw - nw, th - nh);     // 缺口上沿向左
+                            ctx.lineTo(tw - nw, th);          // 缺口左侧向下到底
+                            ctx.lineTo(r, th);                // 底边向左
+                            ctx.arcTo(0, th, 0, 0, r);        // 左下圆角
+                            ctx.lineTo(0, r);
+                            ctx.arcTo(0, 0, tw, 0, r);        // 左上圆角
+                        } else {
+                            ctx.moveTo(r, 0);
+                            ctx.arcTo(tw, 0, tw, th, r);
+                            ctx.arcTo(tw, th, 0, th, r);
+                            ctx.arcTo(0, th, 0, 0, r);
+                            ctx.arcTo(0, 0, tw, 0, r);
+                        }
                         ctx.closePath();
                         ctx.clip();
                         if (mode === 'contain') {
@@ -1682,9 +1699,9 @@
         handleImageUpload(uploadRight, previewImgRight, 'cover');
         handleImageUpload(uploadScreenshotLeft, previewScreenshotLeft, 'contain');
         handleImageUpload(uploadScreenshotRight, previewScreenshotRight, 'contain');
-        handleImageUpload(uploadWide1, previewWide1, 'wide');
-        handleImageUpload(uploadWide2, previewWide2, 'wide');
-        handleImageUpload(uploadWide3, previewWide3, 'wide');
+        handleImageUpload(uploadWide1, previewWide1, 'notch');
+        handleImageUpload(uploadWide2, previewWide2, 'notch');
+        handleImageUpload(uploadWide3, previewWide3, 'notch');
 
         // 模板切换：只显示当前模板的预览元素与控制面板分组（其余置 hidden）
         function applyTemplate(name) {
