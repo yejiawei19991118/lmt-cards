@@ -209,6 +209,8 @@
             height: 497px; /* 强制固定高度 */
             /* 自动适配安全区：字号缩放系数，由 checkContentFit() 动态调整（1 = 原始大小） */
             --fit: 1;
+            /* 文案与图片共用的内容宽度（占安全区宽度的比例），保证图片区域与文案区域等宽 */
+            --content-w: 80%;
             display: flex;
             flex-direction: column;
             justify-content: space-between; /* 自动均匀分布各部分 */
@@ -252,7 +254,10 @@
         .image-row {
             display: flex;
             justify-content: space-between;
-            width: 100%;
+            /* 与文案区域等宽：取共享内容宽并随 --fit 等比缩放，居中；
+               图片长宽比由 .image-box 的 aspect-ratio 保持不变，只整体缩放不变形 */
+            width: calc(var(--content-w) * var(--fit));
+            align-self: center;
         }
         
         /* 左右模特图 1:1（cover 裁切）
@@ -304,7 +309,9 @@
         .screenshot-row {
             display: flex;
             justify-content: space-between;
-            width: 100%;
+            /* 同上：与文案区域等宽，随 --fit 等比缩放并居中，3:4 比例不变 */
+            width: calc(var(--content-w) * var(--fit));
+            align-self: center;
         }
         .screenshot-box {
             box-sizing: border-box;
