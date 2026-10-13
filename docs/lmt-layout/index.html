@@ -387,9 +387,8 @@
             border: 1px dashed #d2dbe8;
         }
         .wide-caption {
-            /* 小标题：字号与顶部总结文案一致（13px × --fit）、加粗、支持换行；整体靠右、各行文字居中 */
+            /* 小标题：字号与顶部总结文案一致（13px × --fit）、常规字重、支持换行；整体靠右、各行文字居中 */
             font-size: calc(13px * var(--fit));
-            font-weight: bold;
             line-height: 1.55;
             width: fit-content;
             max-width: 100%;
@@ -398,8 +397,6 @@
             color: #39404f;
             white-space: pre-wrap;
         }
-        /* 模板二：顶部总结文案与「小标题」一样加粗（只作用于三图竖排，不影响橱窗排版） */
-        .safe-content-area[data-active-tpl="three"] .header-summary { font-weight: bold; }
 
         /* 安全区遮罩层 (只用来展示，导出时会自动隐藏) */
         .safe-zone-overlay {
