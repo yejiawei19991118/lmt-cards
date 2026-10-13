@@ -112,8 +112,10 @@
             background-size: 12px 12px;
         }
         .file-upload { display: none; }
+        /* 用 block + text-align 而非 flex：flex 容器上的 text-overflow 对匿名文本子项不生效，
+           长文件名会「啪」地被硬切掉；改成块级布局后才能真正显示省略号 */
         .upload-btn {
-            display: flex; align-items: center; justify-content: center;
+            display: block; text-align: center;
             background: #f7f9fc; border: 1px dashed #c6d0de; color: var(--text-sub);
             padding: 11px 10px; border-radius: 9px; cursor: pointer; font-size: 13px;
             box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -131,7 +133,10 @@
         }
         .btn-primary:hover { filter: brightness(1.05); box-shadow: 0 8px 20px rgba(47, 109, 246, .34); }
         .btn-primary:active { transform: translateY(1px); }
-        .btn-primary:disabled { cursor: progress; filter: grayscale(.35) brightness(.96); box-shadow: none; }
+        /* 置灰有两种原因：内容超出安全区（不可用）与正在导出（忙）。
+           默认用 not-allowed 表达「不可用」，导出中额外加 .is-busy 换成 progress。 */
+        .btn-primary:disabled { cursor: not-allowed; filter: grayscale(.35) brightness(.96); box-shadow: none; }
+        .btn-primary.is-busy:disabled { cursor: progress; }
         .toggle-safe-zone {
             display: flex; align-items: center; gap: 9px; font-size: 13px;
             cursor: pointer; color: var(--text-sub); user-select: none;
@@ -610,7 +615,7 @@
             <p class="license-sub">本软件需激活后使用（一卡一机）</p>
 
             <div class="license-field">
-                <label>本机机器码</label>
+                <label for="license-mc">本机机器码</label>
                 <div class="license-mc-row">
                     <input type="text" id="license-mc" readonly="">
                     <button type="button" class="btn-ghost" id="license-copy">复制</button>
@@ -618,12 +623,12 @@
             </div>
 
             <div class="license-field">
-                <label>卡密</label>
+                <label for="license-input">卡密</label>
                 <input type="text" id="license-input" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
             </div>
 
             <button type="button" class="btn-primary" id="license-activate">激 活</button>
-            <div class="license-msg" id="license-msg"></div>
+            <div class="license-msg" id="license-msg" role="status" aria-live="polite"></div>
             <div class="license-net" id="license-net">校验方式：正在同步在线清单…</div>
         </div>
     </div>
@@ -633,7 +638,7 @@
         <h2>内容编辑</h2>
 
         <div class="control-group">
-            <label>排版模板</label>
+            <label for="template-select">排版模板</label>
             <select id="template-select">
                 <option value="window">橱窗排版</option>
                 <option value="three">三图竖排</option>
@@ -641,31 +646,31 @@
         </div>
 
         <div class="control-group">
-            <label>顶部文案</label>
+            <label for="input-summary">顶部文案</label>
             <textarea id="input-summary" class="handwriting-font" placeholder="总结一下：&#10;宽松灰开衫弱化肩背臃肿感，不挑上身&#10;深色阔腿牛仔裤重感在线，拉长腿线&#10;平衡上下身比例，藏肉又显利落"></textarea>
         </div>
 
         <div class="control-group">
-            <label>主标题</label>
+            <label for="input-title">主标题</label>
             <input type="text" id="input-title" class="handwriting-font" placeholder="菜头的橱窗">
         </div>
 
         <div class="control-group" data-tpl="window">
-            <label>关键词 （支持换行，取消用空格分隔）</label>
+            <label for="input-keywords">关键词（支持换行，取消用空格分隔）</label>
             <textarea id="input-keywords" class="handwriting-font" rows="2" placeholder="🔍 黑色原牛复古直筒裤&#10;🔍 老钱风毛衣"></textarea>
         </div>
         
         <div class="control-group" data-tpl="window">
-            <label>副标题</label>
+            <label for="input-subtitle">副标题</label>
             <input type="text" id="input-subtitle" class="handwriting-font" placeholder="我的尺码">
         </div>
 
         <div class="control-group">
-            <label>手写字体</label>
+            <label for="font-select">手写字体</label>
             <select id="font-select">
                 <option value="'ZCOOL KuaiLe', 'KaiTi', cursive" data-web="ZCOOL+KuaiLe" data-family="ZCOOL KuaiLe">站酷快乐体</option>
             </select>
-            <div class="font-status" id="font-status">在线字体已加载</div>
+            <div class="font-status" id="font-status" role="status" aria-live="polite">在线字体已加载</div>
         </div>
 
         <div class="control-group" data-tpl="window">
@@ -699,7 +704,7 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>小标题一</label>
+            <label for="input-cap-1">小标题一</label>
             <textarea id="input-cap-1" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
         </div>
 
@@ -710,7 +715,7 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>小标题二</label>
+            <label for="input-cap-2">小标题二</label>
             <textarea id="input-cap-2" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
         </div>
 
@@ -721,7 +726,7 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>小标题三</label>
+            <label for="input-cap-3">小标题三</label>
             <textarea id="input-cap-3" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
         </div>
 
@@ -729,13 +734,13 @@
             <input type="checkbox" id="toggle-safe" checked=""> 显示字幕安全区辅助线
         </label>
 
-        <div class="fit-note" id="fit-note"></div>
-        <div class="overflow-warn" id="overflow-warn">
+        <div class="fit-note" id="fit-note" role="status" aria-live="polite"></div>
+        <div class="overflow-warn" id="overflow-warn" role="status" aria-live="polite">
             内容过长：字号已缩到最小仍超出安全区，请精简文案后再导出。
         </div>
 
         <button class="btn-primary" id="export-btn">导出为图片</button>
-        <div class="export-msg" id="export-msg"></div>
+        <div class="export-msg" id="export-msg" role="status" aria-live="polite"></div>
     </div>
 
     <!-- 右侧预览区 -->
@@ -1357,7 +1362,7 @@
 
             // 激活：先尽力同步在线清单，再做校验（成功解锁）
             function doActivate() {
-                if (actBtn) actBtn.disabled = true;
+                if (actBtn) { actBtn.disabled = true; actBtn.classList.add('is-busy'); }
                 setMsg('正在校验…', 'info');
                 var needFetch = !!(MANIFEST_URL && !manifest);
                 if (needFetch) manifestSyncing = true;
@@ -1367,10 +1372,10 @@
                     updateNetStatus();
                     var r = activate(cardInput ? cardInput.value : '');
                     setMsg(r.msg, r.ok ? 'ok' : 'error');
-                    if (actBtn) actBtn.disabled = false;
+                    if (actBtn) { actBtn.disabled = false; actBtn.classList.remove('is-busy'); }
                     if (r.ok) unlock();
                 }, function () {
-                    if (actBtn) actBtn.disabled = false;
+                    if (actBtn) { actBtn.disabled = false; actBtn.classList.remove('is-busy'); }
                     setMsg('校验失败，请重试', 'error');
                 });
             }
@@ -1634,6 +1639,12 @@
                 // 大图解码需要时间，先给一个「读取中」反馈，避免用户以为点了没反应
                 if (label) { label.textContent = '读取中…'; label.classList.remove('done'); }
                 const reader = new FileReader();
+                // 读取失败（文件被占用/已删除/超出配额）也必须给反馈，
+                // 否则标签会一直停在「读取中…」，用户以为点了没反应
+                reader.onerror = function() {
+                    if (token !== uploadToken) return;
+                    if (label) { label.textContent = '文件读取失败，请重试'; label.classList.remove('done'); }
+                };
                 reader.onload = function(event) {
                     const img = new Image();
                     img.onerror = function() {
@@ -1643,7 +1654,11 @@
                     };
                     img.onload = function() {
                         if (token !== uploadToken) return; // 已被更新的选择取代，丢弃过期结果
-                        if (!img.width || !img.height) return; // 解码异常（空尺寸）图片：忽略
+                        if (!img.width || !img.height) {
+                            // 解码异常（空尺寸）：同样要给出反馈，不能静默 return
+                            if (label) { label.textContent = '图片尺寸异常，请换一张'; label.classList.remove('done'); }
+                            return;
+                        }
                         const tw = BOX_SIZE[mode][0], th = BOX_SIZE[mode][1];
                         const canvas = document.createElement('canvas');
                         canvas.width = tw;
@@ -1764,9 +1779,36 @@
             link.click();
             document.body.removeChild(link);
         };
-        const showImagePreview = (dataUrl, fileName) => {
+        // 导出画布转成可下载地址：优先 toBlob（异步、不阻塞主线程，也不再生成数 MB 的 base64 字符串），
+        // 环境不支持或失败时回退 toDataURL，保证功能不退化。
+        // toDataUrl() 是惰性的：只有真正需要 base64 的壳（如安卓外壳的原生落盘桥）才会触发编码，
+        // 浏览器路径因此完全不必支付这段同步编码开销。
+        const canvasToUrl = (canvas) => new Promise((resolve) => {
+            const asDataUrl = () => {
+                try { return canvas.toDataURL('image/png'); } catch (e) { return ''; }
+            };
+            const fail = () => { const d = asDataUrl(); resolve({ url: d, toDataUrl: () => d, release: null }); };
+            if (typeof canvas.toBlob !== 'function' || typeof URL.createObjectURL !== 'function') { fail(); return; }
+            try {
+                canvas.toBlob((blob) => {
+                    if (!blob) { fail(); return; }
+                    const url = URL.createObjectURL(blob);
+                    resolve({
+                        url: url,
+                        toDataUrl: asDataUrl,
+                        release: () => { try { URL.revokeObjectURL(url); } catch (e) {} }
+                    });
+                }, 'image/png');
+            } catch (err) { fail(); }
+        });
+        const showImagePreview = (dataUrl, fileName, onClose) => {
+            // 连续导出时先移除已存在的同类浮层，避免多层叠加（旧层还占着 blob 地址）
+            document.querySelectorAll('.img-preview-mask').forEach((el) => {
+                if (typeof el.__dispose === 'function') el.__dispose();
+                else el.remove();
+            });
             const mask = document.createElement('div');
-            mask.className = 'manual-copy-mask';
+            mask.className = 'manual-copy-mask img-preview-mask';
             const card = document.createElement('div');
             card.className = 'img-preview-card';
             const img = document.createElement('img');
@@ -1784,14 +1826,20 @@
             const close = document.createElement('button');
             close.type = 'button';
             close.textContent = '关闭';
-            close.addEventListener('click', () => document.body.removeChild(mask));
+            // 统一出口：移除浮层的同时释放 blob 地址，避免内存一直占着
+            const dispose = () => {
+                mask.remove();
+                if (typeof onClose === 'function') { const f = onClose; onClose = null; f(); }
+            };
+            mask.__dispose = dispose;
+            close.addEventListener('click', dispose);
             actions.appendChild(again);
             actions.appendChild(close);
             card.appendChild(img);
             card.appendChild(tip);
             card.appendChild(actions);
             mask.appendChild(card);
-            mask.addEventListener('click', (e) => { if (e.target === mask) document.body.removeChild(mask); });
+            mask.addEventListener('click', (e) => { if (e.target === mask) dispose(); });
             document.body.appendChild(mask);
         };
 
@@ -1801,6 +1849,7 @@
             const restore = () => {
                 safeZone.classList.toggle('active', toggleSafe.checked);
                 exportBtn.textContent = '导出为图片';
+                exportBtn.classList.remove('is-busy'); // 导出结束：光标从「忙」恢复为普通不可用态
                 checkContentFit(); // 由适配结果决定是否可用：内容超出安全区时保持置灰
             };
 
@@ -1817,6 +1866,7 @@
 
             safeZone.classList.remove('active');
             exportBtn.disabled = true;
+            exportBtn.classList.add('is-busy'); // 与「内容超出安全区而不可用」区分：这里是真的在忙
             exportBtn.textContent = '导出中…';
 
             // 截取整个画布容器。scale 决定导出分辨率：
@@ -1839,11 +1889,16 @@
 
                 restore();
 
-                const dataUrl = canvas.toDataURL('image/png');
+                const shot = await canvasToUrl(canvas);
                 const fileName = '排版图_' + new Date().getTime() + '.png';
                 // @shell:image-export
-                triggerDownload(dataUrl, fileName);
-                if (isTouchPrimary()) showImagePreview(dataUrl, fileName);
+                triggerDownload(shot.url, fileName);
+                if (isTouchPrimary()) {
+                    // 浮层关闭时再释放 blob 地址，保证长按保存期间图片一直可用
+                    showImagePreview(shot.url, fileName, shot.release);
+                } else if (shot.release) {
+                    setTimeout(shot.release, 8000); // 桌面端：等下载真正开始后再释放
+                }
                 // @shell:end
             } catch (err) {
                 console.error('导出失败:', err);

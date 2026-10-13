@@ -148,7 +148,7 @@
         <input type="text" id="auth-user" autocomplete="username" spellcheck="false">
         <label for="auth-pass" style="margin-top:12px;">密码</label>
         <input type="password" id="auth-pass" autocomplete="current-password">
-        <p class="auth-err" id="auth-err"></p>
+        <p class="auth-err" id="auth-err" role="alert"></p>
         <div class="row"><button type="button" class="btn btn-primary" id="auth-btn" style="width:100%;">登录</button></div>
     </div>
 </div>
@@ -172,7 +172,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             <button type="button" class="btn btn-ghost" id="template-btn">下载模板</button>
             <button type="button" class="btn btn-ghost" id="clear-btn">清空台账</button>
         </div>
-        <div class="ledger-tip" id="ledger-tip">台账共 2 位用户 · 已自动保存到本浏览器</div>
+        <div class="ledger-tip" id="ledger-tip" role="status" aria-live="polite">台账共 2 位用户 · 已自动保存到本浏览器</div>
         <input type="file" id="import-file" accept=".csv,.txt,text/plain,text/csv" style="display:none">
 
         <div class="row">
@@ -181,7 +181,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             <button type="button" class="btn btn-ghost" id="restore-btn">恢复备份</button>
             <button type="button" class="btn btn-ghost" id="online-check-btn">对照线上清单</button>
         </div>
-        <div class="ledger-tip" id="online-tip"></div>
+        <div class="ledger-tip" id="online-tip" role="status" aria-live="polite"></div>
         <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
 
         <div class="out">
@@ -208,7 +208,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 <button type="button" class="btn btn-ghost" id="gh-token-save">保存令牌</button>
                 <button type="button" class="btn btn-ghost" id="gh-token-clear">清除令牌</button>
             </div>
-            <div class="ledger-tip" id="upload-tip"></div>
+            <div class="ledger-tip" id="upload-tip" role="status" aria-live="polite"></div>
             <label for="manifest-url" style="margin-top:14px;">清单托管地址（MANIFEST_URL，需与主程序保持一致）</label>
             <input type="text" id="manifest-url" readonly="" spellcheck="false">
             <div class="row">
@@ -746,9 +746,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     function updateLedgerTip() {
         if (!ledgerTip) return;
-        // 单次遍历统计：本函数在输入框每次 input 时都会执行（防抖落盘时还会再跑一次），
-        // 原实现把整份台账解析两遍（parseEntries + uniqueEntries），台账较长时会明显拖慢输入。
-        // 用 splitRows 而非按 \n 切：备注里含换行的行要算作同一行，否则统计会虚高并误报「无法识别」。
+        // 单次遍历统计：整份台账只解析一遍（splitRows + parseEntry）。
+        // 本函数只在防抖落盘（saveLedger）时被调用，不在每次 input 的同步路径上执行，
+        // 因此长台账输入时不会阻塞按键。用 splitRows 而非按 \n 切：备注里含换行的行要算作同一行，
+        // 否则统计会虚高并误报「无法识别」。
         var seen = {}, users = 0, ok = 0, lines = 0;
         splitRows(mcList.value).forEach(function (line) {
             if (!line.trim()) return;
@@ -763,9 +764,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             (bad > 0 ? '（' + bad + ' 行无法识别，将被忽略）' : '') + ' · 已自动保存到本浏览器';
     }
 
+    // 输入防抖：只在停止输入 300ms 后落盘一次。
+    // 说明：台账统计（updateLedgerTip）也随落盘一起在防抖回调里执行——不放在这里同步调用，
+    // 否则每次按键都要全量解析一遍台账（saveLedger 里还会再解析一次），长台账输入会明显卡顿。
     var saveTimer = null;
     function scheduleSave() {
-        updateLedgerTip();
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(saveLedger, 300);
     }
