@@ -2,6 +2,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>卡密生成器</title>
+<!-- @shell:pwa-head -->
 <!-- PWA：可安装网页应用（iPhone/iPad 用 Safari「添加到主屏幕」即当 App 使用） -->
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#2f6df6">
@@ -11,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="卡密生成器">
 <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<!-- @shell:end -->
 <style>
     :root { --accent: #2f6df6; --text-main: #1f2430; --text-sub: #5b6472; }
     * { box-sizing: border-box; }
@@ -73,6 +75,10 @@
     .item .btn-ghost { padding: 6px 12px; font-size: 12.5px; font-weight: 600; }
     .empty { font-size: 13px; color: #a7b1be; padding: 6px 2px; }
     .ledger-tip { font-size: 12px; color: var(--text-sub); margin-top: 8px; line-height: 1.6; }
+    .status-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; white-space: nowrap; }
+    .status-badge.is-up { color: #0f7b3f; background: #e7f7ee; }
+    .status-badge.is-notup { color: #b45309; background: #fff4e5; }
+    .status-badge.is-revoked { color: #b42318; background: #fef3f2; }
     .secret { font-size: 12px; color: var(--text-sub); margin-top: 18px; line-height: 1.6; }
     code { background: #f2f5fa; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
@@ -148,6 +154,15 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         </div>
         <div class="ledger-tip" id="ledger-tip">台账共 2 位用户 · 已自动保存到本浏览器</div>
         <input type="file" id="import-file" accept=".csv,.txt,text/plain,text/csv" style="display:none">
+
+        <div class="row">
+            <button type="button" class="btn btn-ghost" id="deliver-btn">复制交付文案</button>
+            <button type="button" class="btn btn-ghost" id="backup-btn">备份台账</button>
+            <button type="button" class="btn btn-ghost" id="restore-btn">恢复备份</button>
+            <button type="button" class="btn btn-ghost" id="online-check-btn">对照线上清单</button>
+        </div>
+        <div class="ledger-tip" id="online-tip"></div>
+        <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
 
         <div class="out">
             <h2 id="out-title">生成结果（2 条）</h2>
@@ -321,6 +336,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return group(base32Encode(hexToBytes(mac), 20), 4);
     }
 
+    // 清单签名：对「更新日期 + 归一化白名单 + 归一化吊销名单」做 HMAC-SHA256，随清单一同上传。
+    // 主程序拉取后会重算比对，避免 cards.json 被随手篡改（两侧算法必须逐字一致，见 lmt-layout 的 manifestSignature）。
+    // 先归一化（去分隔符、转大写）再签名：签名只绑定卡密内容，不受分组写法影响。
+    function manifestSignature(updated, cards, revoked) {
+        var payload = String(updated == null ? '' : updated) + '\n' +
+            cards.map(normalize).join(',') + '\n' +
+            revoked.map(normalize).join(',');
+        return hmacSha256Hex(LICENSE_SECRET, payload);
+    }
+
     // ---------- 机器码台账（自动保存 + 导入/导出 + 用户备注） ----------
     var LEDGER_KEY = 'lmt_ledger_v1';
     var REVOKE_KEY = 'lmt_revoke_v1';
@@ -372,10 +397,39 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return { key: n, mc: group(n, 4), note: rest.join(',').trim() };
     }
 
+    // 引号感知地拆成「逻辑行」：备注里含换行时导出会写成 "首行\n次行"，
+    // 直接把文本按 \n 切会把同一行拆成两行、备注被截断并多出无法识别的垃圾行。
+    // 引号未闭合（手写坏了）时回退为朴素按行切分，避免把整份文件吞成一行。
+    function splitRows(text) {
+        var s = String(text == null ? '' : text);
+        var rows = [], cur = '', q = false, fieldStart = true;
+        for (var i = 0; i < s.length; i++) {
+            var ch = s.charAt(i);
+            if (q) {
+                if (ch === '"') {
+                    if (s.charAt(i + 1) === '"') { cur += '""'; i++; }
+                    else { q = false; cur += '"'; }
+                } else { cur += ch; }
+            } else if (ch === '"' && fieldStart) {
+                q = true; cur += '"'; fieldStart = false;
+            } else if (ch === '\n') {
+                rows.push(cur); cur = ''; fieldStart = true;
+            } else if (ch === '\r') {
+                // CRLF 的 \r 丢弃，统一由 \n 断行
+            } else {
+                cur += ch;
+                fieldStart = (ch === ',' || ch === '\t' || ch === ';' || ch === '，' || ch === '；');
+            }
+        }
+        if (q) return s.split(/\r?\n/); // 引号未闭合：回退，避免吞掉后续所有行
+        rows.push(cur);
+        return rows;
+    }
+
     // 逐行解析（不去重）
     function parseEntries(text) {
         var out = [];
-        String(text == null ? '' : text).split(/\r?\n/).forEach(function (line) {
+        splitRows(text).forEach(function (line) {
             var e = parseEntry(line);
             if (e) out.push(e);
         });
@@ -439,12 +493,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     var manifestUrlEl = document.getElementById('manifest-url');
     var ledgerTip = document.getElementById('ledger-tip');
     var importFile = document.getElementById('import-file');
+    var restoreFile = document.getElementById('restore-file');
     manifestUrlEl.value = MANIFEST_URL;
     var mirrorEl = document.getElementById('manifest-mirror');
     if (mirrorEl) mirrorEl.textContent = '备用源（主源不可达时自动回退）：' + MANIFEST_MIRRORS.join('、');
     document.getElementById('secret-view').textContent = LICENSE_SECRET;
 
     var pairs = []; // 最近一次生成结果 [{ mc, card }]
+    // 「对照线上清单」的结果缓存：key = 归一化机器码 → 'up'（已上传）/ 'notup'（未上传）/ 'revoked'（已吊销）。
+    // 为 null 表示尚未对照过，此时不显示状态徽标。
+    var onlineStatus = null;
 
     // 生成在线清单 JSON（含白名单 + 吊销名单），供上传到静态空间
     function buildManifest() {
@@ -466,10 +524,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         // 会导致清单里的「更新于」日期比实际早一天，容易让人误判清单是否为最新。
         var now = new Date();
         var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        var updated = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+        // sig 覆盖「更新日期 + 白名单 + 吊销名单」；主程序验签不通过会拒绝该清单。
+        var sig = manifestSignature(updated, cards, revoked);
         manifestOut.value = JSON.stringify({
-            updated: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()),
+            updated: updated,
             cards: cards,
-            revoked: revoked
+            revoked: revoked,
+            sig: sig
         }, null, 2);
     }
 
@@ -600,8 +662,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (!ledgerTip) return;
         // 单次遍历统计：本函数在输入框每次 input 时都会执行（防抖落盘时还会再跑一次），
         // 原实现把整份台账解析两遍（parseEntries + uniqueEntries），台账较长时会明显拖慢输入。
+        // 用 splitRows 而非按 \n 切：备注里含换行的行要算作同一行，否则统计会虚高并误报「无法识别」。
         var seen = {}, users = 0, ok = 0, lines = 0;
-        String(mcList.value == null ? '' : mcList.value).split(/\r?\n/).forEach(function (line) {
+        splitRows(mcList.value).forEach(function (line) {
             if (!line.trim()) return;
             lines++;
             var e = parseEntry(line);
@@ -621,10 +684,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         saveTimer = setTimeout(saveLedger, 300);
     }
 
-    function downloadFile(name, text) {
+    function downloadFile(name, text, mime) {
         var supportsDownload = 'download' in document.createElement('a');
         if (!supportsDownload) return false; // 不支持则交给调用方回退（见 exportLedger / 模板下载）
-        var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+        var blob = new Blob([text], { type: mime || 'text/csv;charset=utf-8' });
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;
@@ -634,6 +697,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         document.body.removeChild(a);
         setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
         return true;
+    }
+
+    // 安卓外壳存在时优先原生落盘（PWA 下没有 nativeSaveText，返回 false 交回调用方走 <a download>）。
+    // 用 typeof 判定而非直接引用：这样本函数在两种副本里逐字一致，可留在共享核心中。
+    function tryNativeSave(name, mime, text) {
+        if (typeof nativeSaveText !== 'function') return false;
+        try { return nativeSaveText(name, mime, text) === true; } catch (e) { return false; }
     }
 
     // CSV 单元格转义：只要包含 splitFields 认得的任一分隔符（半角/全角逗号、分号、制表符）
@@ -702,6 +772,128 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return '\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
     }
 
+    // 交付文案：一段可直接发给用户的文字，机器码与卡密一目了然（有备注时以备注作标题）。
+    function buildDeliverText() {
+        render();
+        if (!pairs.length) return '';
+        return pairs.map(function (p) {
+            var lines = [];
+            if (p.note) lines.push('【' + p.note + '】');
+            lines.push('机器码：' + group(p.mc, 4));
+            lines.push('卡密：' + p.card);
+            return lines.join('\n');
+        }).join('\n\n');
+    }
+
+    // 台账备份：把台账原文与吊销清单一起存成 JSON，换机 / 清缓存后可完整恢复。
+    var BACKUP_FORMAT = 'lmt-ledger-backup';
+    function buildLedgerBackup() {
+        return JSON.stringify({
+            format: BACKUP_FORMAT,
+            version: 1,
+            savedAt: new Date().toISOString(),
+            ledger: mcList.value,
+            revoke: revokeList.value
+        }, null, 2);
+    }
+    function backupFileName() {
+        var d = new Date();
+        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        return '卡密台账备份_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.json';
+    }
+    // 恢复备份：与「导入台账」一致地按机器码合并（不覆盖现有数据），吊销清单取并集。
+    // 返回 { added }；当文件不是本工具的备份格式时返回 null，交由调用方提示。
+    function applyLedgerBackup(text) {
+        var data;
+        try { data = JSON.parse(String(text == null ? '' : text)); } catch (e) { return null; }
+        if (!data || data.format !== BACKUP_FORMAT) return null;
+        var before = extractMc(mcList.value).length;
+        mcList.value = mergeCodes(mcList.value, typeof data.ledger === 'string' ? data.ledger : '');
+        var seenR = {}, mergedR = [];
+        (String(revokeList.value || '') + '\n' + (typeof data.revoke === 'string' ? data.revoke : ''))
+            .split(/\r?\n/).forEach(function (line) {
+                var g = group(normalize(line), 4);
+                if (!g || seenR[g]) return;
+                seenR[g] = true; mergedR.push(g);
+            });
+        revokeList.value = mergedR.join('\n');
+        saveLedger();
+        saveRevoke();
+        render();
+        return { added: extractMc(mcList.value).length - before };
+    }
+
+    // 拉取在线清单（主源 + 备用源依次尝试），返回解析后的对象；全部失败返回 null。
+    function fetchOnlineManifest() {
+        var sources = [MANIFEST_URL].concat(MANIFEST_MIRRORS);
+        var i = 0;
+        function next() {
+            if (i >= sources.length) return Promise.resolve(null);
+            var u = sources[i++];
+            if (!u) return next();
+            var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var timer = 0;
+            var opts = { cache: 'no-store' };
+            if (ctrl) { opts.signal = ctrl.signal; timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 10000); }
+            function clear() { if (timer) { clearTimeout(timer); timer = 0; } }
+            return fetch(u, opts).then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).then(function (data) {
+                clear();
+                // 结构校验：CDN 的错误页 / 异常 JSON 不能当成「空清单」，否则会把所有人标成未上传。
+                if (!data || typeof data !== 'object' || !Array.isArray(data.cards)) return next();
+                return data;
+            })['catch'](function () { clear(); return next(); });
+        }
+        return next();
+    }
+
+    // 对照当前台账与线上清单：逐行标注「已上传 / 未上传 / 已吊销」，并给出汇总。
+    function runOnlineCheck() {
+        var b = document.getElementById('online-check-btn');
+        var tip = document.getElementById('online-tip');
+        if (!MANIFEST_URL) {
+            flashButton(b, '未配置清单');
+            if (tip) tip.textContent = '未配置 MANIFEST_URL，无法对照。';
+            return;
+        }
+        flashButton(b, '查询中…');
+        if (tip) tip.textContent = '正在拉取在线清单…';
+        fetchOnlineManifest().then(function (data) {
+            if (!data) {
+                flashButton(b, '拉取失败');
+                if (tip) tip.textContent = '无法连接在线清单（主源与备用源均失败），请稍后重试。';
+                return;
+            }
+            var cards = {}, revoked = {};
+            (data.cards || []).forEach(function (c) {
+                var n = normalize(typeof c === 'string' ? c : (c && c.card));
+                if (n) cards[n] = true;
+            });
+            (data.revoked || []).forEach(function (c) {
+                var n = normalize(typeof c === 'string' ? c : (c && c.card));
+                if (n) revoked[n] = true;
+            });
+            var status = {}, up = 0, notUp = 0, rev = 0;
+            uniqueEntries(mcList.value).forEach(function (e) {
+                var card = normalize(makeCard(e.key));
+                var st = revoked[card] ? 'revoked' : (cards[card] ? 'up' : 'notup');
+                status[e.key] = st;
+                if (st === 'revoked') rev++; else if (st === 'up') up++; else notUp++;
+            });
+            onlineStatus = status;
+            render();
+            flashButton(b, notUp > 0 ? (notUp + ' 张未上传') : '全部已上传');
+            if (tip) tip.textContent = '线上清单更新于 ' + (data.updated || '未知') +
+                (data.sig ? '（已签名）' : '（未签名）') +
+                ' · 已上传 ' + up + ' · 未上传 ' + notUp + ' · 已吊销 ' + rev;
+        })['catch'](function () {
+            flashButton(b, '拉取失败');
+            if (tip) tip.textContent = '无法连接在线清单，请稍后重试。';
+        });
+    }
+
     function render() {
         out.textContent = '';
         pairs = [];
@@ -743,6 +935,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 noteEl.textContent = e.note;
                 item.appendChild(noteEl);
             }
+            if (onlineStatus) {
+                var st = onlineStatus[e.key] || 'notup';
+                var badge = document.createElement('span');
+                badge.className = 'status-badge ' + (st === 'revoked' ? 'is-revoked' : (st === 'up' ? 'is-up' : 'is-notup'));
+                badge.textContent = st === 'revoked' ? '已吊销' : (st === 'up' ? '已上传' : '未上传');
+                item.appendChild(badge);
+            }
             item.appendChild(btn);
             out.appendChild(item);
         });
@@ -780,6 +979,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     document.getElementById('export-btn').addEventListener('click', function () {
         var b = document.getElementById('export-btn');
         if (extractMc(mcList.value).length === 0) { flashButton(b, '台账为空'); return; }
+        // @shell:export
         // exportLedger 在浏览器不支持 a[download]（移动端 WebView 常见）时会返回 CSV 文本，
         // 此时改用「手动复制」浮层兜底，避免点了导出毫无反应。
         // 另外手机/平板浏览器即便「支持」download 也常把它静默忽略，所以触屏环境一律再给一个出口。
@@ -790,6 +990,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             showManualCopy(csv, typeof res === 'string' ? '导出台账（请手动保存为 CSV）' : '导出台账（若未自动保存，请长按复制）');
             return;
         }
+        // @shell:end
         flashButton(b, '已导出');
     });
     document.getElementById('import-btn').addEventListener('click', function () { importFile.click(); });
@@ -826,6 +1027,39 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         render();
         mcList.focus();
     });
+    document.getElementById('deliver-btn').addEventListener('click', function () {
+        var b = document.getElementById('deliver-btn');
+        var text = buildDeliverText();
+        if (!text) { flashButton(b, '无结果'); return; }
+        copyWithFeedback(text, b, '已复制文案');
+    });
+    document.getElementById('backup-btn').addEventListener('click', function () {
+        var b = document.getElementById('backup-btn');
+        var json = buildLedgerBackup();
+        if (tryNativeSave(backupFileName(), 'application/json', json)) { flashButton(b, '已保存'); return; }
+        var downloaded = downloadFile(backupFileName(), json, 'application/json');
+        if (!downloaded || isMobileUA()) {
+            flashButton(b, downloaded ? '已导出' : '请手动复制');
+            showManualCopy(json, downloaded ? '台账备份（若未自动保存，请长按复制）' : '台账备份（请手动保存为 .json）');
+            return;
+        }
+        flashButton(b, '已导出');
+    });
+    document.getElementById('restore-btn').addEventListener('click', function () { restoreFile.click(); });
+    restoreFile.addEventListener('change', function () {
+        var f = restoreFile.files && restoreFile.files[0];
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+            var res = applyLedgerBackup(reader.result);
+            var b = document.getElementById('restore-btn');
+            flashButton(b, res ? (res.added > 0 ? ('已恢复 +' + res.added) : '已合并（无新增）') : '文件格式不对');
+            restoreFile.value = '';
+        };
+        reader.onerror = function () { flashButton(document.getElementById('restore-btn'), '读取失败'); restoreFile.value = ''; };
+        reader.readAsText(f);
+    });
+    document.getElementById('online-check-btn').addEventListener('click', runOnlineCheck);
 
     // 启动：恢复上次保存的台账与吊销清单
     if (!normalize(mcList.value)) mcList.value = loadLedger();
@@ -846,6 +1080,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     window.__cardGen = {
         normalize: normalize, makeCard: makeCard, extractMc: extractMc, mergeCodes: mergeCodes,
         parseEntry: parseEntry, parseEntries: parseEntries, uniqueEntries: uniqueEntries, entryLine: entryLine,
+        splitRows: splitRows, manifestSignature: manifestSignature,
+        buildDeliverText: buildDeliverText, buildLedgerBackup: buildLedgerBackup, applyLedgerBackup: applyLedgerBackup,
+        fetchOnlineManifest: fetchOnlineManifest, runOnlineCheck: runOnlineCheck, MANIFEST_MIRRORS: MANIFEST_MIRRORS,
+        getOnlineStatus: function () { return onlineStatus; },
+        setRevoke: function (t) { revokeList.value = t; },
         LEDGER_KEY: LEDGER_KEY, loadLedger: loadLedger, saveLedger: saveLedger, exportLedger: exportLedger,
         REVOKE_KEY: REVOKE_KEY, loadRevoke: loadRevoke, saveRevoke: saveRevoke, buildManifest: buildManifest,
         MANIFEST_URL: MANIFEST_URL,
@@ -858,6 +1097,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 </script>
 
 
+<!-- @shell:pwa-sw -->
 <script>
     // PWA：注册 Service Worker，实现离线可用（需 http/https 环境，file:// 不生效）
     if ('serviceWorker' in navigator) {
@@ -866,4 +1106,5 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         });
     }
 </script>
+<!-- @shell:end -->
 </body></html>

@@ -2,6 +2,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>图文排版生成器</title>
+    <!-- @shell:pwa-head -->
     <!-- PWA：可安装网页应用（iPhone/iPad 用 Safari「添加到主屏幕」即当 App 使用） -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#2f6df6">
@@ -11,6 +12,7 @@
     <meta name="apple-mobile-web-app-title" content="图文排版生成器">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <!-- @shell:end -->
     <!-- 引入 html2canvas 用于导出图片 -->
     <!-- defer：html2canvas 体积较大，若同步加载会阻塞首屏渲染；改为延后执行，
          导出按钮点击时（此时早已加载完成）才真正用到它，未加载成功时仍有兜底提示。 -->
@@ -899,6 +901,15 @@
             var mac = hmacSha256Hex(LICENSE_SECRET, normalize(mc));
             return group(base32Encode(hexToBytes(mac), 20), 4); // 5 组，共 20 位
         }
+        // 清单签名：与「卡密生成器」逐字一致的算法 ——
+        // HMAC-SHA256(LICENSE_SECRET, updated + '\n' + 归一化白名单(逗号连接) + '\n' + 归一化吊销名单(逗号连接))。
+        // 先归一化再做载荷，保证签名只绑定卡密内容、不受分组写法影响。
+        function manifestSignature(updated, cardsNorm, revokedNorm) {
+            var payload = String(updated == null ? '' : updated) + '\n' +
+                cardsNorm.join(',') + '\n' +
+                revokedNorm.join(',');
+            return hmacSha256Hex(LICENSE_SECRET, payload);
+        }
         function constEq(a, b) {
             if (a.length !== b.length) return false;
             var r = 0;
@@ -914,6 +925,7 @@
 
         // ---------- 在线清单（联网校验 + 在线吊销；已配置时断网将拒绝激活） ----------
         var manifest = null; // { updated, cards:{卡密:true}, revoked:{卡密:true} }
+        var manifestSigInvalid = false; // 最近一次拉取是否遇到过「签名缺失/错误」的清单（用于给出更准确的错误提示）
         function setManifestUrl(u) { MANIFEST_URL = String(u == null ? '' : u); }
         // 参与拉取的地址列表：主源 + 备用镜像。
         // 仅当配置了主源时才启用镜像；主源留空 = 关闭在线清单，此时不应再尝试镜像。
@@ -928,18 +940,23 @@
         function getManifest() { return manifest; }
 
         function parseManifest(data) {
-            var cards = {}, revoked = {}, i;
+            var cards = {}, revoked = {}, cardList = [], revokeList = [], i;
             var list = (data && data.cards) || [];
             for (i = 0; i < list.length; i++) {
                 var c = normalize(typeof list[i] === 'string' ? list[i] : (list[i] && list[i].card));
-                if (c) cards[c] = true;
+                if (c) { cards[c] = true; cardList.push(c); }
             }
             var rev = (data && data.revoked) || [];
             for (i = 0; i < rev.length; i++) {
                 var r = normalize(typeof rev[i] === 'string' ? rev[i] : (rev[i] && rev[i].card));
-                if (r) revoked[r] = true;
+                if (r) { revoked[r] = true; revokeList.push(r); }
             }
-            return { updated: (data && data.updated) || '', cards: cards, revoked: revoked };
+            var updated = (data && data.updated) || '';
+            // 验签：与「卡密生成器」的 manifestSignature 对同一串载荷比对，避免清单被篡改。
+            // 归一化后的有序数组参与载荷（卡密已去分隔符、转大写），故签名与分组写法无关。
+            var sig = (data && typeof data.sig === 'string') ? data.sig : '';
+            var verified = !!sig && constEq(sig.toLowerCase(), manifestSignature(updated, cardList, revokeList));
+            return { updated: updated, cards: cards, revoked: revoked, verified: verified };
         }
 
         // 拉取清单；url 传 '' 则清空（回到纯离线）。任何失败都返回 null（是否放行交由 onlineDecision 判定）。
@@ -970,6 +987,7 @@
         // 否则会把「刚清空/刚更新」的清单状态覆盖回去（吊销状态回滚、误锁用户）。
         function fetchManifest(url) {
             var token = ++manifestReqToken;
+            manifestSigInvalid = false; // 新一轮拉取，重置验签失败标记
             // url 传 ''（或主源留空）= 清空清单、回到纯离线；url 省略 = 主源 + 备用镜像
             if (url != null && !String(url)) { manifest = null; return Promise.resolve(null); }
             var sources = (url == null) ? manifestSourceList() : [String(url)];
@@ -982,7 +1000,15 @@
                 if (!u) return next();
                 return fetchOneManifest(u, token).then(function (data) {
                     if (token !== manifestReqToken) return null;
-                    if (data) { manifest = parseManifest(data); return manifest; }
+                    if (data) {
+                        var parsed = parseManifest(data);
+                        // 签名缺失或错误：不采用该源，继续回退下一个；
+                        // 全部源都失败则 manifest 保持 null，onlineDecision 会据此拒绝激活。
+                        if (!parsed.verified) { manifestSigInvalid = true; return next(); }
+                        manifestSigInvalid = false;
+                        manifest = parsed;
+                        return manifest;
+                    }
                     return next(); // 该源失败 → 回退下一个
                 });
             }
@@ -996,7 +1022,7 @@
         //   · 清单已加载：按白名单 / 吊销名单判定
         function onlineDecision(card) {
             if (!MANIFEST_URL) return { decided: false, ok: true, msg: '' };
-            if (!manifest) return { decided: true, ok: false, msg: '无法连接校验服务器，请联网后重试' };
+            if (!manifest) return { decided: true, ok: false, msg: manifestSigInvalid ? '在线清单签名校验失败，请联系作者更新清单' : '无法连接校验服务器，请联网后重试' };
             var c = normalize(card);
             if (manifest.revoked[c]) return { decided: true, ok: false, msg: '该卡密已被吊销' };
             if (manifest.cards[c]) return { decided: true, ok: true, msg: '' };
@@ -1616,8 +1642,10 @@
 
                 const dataUrl = canvas.toDataURL('image/png');
                 const fileName = '排版图_' + new Date().getTime() + '.png';
+                // @shell:image-export
                 triggerDownload(dataUrl, fileName);
                 if (isTouchPrimary()) showImagePreview(dataUrl, fileName);
+                // @shell:end
             } catch (err) {
                 console.error('导出失败:', err);
                 // 不用 alert：移动端 WebView 未接管弹窗时会静默无提示
@@ -1646,6 +1674,7 @@
     window.__license.boot(bootApp);
     </script>
 
+<!-- @shell:pwa-sw -->
 <script>
     // PWA：注册 Service Worker，实现离线可用（需 http/https 环境，file:// 不生效）
     if ('serviceWorker' in navigator) {
@@ -1654,4 +1683,5 @@
         });
     }
 </script>
+<!-- @shell:end -->
 </body></html>

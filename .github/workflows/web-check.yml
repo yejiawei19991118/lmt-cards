@@ -1,0 +1,46 @@
+name: web-check
+
+# 双份源码守卫（CI 侧）：
+#   校验每个 docs/<app>/sw.js 里的 @index-hash 是否与该 app 的 index.html 归一化内容一致。
+#   不一致 = 改了 index.html 却忘了升 SW 缓存版本（用户会一直看到旧界面）。
+# 本地可用 tools/web-sync.ps1 -Bump 一键升版并写回 @index-hash；
+# 同时用 tools/web-sync.ps1 -Check 校验 PWA 与 Android 副本的共享核心是否一致（需本地工作区）。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sw-hash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 sw.js 的 @index-hash 与 index.html 一致
+        run: |
+          set -eu
+          fail=0
+          for dir in docs/*/; do
+            app=$(basename "$dir")
+            idx="${dir}index.html"
+            sw="${dir}sw.js"
+            [ -f "$idx" ] || continue
+            if [ ! -f "$sw" ]; then
+              echo "::error file=$idx::$app 缺少 sw.js"
+              fail=1
+              continue
+            fi
+            # 归一化：裁掉每行行尾空白、丢弃空行、以 LF 连接、去掉末尾换行（与 tools/web-sync.ps1 保持一致）
+            text=$(awk '{ sub(/[ \t\r]+$/,""); if ($0 != "") printf "%s\n", $0 }' "$idx")
+            h=$(printf '%s' "$text" | sha256sum | cut -c1-8)
+            m=$(sed -n 's/.*@index-hash: *\([0-9a-f]\{8\}\).*/\1/p' "$sw" | head -n1)
+            if [ "$h" != "$m" ]; then
+              echo "::error file=$sw::$app 的 @index-hash（$m）与 index.html 实际哈希（$h）不一致：已在本地运行 tools/web-sync.ps1 -Bump 并提交 sw.js？"
+              fail=1
+            else
+              echo "$app OK：$h"
+            fi
+          done
+          exit $fail
