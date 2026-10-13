@@ -346,6 +346,47 @@
             background-color: transparent;
         }
 
+        /* 模板切换：隐藏非当前模板的元素。
+           .control-group 等作者样式带 display:flex，会盖过 UA 的 [hidden]{display:none}，故用 !important。 */
+        .control-group[hidden],
+        .safe-content-area [hidden] { display: none !important; }
+
+        /* 模板二：三图竖排（每项 = 一张 1440×596 宽图 + 一行小标题）
+           宽度取共享内容宽 --content-w 并随 --fit 等比缩放，与文案等宽且自动适配安全区。 */
+        .three-list {
+            display: flex;
+            flex-direction: column;
+            width: calc(var(--content-w) * var(--fit));
+            align-self: center;
+        }
+        .three-item + .three-item { margin-top: 8px; }
+        .wide-box {
+            box-sizing: border-box;
+            width: 100%;
+            aspect-ratio: 1440 / 596;
+            background-color: #f4f6f9;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #a7b1be;
+            font-size: 12px;
+            letter-spacing: .5px;
+            overflow: hidden;
+        }
+        .wide-box:not(.has-photo) {
+            background-image: linear-gradient(180deg, #f8fafd, #eef3fa);
+            border: 1px dashed #d2dbe8;
+        }
+        .wide-caption {
+            font-size: calc(15px * var(--fit));
+            line-height: 1.45;
+            text-align: left;
+            color: #39404f;
+            margin-top: 6px;
+            white-space: pre-wrap;
+        }
+
         /* 安全区遮罩层 (只用来展示，导出时会自动隐藏) */
         .safe-zone-overlay {
             position: absolute;
@@ -579,7 +620,15 @@
     <!-- 左侧控制面板 -->
     <div class="control-panel">
         <h2>内容编辑</h2>
-        
+
+        <div class="control-group">
+            <label>排版模板</label>
+            <select id="template-select">
+                <option value="window">橱窗排版（双模特图 + 双截图）</option>
+                <option value="three">三图竖排（总结 + 3 张宽图）</option>
+            </select>
+        </div>
+
         <div class="control-group">
             <label>顶部总结文案</label>
             <textarea id="input-summary" class="handwriting-font">总结一下：
@@ -593,12 +642,12 @@
             <input type="text" id="input-title" class="handwriting-font" value="菜头的橱窗">
         </div>
 
-        <div class="control-group">
+        <div class="control-group" data-tpl="window">
             <label>关键词 (用空格分隔)</label>
             <input type="text" id="input-keywords" class="handwriting-font" value="🔍 黑色原牛复古直筒裤 🔍 老钱风毛衣">
         </div>
         
-        <div class="control-group">
+        <div class="control-group" data-tpl="window">
             <label>副标题 (我的尺码)</label>
             <input type="text" id="input-subtitle" class="handwriting-font" value="我的尺码">
         </div>
@@ -612,28 +661,61 @@
             <div class="font-status" id="font-status">在线字体已加载</div>
         </div>
 
-        <div class="control-group">
+        <div class="control-group" data-tpl="window">
             <label>左侧模特图 (1:1)</label>
             <label for="upload-left" class="upload-btn">点击上传图片</label>
             <input type="file" id="upload-left" class="file-upload" accept="image/*">
         </div>
 
-        <div class="control-group">
+        <div class="control-group" data-tpl="window">
             <label>右侧模特图 (1:1)</label>
             <label for="upload-right" class="upload-btn">点击上传图片</label>
             <input type="file" id="upload-right" class="file-upload" accept="image/*">
         </div>
 
-        <div class="control-group">
+        <div class="control-group" data-tpl="window">
             <label>底部左侧截图 (3:4)</label>
             <label for="upload-screenshot-left" class="upload-btn">点击上传图片</label>
             <input type="file" id="upload-screenshot-left" class="file-upload" accept="image/*">
         </div>
 
-        <div class="control-group">
+        <div class="control-group" data-tpl="window">
             <label>底部右侧截图 (3:4)</label>
             <label for="upload-screenshot-right" class="upload-btn">点击上传图片</label>
             <input type="file" id="upload-screenshot-right" class="file-upload" accept="image/*">
+        </div>
+
+        <div class="control-group" data-tpl="three">
+            <label>图片一 (1440×596)</label>
+            <label for="upload-wide-1" class="upload-btn">点击上传图片</label>
+            <input type="file" id="upload-wide-1" class="file-upload" accept="image/*">
+        </div>
+
+        <div class="control-group" data-tpl="three">
+            <label>小标题一</label>
+            <input type="text" id="input-cap-1" class="handwriting-font" value="">
+        </div>
+
+        <div class="control-group" data-tpl="three">
+            <label>图片二 (1440×596)</label>
+            <label for="upload-wide-2" class="upload-btn">点击上传图片</label>
+            <input type="file" id="upload-wide-2" class="file-upload" accept="image/*">
+        </div>
+
+        <div class="control-group" data-tpl="three">
+            <label>小标题二</label>
+            <input type="text" id="input-cap-2" class="handwriting-font" value="">
+        </div>
+
+        <div class="control-group" data-tpl="three">
+            <label>图片三 (1440×596)</label>
+            <label for="upload-wide-3" class="upload-btn">点击上传图片</label>
+            <input type="file" id="upload-wide-3" class="file-upload" accept="image/*">
+        </div>
+
+        <div class="control-group" data-tpl="three">
+            <label>小标题三</label>
+            <input type="text" id="input-cap-3" class="handwriting-font" value="">
         </div>
 
         <label class="toggle-safe-zone">
@@ -664,20 +746,36 @@
                 
                 <div class="main-title handwriting-font" id="preview-title">菜头的橱窗</div>
                 
-                <div class="image-row">
+                <div class="image-row" data-tpl="window">
                     <div class="image-box" id="preview-img-left">左图 (1:1)</div>
                     <div class="image-box" id="preview-img-right">右图 (1:1)</div>
                 </div>
                 
-                <div class="keywords-row handwriting-font" id="preview-keywords">
+                <div class="keywords-row handwriting-font" id="preview-keywords" data-tpl="window">
                     🔍 黑色原牛复古直筒裤 🔍 老钱风毛衣
                 </div>
                 
-                <div class="sub-title handwriting-font" id="preview-subtitle">我的尺码</div>
+                <div class="sub-title handwriting-font" id="preview-subtitle" data-tpl="window">我的尺码</div>
                 
-                <div class="screenshot-row">
+                <div class="screenshot-row" data-tpl="window">
                     <div class="screenshot-box" id="preview-screenshot-left">左截图 (3:4)</div>
                     <div class="screenshot-box" id="preview-screenshot-right">右截图 (3:4)</div>
+                </div>
+
+                <!-- 模板二：三图竖排（每项 = 一张 1440×596 宽图 + 一行小标题） -->
+                <div class="three-list" data-tpl="three">
+                    <div class="three-item">
+                        <div class="wide-box" id="preview-wide-1">图片一 (1440×596)</div>
+                        <div class="wide-caption handwriting-font" id="preview-cap-1"></div>
+                    </div>
+                    <div class="three-item">
+                        <div class="wide-box" id="preview-wide-2">图片二 (1440×596)</div>
+                        <div class="wide-caption handwriting-font" id="preview-cap-2"></div>
+                    </div>
+                    <div class="three-item">
+                        <div class="wide-box" id="preview-wide-3">图片三 (1440×596)</div>
+                        <div class="wide-caption handwriting-font" id="preview-cap-3"></div>
+                    </div>
                 </div>
             </div>
 
@@ -1329,6 +1427,21 @@
         const previewImgRight = document.getElementById('preview-img-right');
         const previewScreenshotLeft = document.getElementById('preview-screenshot-left');
         const previewScreenshotRight = document.getElementById('preview-screenshot-right');
+
+        // 模板二（三图竖排）相关元素
+        const templateSelect = document.getElementById('template-select');
+        const uploadWide1 = document.getElementById('upload-wide-1');
+        const uploadWide2 = document.getElementById('upload-wide-2');
+        const uploadWide3 = document.getElementById('upload-wide-3');
+        const previewWide1 = document.getElementById('preview-wide-1');
+        const previewWide2 = document.getElementById('preview-wide-2');
+        const previewWide3 = document.getElementById('preview-wide-3');
+        const inputCap1 = document.getElementById('input-cap-1');
+        const inputCap2 = document.getElementById('input-cap-2');
+        const inputCap3 = document.getElementById('input-cap-3');
+        const previewCap1 = document.getElementById('preview-cap-1');
+        const previewCap2 = document.getElementById('preview-cap-2');
+        const previewCap3 = document.getElementById('preview-cap-3');
         
         const toggleSafe = document.getElementById('toggle-safe');
         const safeZone = document.getElementById('safe-zone');
@@ -1359,6 +1472,11 @@
 
         inputSubtitle.addEventListener('input', (e) => {
             previewSubtitle.textContent = e.target.value;
+        });
+
+        // 模板二：三行小标题实时同步（与总结/主标题一样，输入即更新预览）
+        [[inputCap1, previewCap1], [inputCap2, previewCap2], [inputCap3, previewCap3]].forEach(([input, preview]) => {
+            input.addEventListener('input', (e) => { preview.textContent = e.target.value; });
         });
 
         // 1.5 手写字体切换（同时作用于预览与左侧编辑器）
@@ -1479,7 +1597,9 @@
         // 各图片框的导出像素尺寸（CSS 尺寸 132×132 / 132×176，乘以 EXPORT_SCALE）
         const BOX_SIZE = {
             cover: [132 * EXPORT_SCALE, 132 * EXPORT_SCALE],   // 模特图：铺满方框
-            contain: [132 * EXPORT_SCALE, 176 * EXPORT_SCALE]  // 截图：完整显示不裁剪
+            contain: [132 * EXPORT_SCALE, 176 * EXPORT_SCALE], // 截图：完整显示不裁剪
+            // 模板二宽图：按“安全区整宽”预留分辨率，显示更小时 html2canvas 自动降采样，仍清晰
+            wide: [275 * EXPORT_SCALE, Math.round(275 * 596 / 1440 * EXPORT_SCALE)]
         };
 
         // 纯函数：计算照片在给定框内的等比绘制矩形（绝不拉伸变形）。
@@ -1562,6 +1682,16 @@
         handleImageUpload(uploadRight, previewImgRight, 'cover');
         handleImageUpload(uploadScreenshotLeft, previewScreenshotLeft, 'contain');
         handleImageUpload(uploadScreenshotRight, previewScreenshotRight, 'contain');
+        handleImageUpload(uploadWide1, previewWide1, 'wide');
+        handleImageUpload(uploadWide2, previewWide2, 'wide');
+        handleImageUpload(uploadWide3, previewWide3, 'wide');
+
+        // 模板切换：只显示当前模板的预览元素与控制面板分组（其余置 hidden）
+        function applyTemplate(name) {
+            document.querySelectorAll('[data-tpl]').forEach((el) => { el.hidden = el.dataset.tpl !== name; });
+            checkContentFit();
+        }
+        templateSelect.addEventListener('change', (e) => applyTemplate(e.target.value));
 
         // 3. 安全区开关
         toggleSafe.addEventListener('change', (e) => {
@@ -1705,6 +1835,9 @@
 
         // 首次加载：应用默认选中的字体（在线字体按需加载）
         applyHandwritingFont(fontSelect.selectedOptions[0]);
+
+        // 首次加载：应用默认模板（橱窗排版）
+        applyTemplate(templateSelect.value);
 
         // 暴露纯函数，供单元测试页（图文排版生成器.tests.html）在 iframe 中直接复用
         window.__layoutTool = { escapeHtml: escapeHtml, computeDrawRect: computeDrawRect, isMobileUA: isMobileUA, isTouchPrimary: isTouchPrimary };
