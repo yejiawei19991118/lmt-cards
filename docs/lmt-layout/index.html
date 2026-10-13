@@ -352,7 +352,7 @@
         .control-group[hidden],
         .safe-content-area [hidden] { display: none !important; }
 
-        /* 模板二：三图竖排（每项 = 一张 1440×596 宽图 + 一行小标题）
+        /* 模板二：三图竖排（每项 = 一张 1440×600 宽图 + 一行小标题）
            宽度取共享内容宽 --content-w 并随 --fit 等比缩放，与文案等宽且自动适配安全区。 */
         .three-list {
             display: flex;
@@ -364,7 +364,7 @@
         .wide-box {
             box-sizing: border-box;
             width: 100%;
-            aspect-ratio: 1440 / 596;
+            aspect-ratio: 1440 / 600;
             background-color: #f4f6f9;
             border-radius: 10px;
             display: flex;
@@ -380,14 +380,19 @@
             border: 1px dashed #d2dbe8;
         }
         .wide-caption {
-            /* 小标题字体大小与顶部总结文案保持一致（13px × --fit） */
+            /* 小标题：字体大小与顶部总结文案一致（13px × --fit）、加粗，块整体居中、各行文字右对齐 */
             font-size: calc(13px * var(--fit));
+            font-weight: bold;
             line-height: 1.55;
-            text-align: left;
+            width: fit-content;
+            max-width: 100%;
+            margin: 6px auto 0;
+            text-align: right;
             color: #39404f;
-            margin-top: 6px;
             white-space: pre-wrap;
         }
+        /* 模板二：顶部总结文案与「小标题」一样加粗（只作用于三图竖排，不影响橱窗排版） */
+        .safe-content-area[data-active-tpl="three"] .header-summary { font-weight: bold; }
 
         /* 安全区遮罩层 (只用来展示，导出时会自动隐藏) */
         .safe-zone-overlay {
@@ -688,7 +693,7 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>图片一 (1440×596)</label>
+            <label>图片一 (1440×600)</label>
             <label for="upload-wide-1" class="upload-btn">点击上传图片</label>
             <input type="file" id="upload-wide-1" class="file-upload" accept="image/*">
         </div>
@@ -699,7 +704,7 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>图片二 (1440×596)</label>
+            <label>图片二 (1440×600)</label>
             <label for="upload-wide-2" class="upload-btn">点击上传图片</label>
             <input type="file" id="upload-wide-2" class="file-upload" accept="image/*">
         </div>
@@ -710,7 +715,7 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>图片三 (1440×596)</label>
+            <label>图片三 (1440×600)</label>
             <label for="upload-wide-3" class="upload-btn">点击上传图片</label>
             <input type="file" id="upload-wide-3" class="file-upload" accept="image/*">
         </div>
@@ -764,18 +769,18 @@
                     <div class="screenshot-box" id="preview-screenshot-right">右截图 (3:4)</div>
                 </div>
 
-                <!-- 模板二：三图竖排（每项 = 一张 1440×596 宽图 + 一行小标题） -->
+                <!-- 模板二：三图竖排（每项 = 一张 1440×600 宽图 + 一行小标题） -->
                 <div class="three-list" data-tpl="three">
                     <div class="three-item">
-                        <div class="wide-box" id="preview-wide-1">图片一 (1440×596)</div>
+                        <div class="wide-box" id="preview-wide-1">图片一 (1440×600)</div>
                         <div class="wide-caption handwriting-font" id="preview-cap-1"></div>
                     </div>
                     <div class="three-item">
-                        <div class="wide-box" id="preview-wide-2">图片二 (1440×596)</div>
+                        <div class="wide-box" id="preview-wide-2">图片二 (1440×600)</div>
                         <div class="wide-caption handwriting-font" id="preview-cap-2"></div>
                     </div>
                     <div class="three-item">
-                        <div class="wide-box" id="preview-wide-3">图片三 (1440×596)</div>
+                        <div class="wide-box" id="preview-wide-3">图片三 (1440×600)</div>
                         <div class="wide-caption handwriting-font" id="preview-cap-3"></div>
                     </div>
                 </div>
@@ -1600,8 +1605,8 @@
         const BOX_SIZE = {
             cover: [132 * EXPORT_SCALE, 132 * EXPORT_SCALE],   // 模特图：铺满方框
             contain: [132 * EXPORT_SCALE, 176 * EXPORT_SCALE], // 截图：完整显示不裁剪
-            // 模板二缺角图：包围盒 1440×596，按“安全区整宽”预留分辨率，显示更小时自动降采样
-            notch: [275 * EXPORT_SCALE, Math.round(275 * 596 / 1440 * EXPORT_SCALE)]
+            // 模板二缺角图：包围盒 1440×600，按“安全区整宽”预留分辨率，显示更小时自动降采样
+            notch: [275 * EXPORT_SCALE, Math.round(275 * 600 / 1440 * EXPORT_SCALE)]
         };
 
         // 纯函数：计算照片在给定框内的等比绘制矩形（绝不拉伸变形）。
@@ -1648,22 +1653,23 @@
                         // 圆角半径与 CSS 保持一致(10px × EXPORT_SCALE)，直接烘焙进位图。
                         // 这样即使 html2canvas 不裁剪 <canvas> 子元素的 border-radius，
                         // 导出图的圆角也一定正确（圆角外为透明，露出白色导出背景）。
-                        const r = 10 * EXPORT_SCALE;
                         ctx.beginPath();
                         if (mode === 'notch') {
-                            // 缺角图：在 1440×596 的包围盒内裁掉右下角 812×308，仅保留 L 形区域
-                            const nw = tw * (812 / 1440);
-                            const nh = th * (308 / 596);
-                            ctx.moveTo(r, 0);
-                            ctx.arcTo(tw, 0, tw, th, r);      // 右上圆角
-                            ctx.lineTo(tw, th - nh);          // 右边下行到缺口上沿
-                            ctx.lineTo(tw - nw, th - nh);     // 缺口上沿向左
-                            ctx.lineTo(tw - nw, th);          // 缺口左侧向下到底
-                            ctx.lineTo(r, th);                // 底边向左
-                            ctx.arcTo(0, th, 0, 0, r);        // 左下圆角
-                            ctx.lineTo(0, r);
-                            ctx.arcTo(0, 0, tw, 0, r);        // 左上圆角
+                            // 缺角图：包围盒 1440×600，裁掉右上角 800×345 与右下角 800×140，
+                            // 只保留「左侧整列 + 右侧中部凸带」的形状（凸带高 600-345-140=115）。
+                            const cw = tw * (800 / 1440);   // 右侧裁掉的宽度
+                            const th1 = th * (345 / 600);   // 右上裁掉的高度
+                            const bh = th * (140 / 600);    // 右下裁掉的高度
+                            ctx.moveTo(0, 0);
+                            ctx.lineTo(tw - cw, 0);
+                            ctx.lineTo(tw - cw, th1);
+                            ctx.lineTo(tw, th1);
+                            ctx.lineTo(tw, th - bh);
+                            ctx.lineTo(tw - cw, th - bh);
+                            ctx.lineTo(tw - cw, th);
+                            ctx.lineTo(0, th);
                         } else {
+                            const r = 10 * EXPORT_SCALE;
                             ctx.moveTo(r, 0);
                             ctx.arcTo(tw, 0, tw, th, r);
                             ctx.arcTo(tw, th, 0, th, r);
@@ -1706,6 +1712,7 @@
         // 模板切换：只显示当前模板的预览元素与控制面板分组（其余置 hidden）
         function applyTemplate(name) {
             document.querySelectorAll('[data-tpl]').forEach((el) => { el.hidden = el.dataset.tpl !== name; });
+            exportTarget.dataset.activeTpl = name; // 供 CSS 区分模板（如三图竖排的加粗总结文案）
             checkContentFit();
         }
         templateSelect.addEventListener('change', (e) => applyTemplate(e.target.value));
