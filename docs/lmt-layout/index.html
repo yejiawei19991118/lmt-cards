@@ -169,6 +169,10 @@
         }
         .overflow-warn.show { display: block; }
 
+        /* 自动缩小字号以适配安全区时的说明（正常状态，弱化显示，不是错误） */
+        .fit-note { display: none; font-size: 12px; line-height: 1.55; color: #7a8699; }
+        .fit-note.show { display: block; }
+
         /* 预览区容器
            说明：容器自身可纵向滚动，配合画布的 margin:auto 0 实现“安全居中”：
            视口足够高时垂直居中；视口偏矮（如 1366×768 笔记本）时自动改为顶部对齐并可滚动，
@@ -203,6 +207,8 @@
             bottom: var(--safe-bottom);
             width: 275px; /* 强制固定宽度 */
             height: 497px; /* 强制固定高度 */
+            /* 自动适配安全区：字号缩放系数，由 checkContentFit() 动态调整（1 = 原始大小） */
+            --fit: 1;
             display: flex;
             flex-direction: column;
             justify-content: space-between; /* 自动均匀分布各部分 */
@@ -226,7 +232,7 @@
         
         /* 顶部总结文案：整体在安全区内水平居中，但每行文字保持左对齐（右侧自然参差） */
         .header-summary {
-            font-size: 13px;
+            font-size: calc(13px * var(--fit));
             line-height: 1.55;
             width: fit-content;
             max-width: 100%;
@@ -236,9 +242,9 @@
         }
         
         .main-title {
-            font-size: 24px;
+            font-size: calc(24px * var(--fit));
             font-weight: bold;
-            letter-spacing: 2px;
+            letter-spacing: calc(2px * var(--fit));
             text-align: center;
             color: #14181f;
         }
@@ -278,17 +284,17 @@
             display: flex;
             justify-content: space-around;
             width: 100%;
-            font-size: 12px;
+            font-size: calc(12px * var(--fit));
             font-weight: bold;
-            letter-spacing: .3px;
+            letter-spacing: calc(.3px * var(--fit));
             color: #4a5566;
             text-align: center;
         }
         
         .sub-title {
-            font-size: 20px;
+            font-size: calc(20px * var(--fit));
             font-weight: bold;
-            letter-spacing: 2px;
+            letter-spacing: calc(2px * var(--fit));
             text-align: center;
             color: #14181f;
         }
@@ -627,8 +633,9 @@
             <input type="checkbox" id="toggle-safe" checked=""> 显示字幕安全区辅助线
         </label>
 
+        <div class="fit-note" id="fit-note"></div>
         <div class="overflow-warn" id="overflow-warn">
-            内容已超出安全区，导出后超出部分会被裁掉，请精简文案。
+            内容过长：字号已缩到最小仍超出安全区，请精简文案后再导出。
         </div>
 
         <button class="btn-primary" id="export-btn">导出为图片</button>
@@ -1325,6 +1332,7 @@
         const canvasWrapper = document.getElementById('canvas-wrapper');
         const exportTarget = document.getElementById('export-target');
         const overflowWarn = document.getElementById('overflow-warn');
+        const fitNote = document.getElementById('fit-note');
 
         // 1. 文本实时同步
         // 转义 HTML，避免输入 < > & 时被当成标签解析
@@ -1423,9 +1431,29 @@
             applyHandwritingFont(e.target.selectedOptions[0]);
         });
 
-        // 内容是否超出安全区（超出部分导出后会被裁掉，这里给出提示）
+        // 内容是否超出安全区（核心要求：导出内容绝不能越界）
+        // 策略：溢出时自动等比缩小字号，逐步收敛到刚好放得下；
+        //       缩到下限仍溢出才报警并禁用导出，避免导出被裁掉的图。
+        const FIT_MIN = 0.7;   // 字号最小缩到原始的 70%
+        const FIT_STEP = 0.02; // 每次缩 2%，避免一次缩过头显得过小
+        function fitsAt(fit) {
+            exportTarget.style.setProperty('--fit', String(fit));
+            return exportTarget.scrollHeight <= exportTarget.clientHeight + 1;
+        }
         function checkContentFit() {
-            overflowWarn.classList.toggle('show', exportTarget.scrollHeight > exportTarget.clientHeight + 1);
+            let fit = 1;
+            if (!fitsAt(1)) {
+                for (fit = 1 - FIT_STEP; fit > FIT_MIN; fit -= FIT_STEP) {
+                    if (fitsAt(Math.round(fit * 100) / 100)) break;
+                }
+                fit = Math.max(FIT_MIN, Math.round(fit * 100) / 100);
+            }
+            const ok = fitsAt(fit);
+
+            overflowWarn.classList.toggle('show', !ok);
+            fitNote.classList.toggle('show', ok && fit < 1);
+            if (ok && fit < 1) fitNote.textContent = '已自动缩小字号至 ' + Math.round(fit * 100) + '% 以适配安全区。';
+            exportBtn.disabled = !ok; // 超出安全区时置灰，避免导出被裁的图
         }
         // 输入框每敲一个字都会触发 input 事件；checkContentFit 会读取 scrollHeight 强制回流，
         // 用 requestAnimationFrame 合并同一帧内的多次调用，避免连续输入时反复重排。
@@ -1606,11 +1634,16 @@
             // 恢复时以复选框“当前”状态为准，避免导出过程中用户切换勾选导致遮罩与勾选状态不一致。
             const restore = () => {
                 safeZone.classList.toggle('active', toggleSafe.checked);
-                exportBtn.disabled = false;
                 exportBtn.textContent = '导出为图片';
+                checkContentFit(); // 由适配结果决定是否可用：内容超出安全区时保持置灰
             };
 
             setExportMsg('');
+            // 兜底：内容超出安全区时禁止导出（按钮已置灰，这里再拦一层，避免导出被裁的图）
+            if (exportTarget.scrollHeight > exportTarget.clientHeight + 1) {
+                setExportMsg('内容超出安全区，请精简文案后再导出。');
+                return;
+            }
             if (typeof html2canvas !== 'function') {
                 setExportMsg('导出组件未加载成功（需要联网加载），请连网后刷新页面重试。');
                 return;
