@@ -1656,22 +1656,23 @@
                         ctx.beginPath();
                         if (mode === 'notch') {
                             // 缺角图：包围盒 1440×600。
-                            //  1) 从右上角往左空出 160 宽，向左截掉 790×170（即 x 490~1280、y 0~170）；
-                            //  2) 截掉右下角 800×145（即 x 640~1440、y 455~600）。
-                            const xA = tw * (490 / 1440);   // 上缺口左边界
-                            const xB = tw * (1280 / 1440);  // 上缺口右边界（距右边 160）
-                            const yT = th * (170 / 600);    // 上缺口高度
-                            const xC = tw * (640 / 1440);   // 下缺口左边界
-                            const yB = th * (455 / 600);    // 下缺口上边界
+                            //  1) 顶部整宽保留 1440×160，缺口从其下方开始；
+                            //  2) 截掉右边 790×170（即 x 650~1440、y 160~330）；
+                            //  3) 截掉右下角 800×155（即 x 640~1440、y 445~600）。
+                            const yTop = th * (160 / 600);      // 顶部整宽保留条高度
+                            const xRight1 = tw * (650 / 1440);  // 上缺口左边界（右边截掉 790）
+                            const yRight1 = th * (330 / 600);   // 上缺口下边界（160 + 170）
+                            const xRight2 = tw * (640 / 1440);  // 下缺口左边界（右下截掉 800）
+                            const yRight2 = th * (445 / 600);   // 下缺口上边界（600 − 155）
                             ctx.moveTo(0, 0);
-                            ctx.lineTo(xA, 0);
-                            ctx.lineTo(xA, yT);
-                            ctx.lineTo(xB, yT);
-                            ctx.lineTo(xB, 0);
                             ctx.lineTo(tw, 0);
-                            ctx.lineTo(tw, yB);
-                            ctx.lineTo(xC, yB);
-                            ctx.lineTo(xC, th);
+                            ctx.lineTo(tw, yTop);
+                            ctx.lineTo(xRight1, yTop);
+                            ctx.lineTo(xRight1, yRight1);
+                            ctx.lineTo(tw, yRight1);
+                            ctx.lineTo(tw, yRight2);
+                            ctx.lineTo(xRight2, yRight2);
+                            ctx.lineTo(xRight2, th);
                             ctx.lineTo(0, th);
                         } else {
                             const r = 10 * EXPORT_SCALE;
