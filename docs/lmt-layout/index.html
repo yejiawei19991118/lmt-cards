@@ -380,14 +380,14 @@
             border: 1px dashed #d2dbe8;
         }
         .wide-caption {
-            /* 小标题：字体大小与顶部总结文案一致（13px × --fit）、加粗，块整体居中、各行文字右对齐 */
+            /* 小标题：字号与顶部总结文案一致（13px × --fit）、加粗、支持换行；整体靠右、各行文字居中 */
             font-size: calc(13px * var(--fit));
             font-weight: bold;
             line-height: 1.55;
             width: fit-content;
             max-width: 100%;
-            margin: 6px auto 0;
-            text-align: right;
+            margin: 6px 0 0 auto;
+            text-align: center;
             color: #39404f;
             white-space: pre-wrap;
         }
@@ -699,8 +699,8 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>小标题一</label>
-            <input type="text" id="input-cap-1" class="handwriting-font" value="">
+            <label>小标题一（支持换行）</label>
+            <textarea id="input-cap-1" class="handwriting-font" rows="2"></textarea>
         </div>
 
         <div class="control-group" data-tpl="three">
@@ -710,8 +710,8 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>小标题二</label>
-            <input type="text" id="input-cap-2" class="handwriting-font" value="">
+            <label>小标题二（支持换行）</label>
+            <textarea id="input-cap-2" class="handwriting-font" rows="2"></textarea>
         </div>
 
         <div class="control-group" data-tpl="three">
@@ -721,8 +721,8 @@
         </div>
 
         <div class="control-group" data-tpl="three">
-            <label>小标题三</label>
-            <input type="text" id="input-cap-3" class="handwriting-font" value="">
+            <label>小标题三（支持换行）</label>
+            <textarea id="input-cap-3" class="handwriting-font" rows="2"></textarea>
         </div>
 
         <label class="toggle-safe-zone">
@@ -1655,18 +1655,23 @@
                         // 导出图的圆角也一定正确（圆角外为透明，露出白色导出背景）。
                         ctx.beginPath();
                         if (mode === 'notch') {
-                            // 缺角图：包围盒 1440×600，裁掉右上角 800×345 与右下角 800×140，
-                            // 只保留「左侧整列 + 右侧中部凸带」的形状（凸带高 600-345-140=115）。
-                            const cw = tw * (800 / 1440);   // 右侧裁掉的宽度
-                            const th1 = th * (345 / 600);   // 右上裁掉的高度
-                            const bh = th * (140 / 600);    // 右下裁掉的高度
+                            // 缺角图：包围盒 1440×600。
+                            //  1) 从右上角往左空出 160 宽，向左截掉 790×170（即 x 490~1280、y 0~170）；
+                            //  2) 截掉右下角 800×145（即 x 640~1440、y 455~600）。
+                            const xA = tw * (490 / 1440);   // 上缺口左边界
+                            const xB = tw * (1280 / 1440);  // 上缺口右边界（距右边 160）
+                            const yT = th * (170 / 600);    // 上缺口高度
+                            const xC = tw * (640 / 1440);   // 下缺口左边界
+                            const yB = th * (455 / 600);    // 下缺口上边界
                             ctx.moveTo(0, 0);
-                            ctx.lineTo(tw - cw, 0);
-                            ctx.lineTo(tw - cw, th1);
-                            ctx.lineTo(tw, th1);
-                            ctx.lineTo(tw, th - bh);
-                            ctx.lineTo(tw - cw, th - bh);
-                            ctx.lineTo(tw - cw, th);
+                            ctx.lineTo(xA, 0);
+                            ctx.lineTo(xA, yT);
+                            ctx.lineTo(xB, yT);
+                            ctx.lineTo(xB, 0);
+                            ctx.lineTo(tw, 0);
+                            ctx.lineTo(tw, yB);
+                            ctx.lineTo(xC, yB);
+                            ctx.lineTo(xC, th);
                             ctx.lineTo(0, th);
                         } else {
                             const r = 10 * EXPORT_SCALE;
