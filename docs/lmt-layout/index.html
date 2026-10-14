@@ -1134,7 +1134,10 @@
         // 依次尝试主源与备用镜像，任一成功即写入 manifest 并返回；全部失败返回 null（保留原 manifest）。
         // 自增令牌：启动时的后台拉取可能比后发的请求更晚返回，旧响应必须丢弃，
         // 否则会把「刚清空/刚更新」的清单状态覆盖回去（吊销状态回滚、误锁用户）。
+        var manifestFetchInFlight = null;
         function fetchManifest(url) {
+            // 同一时刻只允许多一个正在进行的拉取，避免后台同步与激活请求同时触发两次网络请求
+            if (url == null && manifestFetchInFlight) return manifestFetchInFlight;
             var token = ++manifestReqToken;
             manifestSigInvalid = false; // 新一轮拉取，重置验签失败标记
             // url 传 ''（或主源留空）= 清空清单、回到纯离线；url 省略 = 主源 + 备用镜像
@@ -1161,7 +1164,12 @@
                     return next(); // 该源失败 → 回退下一个
                 });
             }
-            return next();
+            var result = next();
+            if (url == null) {
+                manifestFetchInFlight = result;
+                result.finally(function () { if (manifestFetchInFlight === result) manifestFetchInFlight = null; });
+            }
+            return result;
         }
 
         // 在线判定：

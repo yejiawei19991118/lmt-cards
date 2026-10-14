@@ -491,7 +491,26 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             fields = (m && m[2]) ? [m[1], m[2]] : [fields[0]];
         }
         var n = normalize(fields[0]);
-        if (n.length !== 16) return null;
+        // 优先尝试第一列；若第一列 normalize 后不是 16 位但整行 normalize 后有 >= 16 位字母数字，
+        // 说明用户用空格在机器码分组间（如 "ABCD ABCD ABCD ABCD"）。
+        // 只在单字段输入（原文本不含逗号/分号等分隔符）时才走此 fallback，
+        // 避免把「卡密,备注」这类多字段输入里的 20 位卡密误判为机器码。
+        if (n.length !== 16) {
+            var wholeNorm = normalize(s);
+            if (wholeNorm.length < 16) return null;
+            var hadDelim = /[,，;；\t]/.test(s);
+            if (hadDelim) return null; // 多字段但第一列长度不对 → 直接拒绝
+            // 扫描原始字符串，收集前 16 个 [0-9A-Z] 字符对应的原始机器码片段
+            var upper = s.toUpperCase();
+            var i = 0, consumed = 0;
+            while (consumed < 16 && i < s.length) {
+                if (/[0-9A-Z]/.test(upper[i])) consumed++;
+                i++;
+            }
+            n = wholeNorm.substr(0, 16);
+            var noteRaw = s.substr(i).replace(/^[\s]+/, '');
+            return { key: n, mc: group(n, 4), note: noteRaw };
+        }
         var rest = fields.slice(1);
         if (rest.length && normalize(rest[0]).length === 20) rest.shift(); // 丢掉卡密列
         // 丢掉首尾的空列（如模板里的卡密列为空、或 CSV 行尾多出逗号）
@@ -625,29 +644,35 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     // 依据「当前台账 + 吊销名单」组装在线清单对象（白名单 + 吊销名单 + 日期 + 签名）。
     // 与 buildManifest 拆开的原因：上传前需要先拿到本地对象、与远端合并后再重新签名。
+    // 带内容缓存：台账/吊销名单没变化时直接复用上次结果，避免反复重算所有卡密 + 签名。
+    var manifestObjCache = { mc: null, revoke: null, date: null, result: null };
     function buildManifestObj() {
+        var ledgerText = mcList.value;
+        var revokeText = revokeList.value;
+        var now = new Date();
+        var today = now.getFullYear() + '-' + ((now.getMonth() + 1 < 10) ? '0' : '') + (now.getMonth() + 1) + '-' + ((now.getDate() < 10) ? '0' : '') + now.getDate();
+        if (manifestObjCache.mc === ledgerText && manifestObjCache.revoke === revokeText && manifestObjCache.date === today) {
+            return manifestObjCache.result;
+        }
         var seen = {};
         var cards = [];
         // 直接依据「当前台账文本」重算卡密，而不是复用上一次 render() 的结果（pairs）：
         // 否则用户新粘了机器码但还没点「生成卡密」时，复制到的在线清单仍是旧的，
         // 新用户的卡密不在白名单里、无法激活，且不易察觉。
-        uniqueEntries(mcList.value).forEach(function (e) {
+        uniqueEntries(ledgerText).forEach(function (e) {
             var card = makeCard(e.key);
             if (!seen[card]) { seen[card] = true; cards.push(card); }
         });
         var revoked = [];
-        revokeList.value.split(/\r?\n/).forEach(function (line) {
+        revokeText.split(/\r?\n/).forEach(function (line) {
             var n = normalize(line);
             if (n) revoked.push(group(n, 4));
         });
-        // 用本地日期而非 toISOString()（UTC）：东八区在 08:00 之前 UTC 仍是前一天，
-        // 会导致清单里的「更新于」日期比实际早一天，容易让人误判清单是否为最新。
-        var now = new Date();
-        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
-        var updated = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
         // sig 覆盖「更新日期 + 白名单 + 吊销名单」；主程序验签不通过会拒绝该清单。
-        var sig = manifestSignature(updated, cards, revoked);
-        return { updated: updated, cards: cards, revoked: revoked, sig: sig };
+        var sig = manifestSignature(today, cards, revoked);
+        var result = { updated: today, cards: cards, revoked: revoked, sig: sig };
+        manifestObjCache = { mc: ledgerText, revoke: revokeText, date: today, result: result };
+        return result;
     }
 
     // 生成在线清单 JSON 文本（含白名单 + 吊销名单），供上传到静态空间；返回该文本。
@@ -967,10 +992,15 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
 
     // 拉取在线清单（主源 + 备用源依次尝试），返回解析后的对象；全部失败返回 null。
+    // 自增令牌：连续快速点击「对照线上清单」时，只有最新一次请求的结果会被采用，
+    // 旧请求即使更晚返回也会被丢弃，避免用过期结果覆盖新查询。
+    var manifestReqToken = 0;
     function fetchOnlineManifest() {
+        var token = ++manifestReqToken;
         var sources = [MANIFEST_URL].concat(MANIFEST_MIRRORS);
         var i = 0;
         function next() {
+            if (token !== manifestReqToken) return Promise.resolve(null); // 已被更新的请求取代
             if (i >= sources.length) return Promise.resolve(null);
             var u = sources[i++];
             if (!u) return next();
@@ -984,6 +1014,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 return r.json();
             }).then(function (data) {
                 clear();
+                if (token !== manifestReqToken) return null; // 已过期
                 // 结构校验：CDN 的错误页 / 异常 JSON 不能当成「空清单」，否则会把所有人标成未上传。
                 if (!data || typeof data !== 'object' || !Array.isArray(data.cards)) return next();
                 return data;
