@@ -17,6 +17,7 @@
     <!-- defer：html2canvas 体积较大，若同步加载会阻塞首屏渲染；改为延后执行，
          导出按钮点击时（此时早已加载完成）才真正用到它，未加载成功时仍有兜底提示。 -->
     <script src="./html2canvas.min.js" defer=""></script>
+    <!-- 共享核心：本文件是权威来源，安卓 assets 副本由 tools/web-sync.ps1 -Sync 自动同步（@shell 标记处保留各平台差异） -->
     <style>
         :root {
             /* 导出图片背景：纯白色 */
