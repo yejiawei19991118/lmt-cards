@@ -853,6 +853,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         try { return nativeSaveText(name, mime, text) === true; } catch (e) { return false; }
     }
 
+    // @shell:android-save
+    // @shell:end
+
     // CSV 单元格转义：只要包含 splitFields 认得的任一分隔符（半角/全角逗号、分号、制表符）
     // 或引号/换行，就用双引号包裹并把内部引号翻倍。否则导出的备注在重新导入时会被当成多列，
     // 导致「张三，李四」被静默改写成「张三,李四」这类往返数据损坏。
@@ -1340,6 +1343,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     document.getElementById('template-btn').addEventListener('click', function () {
         var b = document.getElementById('template-btn');
         var csv = buildTemplateCsv();
+        // @shell:template
+        // @shell:end
         // 手机端 <a download> 同样可能被静默忽略，一并给出手动保存出口
         if (!downloadFile('卡密导入模板.csv', csv) || isMobileUA()) {
             flashButton(b, '请手动复制');

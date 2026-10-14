@@ -1894,6 +1894,8 @@
                 }, 'image/png');
             } catch (err) { fail(); }
         });
+        // @shell:android-save
+        // @shell:end
         const showImagePreview = (dataUrl, fileName, onClose) => {
             // 连续导出时先移除已存在的同类浮层，避免多层叠加（旧层还占着 blob 地址）
             document.querySelectorAll('.img-preview-mask').forEach((el) => {

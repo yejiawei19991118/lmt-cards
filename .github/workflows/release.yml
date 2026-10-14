@@ -2,6 +2,8 @@ name: release-apk
 
 # 打 tag（apk-v*）即触发：构建两个应用的 release APK → 发布 GitHub Release → 更新 update.json 与 Pages 镜像 → 推送 main。
 # 构建只在 CI 上进行，本机不再保留工程文件，也不需要本地签名私钥。
+#
+# 这是人工逃生通道；日常发版由 auto-release.yml 在 main 收到 push 时自动完成（同一套脚本）。
 on:
   push:
     tags:
@@ -10,6 +12,12 @@ on:
 # 需要写权限：创建 Release、上传资产、把 update.json 推回仓库。
 permissions:
   contents: write
+
+# 与 auto-release.yml 共用同一个组：同一时刻只允许一次发版在跑。
+# 两条路径并发会各自按 update.json 的 versionCode +1 算出同一个号，把更新清单写乱。
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:

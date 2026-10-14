@@ -1,0 +1,145 @@
+name: auto-release
+
+# 端到端自动同步上线：PWA 侧（lmt-cards）的共享核心一变，就自动搬运进安卓源码 → 自动构建正式签名 APK
+# → 自动发布 Release 与更新清单 → 自动 push 回两个仓库 → 自动刷新并逐源校验 CDN 缓存。
+#
+# 触发：main 分支收到 push（即「PWA 端任何变化」）。
+# 门控：只有「共享核心」真的变了才发版。PWA 专属外壳（sw.js 的缓存版本、PWA head meta 等）改动不会
+#       影响安卓副本，因此只跑测试、明确跳过发版，日志里会写明原因。
+#       判定方式是观察 -Sync 之后安卓工作区是否有改动——它由同步基线（android/lmt-cards-sync.json）
+#       驱动，是「共享核心变没变」的唯一事实源，不在 YAML 里重复实现一遍哈希逻辑。
+#
+# 顺序上刻意把「推送安卓副本」放在发版之后：若构建或发布失败，安卓工作区仍是脏的，
+# 重跑时会重新识别为「待同步」并重试发版，不会出现「源码已同步、APK 却没发出去」的空档。
+#
+# 人工逃生通道仍在 .github/workflows/release.yml：打 tag apk-v* 可用同一套脚本手动发版（两者共用一个
+# concurrency 组，避免并发发版算出同一个 versionCode 把更新清单写乱）。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 与 release.yml 共用同一个组：同一时刻只允许一次发版在跑。
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# 需要写权限：创建 Release、上传资产、把 update.json 推回本仓库。
+permissions:
+  contents: write
+
+jobs:
+  sync-and-release:
+    runs-on: ubuntu-latest
+    # 本工作流自己 push 的 chore(release) 提交会再次触发 main 的 push：
+    # 那种情况下共享核心必然没变，直接跳过整个作业，省下一次空跑。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !startsWith(github.event.head_commit.message, 'chore(release):')
+    steps:
+      # 两个 checkout 必须同级：tools/web-sync.ps1 与 tools/release.ps1 靠「同级 android/ + lmt-cards/」定位工作区根目录。
+      - name: 检出 lmt-cards（PWA 源码、清单与发版脚本）
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: lmt-cards
+          fetch-depth: 0
+
+      # 安卓工程在私有仓库：用部署密钥检出。自动同步要能 push 回去，故该密钥必须勾选 Allow write access。
+      - name: 检出 android（私有工程，部署密钥）
+        uses: actions/checkout@v4
+        with:
+          repository: yejiawei19991118/lmt-android
+          ssh-key: ${{ secrets.LMT_ANDROID_DEPLOY_KEY }}
+          path: android
+          fetch-depth: 0
+
+      - name: 准备 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 把 PWA 的共享核心同步进安卓副本
+        # -Sync 会先校验 @shell 结构，再比对同步基线：
+        #   · 安卓侧被单方面改动过 → 报错退出，绝不静默覆盖；
+        #   · 只是 PWA 侧更新了 → 按块名原位替换，重写安卓的 index.html 并更新基线。
+        run: pwsh -NoProfile -File lmt-cards/tools/web-sync.ps1 -Sync
+
+      - name: 判断共享核心是否变化
+        id: gate
+        run: |
+          set -euo pipefail
+          changed=$(git -C android status --porcelain)
+          if [ -z "$changed" ]; then
+            echo "共享核心未变化：本次推送只动了 PWA 专属外壳（sw.js 缓存版本 / head meta 等），安卓副本无需更新，跳过发版。"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "共享核心已变化，将同步并发布新 APK："
+            echo "$changed"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 无头 Chromium 跑交互测试（安卓 assets 副本）
+        if: steps.gate.outputs.changed == 'true'
+        working-directory: lmt-cards
+        # 用与 web-check 完全相同的一套用例、只换 iframe 入口，因此 @shell 包住的安卓外壳（原生落盘桥）也真的被跑到。
+        run: >-
+          pwsh -NoProfile -File tests/run.ps1
+          -LayoutTarget ../../android/lmt-layout/src/main/assets/index.html
+          -CardgenTarget ../../android/lmt-cardgen/src/main/assets/index.html
+
+      - name: 安卓单元测试
+        if: steps.gate.outputs.changed == 'true'
+        working-directory: android
+        # 与 web-check 一致：不额外安装 Android SDK，runner 镜像自带即可。
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew test --no-daemon --console=plain
+
+      - name: 还原 release 签名
+        if: steps.gate.outputs.changed == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.LMT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.LMT_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.LMT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 -d > android/lmt-release.jks
+          {
+            echo "storeFile=lmt-release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=lmt"
+            echo "keyPassword=$KEY_PASSWORD"
+            echo "storeType=PKCS12"
+          } > android/keystore.properties
+
+      - name: 构建并发布 APK（升版本号 → 构建 → Release → 更新清单 → push → 刷新 CDN）
+        if: steps.gate.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          # 版本号由 release.ps1 以 update.json 的 versionCode +1 推算，无需人工指定，也不回写私有仓库。
+          pwsh lmt-cards/tools/release.ps1 \
+            -Notes "自动发版：共享核心随 lmt-cards ${GITHUB_SHA:0:8} 更新"
+
+      - name: 提交并推送安卓副本
+        if: steps.gate.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          cd android
+          # 用 SSH 形式的远端，确保走的是部署密钥而不是 HTTPS 凭据
+          git remote set-url origin git@github.com:yejiawei19991118/lmt-android.git
+          git config user.email 'lmt-release-bot@users.noreply.github.com'
+          git config user.name 'lmt-release-bot'
+          git add lmt-layout/src/main/assets/index.html lmt-cardgen/src/main/assets/index.html lmt-cards-sync.json
+          git commit -m "chore(sync): 从 lmt-cards ${GITHUB_SHA:0:8} 同步共享核心"
+          git push origin HEAD:main
+
+      - name: 未变化时的说明
+        if: steps.gate.outputs.changed == 'false'
+        run: echo "本次无需同步与发版：安卓副本与 PWA 共享核心本来就一致。"

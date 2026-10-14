@@ -5,13 +5,14 @@ name: web-check
 #                   不一致 = 改了 index.html 却忘了升 SW 缓存版本（用户会一直看到旧界面）。
 #   2. web-tests —— 用无头 Chromium 真实加载 tests/harness.html，把两个应用放进 iframe 里跑交互用例，
 #                   守住「点击无反应 / 反馈缺失 / 模板切换失效 / 导出台账往返损坏」这类回归。
-#   3. cross-repo-sync —— 把 PWA 与安卓当成一个整体验证：共享核心逐字比对 + 同一套用例改跑安卓 assets 副本。
+#   3. cross-repo-sync —— 把 PWA 与安卓当成一个整体验证：同步状态审计 + 两侧已一致时用同一套用例跑安卓 assets 副本。
 #   4. android-unit-tests —— 安卓更新模块的纯 JVM 单元测试（私有仓库里，只能在能检出它的一侧跑）。
 #
 # 本仓库只有 PWA 副本（docs/），所以 web-tests 跑的是 PWA 那一份，预期结果是「30 项全过、其中 3 项外壳用例显式跳过」。
 # 两端对称的另一半由本文件的 cross-repo-sync 作业承担：它用只读部署密钥把私有 android 仓库检出到同级 android/，
 # 于是 CI 里复刻出本地工作区的「android/ + lmt-cards/」布局，随后：
-#   · tools/web-sync.ps1 -Check                     双份源码的共享核心必须逐字一致（含改了共享核心却忘了改另一端）
+#   · tools/web-sync.ps1 -Audit                     硬门禁：安卓侧被单方面改动（漂移）或 @shell 结构违规即失败
+#   · tools/web-sync.ps1 -Check                     两侧已一致时才继续（不一致属 PWA 改动后的正常中间态，见作业内注释）
 #   · tests/run.ps1 -LayoutTarget/-CardgenTarget    同一套用例改跑安卓 assets 副本（那 3 项外壳用例在这里会真的执行到原生桥）
 # 同步守卫放在本仓库而不是 android 仓库：android 是私有仓库，跨仓库检出只能由有部署密钥的一侧发起，反向还需要额外 PAT。
 #
@@ -20,6 +21,8 @@ name: web-check
 #   · 跑 PWA 副本（默认）
 #   · 跑安卓副本：-LayoutTarget ../../android/lmt-layout/src/main/assets/index.html
 #                 -CardgenTarget ../../android/lmt-cardgen/src/main/assets/index.html
+#
+# 本文件只做「验证」；「交付」由 auto-release.yml 负责（main 收到 push 时自动同步安卓副本、构建并发布 APK）。
 
 on:
   push:
@@ -75,7 +78,13 @@ jobs:
         # 只有 PWA 副本可跑：安卓 assets 副本不在本仓库，由 cross-repo-sync 作业用同一套用例覆盖。
         run: pwsh -NoProfile -File tests/run.ps1
 
-  # 把两端当成一个整体验证：同一套用例换一副外壳再跑一遍，并逐字比对共享核心。
+  # 把两端当成一个整体验证：先审计同步状态，再在「两侧已经一致」时用同一套用例跑安卓 assets 副本。
+  #
+  # 为什么不无条件跑 -Check 并直接判红：PWA 的共享核心一改，本仓库会先于 auto-release.yml 拿到新内容，
+  # 此刻安卓副本还是旧的就判红，等于每次正常改动都先红一次。所以这里的分工是：
+  #   · -Audit 是硬门禁：安卓侧被单方面改动（漂移）或 @shell 结构违规则直接失败；
+  #   · 两侧已一致 → 用同一套用例实测安卓外壳；
+  #   · 尚待同步 → 安卓副本是即将被覆盖的旧源码，测它没有意义，跳过并说明由 auto-release.yml 在同步后实测。
   cross-repo-sync:
     runs-on: ubuntu-latest
     steps:
@@ -91,12 +100,24 @@ jobs:
           ssh-key: ${{ secrets.LMT_ANDROID_DEPLOY_KEY }}
           path: android
 
-      - name: 双份源码共享核心必须逐字一致
+      - name: 同步状态审计（漂移 / @shell 结构违规才失败）
         # 脚本自 <工作区>/lmt-cards/tools/ 向上查找同时含 android/ 与 lmt-cards/ 的目录，
         # 与上面两个 checkout 的 path 布局正好吻合（与 release.ps1 用的是同一套约定）。
-        run: pwsh -NoProfile -File lmt-cards/tools/web-sync.ps1 -Check
+        run: pwsh -NoProfile -File lmt-cards/tools/web-sync.ps1 -Audit
+
+      - name: 判断两侧共享核心是否已经一致
+        id: sync
+        run: |
+          set -euo pipefail
+          if pwsh -NoProfile -File lmt-cards/tools/web-sync.ps1 -Check; then
+            echo "in-sync=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "in-sync=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::两端共享核心暂不一致：这是 PWA 共享核心改动的正常中间态，auto-release.yml 会同步并实测；若它同时报错，才是真的漏改另一端。"
+          fi
 
       - name: 无头 Chromium 跑交互测试（安卓 assets 副本）
+        if: steps.sync.outputs.in-sync == 'true'
         # 用同一套用例、只换 iframe 的入口，因此 @shell 标记包住的安卓外壳（原生落盘桥）也真的被跑到。
         # 目标路径相对 tests/ 目录解析，与本地工作区完全一致。
         working-directory: lmt-cards
@@ -104,6 +125,10 @@ jobs:
           pwsh -NoProfile -File tests/run.ps1
           -LayoutTarget ../../android/lmt-layout/src/main/assets/index.html
           -CardgenTarget ../../android/lmt-cardgen/src/main/assets/index.html
+
+      - name: 待同步时的说明
+        if: steps.sync.outputs.in-sync != 'true'
+        run: echo "安卓副本待同步，跳过安卓副本实测：同步后的实测由 auto-release.yml 在发版前完成。"
 
   # 安卓更新模块的纯 JVM 单元测试（两个应用模块共用 shared/ 源码，只在私有仓库里，故一并在这里跑）。
   android-unit-tests:

@@ -1,6 +1,6 @@
 // PWA Service Worker：缓存应用外壳，实现离线可用（仅同源资源，跨域请求直接走网络）
-const CACHE = 'lmt-cardgen-v14';
-// @index-hash: 4a1c8a98  （index.html 归一化内容前 8 位；改完 index.html 运行 tools/web-sync.ps1 -Bump 自动升版）
+const CACHE = 'lmt-cardgen-v15';
+// @index-hash: 39fc6433  （index.html 归一化内容前 8 位；改完 index.html 运行 tools/web-sync.ps1 -Bump 自动升版）
 const ASSETS = [
   './index.html',
   './manifest.json',
