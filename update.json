@@ -2,20 +2,20 @@
   "updated": "2026-10-14",
   "apps": {
     "lmt-layout": {
-      "versionCode": 4,
-      "versionName": "1.3",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.3/lmt-layout-release.apk",
-      "sha256": "b5cba653af38dc178dff6c6ae8acfc42c6b4ac4c9e7f61e273ccce1068d63671",
-      "size": 101086,
-      "notes": "关键词输入标签精简为「关键词」"
+      "versionCode": 5,
+      "versionName": "1.4",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.4/lmt-layout-release.apk",
+      "sha256": "8360159f5453e0a77cf4fb6a1bfc1fc1ddf3a5b31539cc8e53f0638fec31f741",
+      "size": 102554,
+      "notes": "新增联网后自动刷新：重新联网即自动重查更新/重拉在线清单，断网启动后无需重启应用"
     },
     "lmt-cardgen": {
-      "versionCode": 4,
-      "versionName": "1.3",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.3/lmt-cardgen-release.apk",
-      "sha256": "093e1b56ba8eded62019adf3bbdde55f506e2439fef06dc6c7a2acf9cc4acc3c",
-      "size": 46463,
-      "notes": "关键词输入标签精简为「关键词」"
+      "versionCode": 5,
+      "versionName": "1.4",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.4/lmt-cardgen-release.apk",
+      "sha256": "f29012535e8e6da8583915c2398907b82b27059e701bdfc5978984573a62f574",
+      "size": 47847,
+      "notes": "新增联网后自动刷新：重新联网即自动重查更新/重拉在线清单，断网启动后无需重启应用"
     }
   }
 }
