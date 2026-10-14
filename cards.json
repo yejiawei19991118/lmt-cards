@@ -1,11 +1,12 @@
 {
   "updated": "2026-10-15",
   "cards": [
+    "2X35-K748-B0Y9-1ARB-YJKJ",
     "WTXR-82A4-H3F1-3BGA-Q1CW",
     "YB5X-NCP4-BEWQ-PRJ6-VTK6",
     "1GPB-DR91-51PB-8ZCV-06CS",
     "GZVQ-0AT4-GMJF-7TJV-ZVV8"
   ],
   "revoked": [],
-  "sig": "e5d2090855786fbb98a314fe8c55bb3fce9f88bbe6ffa98627565fde4a9c12e5"
+  "sig": "a546fa17a5a0f4b2d4ade2a6e480d7b3c40f31afa334438a75d3f2426233aa45"
 }
