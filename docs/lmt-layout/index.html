@@ -1444,17 +1444,34 @@
                 copyWithFeedback(mcInput ? mcInput.value : '', copyBtn, '已复制');
             });
 
+            // 重新拉取在线清单并刷新首屏网络状态：启动时与「网络恢复」时共用同一段逻辑。
+            function syncManifestOnline() {
+                if (!MANIFEST_URL) return;
+                manifestSyncing = true;
+                updateNetStatus();
+                fetchManifest().then(function () {
+                    manifestSyncing = false;
+                    updateNetStatus();
+                    if (!isActivated()) document.body.classList.add('locked');
+                });
+            }
+
             if (MANIFEST_URL) manifestSyncing = true;
             updateNetStatus();
             if (isActivated()) unlock();
             else document.body.classList.add('locked');
 
             // 后台同步在线清单：若已激活的卡密在新清单里被吊销/移出，则立即重新上锁
-            if (MANIFEST_URL) {
-                fetchManifest().then(function () {
-                    manifestSyncing = false;
-                    updateNetStatus();
-                    if (!isActivated()) document.body.classList.add('locked');
+            syncManifestOnline();
+
+            // 网络恢复后自动重同步并刷新状态：断网时首屏会停在「正在同步 / 未同步」，
+            // 过去只能重开应用才会刷新，这里监听 online 事件自动补一次。
+            // 用 window 上的固定包装转发，保证 boot 被多次调用时只注册一个监听、且始终调用最新逻辑。
+            window.__lmtOnlineSync = syncManifestOnline;
+            if (!window.__lmtOnlineHooked) {
+                window.__lmtOnlineHooked = true;
+                window.addEventListener('online', function () {
+                    if (typeof window.__lmtOnlineSync === 'function') window.__lmtOnlineSync();
                 });
             }
         }

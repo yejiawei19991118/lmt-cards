@@ -624,6 +624,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 「对照线上清单」的结果缓存：key = 归一化机器码 → 'up'（已上传）/ 'notup'（未上传）/ 'revoked'（已吊销）。
     // 为 null 表示尚未对照过，此时不显示状态徽标。
     var onlineStatus = null;
+    // 是否已执行过一次「对照在线清单」：网络恢复后只对用过该功能的用户自动重查，避免无谓请求。
+    var onlineCheckAttempted = false;
 
     // 依据「当前台账 + 吊销名单」组装在线清单对象（白名单 + 吊销名单 + 日期 + 签名）。
     // 与 buildManifest 拆开的原因：上传前需要先拿到本地对象、与远端合并后再重新签名。
@@ -1003,6 +1005,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (tip) tip.textContent = '未配置 MANIFEST_URL，无法对照。';
             return;
         }
+        onlineCheckAttempted = true;
         flashButton(b, '查询中…');
         if (tip) tip.textContent = '正在拉取在线清单…';
         fetchOnlineManifest().then(function (data) {
@@ -1038,6 +1041,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (tip) tip.textContent = '无法连接在线清单，请稍后重试。';
         });
     }
+
+    // 网络恢复后自动重查在线清单：断网时「对照」会停在「无法连接」，
+    // 过去只能手动重试，这里监听 online 事件自动补查一次。
+    // 只对已用过「对照」的用户生效，避免从不用该功能的人产生无谓请求。
+    window.addEventListener('online', function () {
+        if (onlineCheckAttempted) runOnlineCheck();
+    });
 
     // ---------- 上传到 GitHub（细粒度 PAT，令牌仅存本机） ----------
     // 目标仓库/分支/路径直接从 MANIFEST_URL 解析，无需额外配置。
