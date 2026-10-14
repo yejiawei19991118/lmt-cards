@@ -3,6 +3,10 @@
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File tests/run.ps1
 #   powershell -ExecutionPolicy Bypass -File tests/run.ps1 -Chrome "C:\path\to\msedge.exe" -TimeoutMs 60000
+#   # 同一套用例改跑安卓 assets 副本（相对 tests/ 目录解析）：
+#   powershell -ExecutionPolicy Bypass -File tests/run.ps1 `
+#       -LayoutTarget  ../../android/lmt-layout/src/main/assets/index.html `
+#       -CardgenTarget ../../android/lmt-cardgen/src/main/assets/index.html
 #
 # 原理：用 --dump-dom 抓取 tests/harness.html 跑完全部用例后的最终 DOM，
 #       从 <title> 读 pass/fail 与计数，从 <pre id="report"> 打印逐条明细。
@@ -16,6 +20,9 @@
 param(
     [string]$Chrome = '',
     [int]$TimeoutMs = 60000,
+    # 不指定则跑 docs/ 下的 PWA 副本；指定则跑对应副本，路径相对 tests/ 目录解析
+    [string]$LayoutTarget = '',
+    [string]$CardgenTarget = '',
     [switch]$KeepProfile,
     [switch]$ShowBrowserStderr
 )
@@ -68,6 +75,13 @@ New-Item -ItemType Directory -Path $profile -Force | Out-Null
 
 # 统一拼成 file:/// 三斜杠形态：Windows 的 C:/... 与 Linux 的 /home/... 都适用
 $url = 'file:///' + ($harness -replace '\\', '/' -replace '^/', '')
+
+# 目标副本通过查询参数交给 harness.html，由它设置两个 iframe 的入口；
+# 不传即跑 docs/ 下的 PWA 副本，传了就改跑安卓 assets 副本（路径相对 tests/ 目录）。
+$query = @()
+if ($LayoutTarget) { $query += 'layout=' + [Uri]::EscapeDataString($LayoutTarget) }
+if ($CardgenTarget) { $query += 'cardgen=' + [Uri]::EscapeDataString($CardgenTarget) }
+if ($query.Count -gt 0) { $url = $url + '?' + ($query -join '&') }
 
 # 注意：Arguments 是交给 Windows 解析的原始字符串，含空格的值必须自带引号，
 # 否则 `MAP * ~NOTFOUND` 会被拆成多个位置参数，Chrome 报 "Multiple targets are not supported in headless mode."

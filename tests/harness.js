@@ -1,5 +1,11 @@
-/* LMT PWA 交互回归测试（零依赖，浏览器内运行）
- * 入口：tests/harness.html    本地执行：tests/run.ps1    CI：.github/workflows/web-check.yml
+/* LMT PWA / 安卓外壳 交互回归测试（零依赖，浏览器内运行）
+ * 入口：tests/harness.html    本地执行：tests/run.ps1    CI：web-check.yml + lmt-android 的 sync-check.yml
+ *
+ * 两端对称：同一套用例对「PWA 副本」与「安卓 assets 副本」各跑一遍（由 harness.html 的 ?layout=&cardgen= 切换）。
+ * 两份的共享核心由 tools/web-sync.ps1 -Check 守卫逐字一致；@shell: 标记包住的两端外壳差异不在那层保障里，
+ * 因此这里要分别实测：外壳专属路径要么执行到（注入假原生桥，见 installFakeSaver），要么显式标成跳过并写明原因。
+ * 已知无法在 file:// 无头环境覆盖的外壳：PWA 的 Service Worker 注册（@shell:pwa-sw）——file:// 下不可用，
+ * 它由 web-check.yml 的 sw-hash 作业 + web-sync.ps1 -Bump 的 @index-hash 机制守卫。
  *
  * 运行环境要求（两个开关缺一不可）：
  *   --allow-file-access-from-files   让父页可以访问 iframe 的内部状态（file:// 各页默认互相隔离）
@@ -17,6 +23,8 @@
   var CASES = [];
   var results = [];
   var pageErrors = [];
+  // 两个应用各自收到的「假原生落盘桥」调用，由 installFakeSaver 填充（见下）
+  var saverCalls = { layout: [], cardgen: [] };
 
   // ---------- 断言 / 等待 ----------
   function fail(msg) { throw new Error(msg); }
@@ -45,6 +53,10 @@
     }
   }
   function test(name, fn) { CASES.push({ name: name, fn: fn }); }
+
+  // 跳过：专供两端外壳差异明确的用例。不计入失败，但报告里必须写明原因，
+  // 免得「本端没有这条路径、所以没跑」被误读成「本端也验过了」。
+  function skip(reason) { var e = new Error(reason); e.__skip = true; throw e; }
 
   // ---------- DOM 小工具 ----------
   function q(doc, sel) { var el = doc.querySelector(sel); assert(el, '找不到元素：' + sel); return el; }
@@ -138,6 +150,32 @@
       }
     });
   }
+  // ---------- 安卓外壳的原生落盘桥 ----------
+  // 安卓外壳通过 window.AndroidSaver.save(name, mime, base64) 把导出结果写进系统「下载」目录（见 MainActivity），
+  // 这段代码被 @shell:android-save / image-export / template 三段包住，是安卓壳独有的。
+  // 桌面无头环境没有这个桥，那几段就会静默走回 <a download> 回退分支——两端「碰巧都通过」，
+  // 真实的安卓落盘路径其实一次都没被执行过。这里注入一个只记录调用的假桥，让安卓壳的分支真的跑起来。
+  // PWA 外壳的源码里根本没有 AndroidSaver 这个引用（该调用只存在于 @shell 段内），注入后不会有任何调用；
+  // 用例据此把「本端没有这条外壳路径」显式标成跳过，而不是让它假通过。
+  function installFakeSaver(f, key) {
+    var win;
+    try { win = f.contentWindow; } catch (e) { return; }
+    if (!win) return;
+    try {
+      win.AndroidSaver = {
+        save: function (name, mime, base64) {
+          saverCalls[key].push({ name: String(name), mime: String(mime), base64: String(base64) });
+          return true; // 与原生实现一致：成功返回 true，失败返回 false
+        }
+      };
+    } catch (e) { /* 跨源受限时保持浏览器原行为 */ }
+  }
+  // 页面源码里是否引用原生桥：用来区分「安卓外壳确实有这条路径」与「PWA 外壳天生没有」
+  function hasSaverRef(win) {
+    try { return String(win.document.documentElement.outerHTML).indexOf('AndroidSaver') >= 0; }
+    catch (e) { return false; }
+  }
+
   function watchErrors(win, tag) {
     win.addEventListener('error', function (e) {
       pageErrors.push(tag + ' error: ' + ((e && e.message) || 'unknown'));
@@ -286,8 +324,36 @@
       assertEq(text(btn), '导出中…', '点击导出应立刻变为「导出中…」');
       assert(btn.disabled, '导出过程中按钮应禁用，避免重入');
       await until(function () { return text(btn) === '导出为图片' && !btn.disabled; }, 30000, '导出收尾');
-      assertEq(text(msg), '', '导出不应报错，实际：' + text(msg));
+      // 两端的成功反馈本就不同（PWA 走 <a download> 后不留提示；安卓走原生落盘会写「已保存到相册：…」），
+      // 这层差异由下一条「外壳」用例负责断言，这里只保证「没有报错」。
+      assert(!/失败/.test(text(msg)), '导出不应报错，实际：' + text(msg));
       assert(hasClass(q(doc, '#safe-zone'), 'active'), '导出结束后安全区辅助线应恢复到勾选状态');
+    });
+
+    test('layout/外壳：导出落盘 —— 安卓走原生桥，PWA 走文档化回退', async function () {
+      var btn = q(doc, '#export-btn');
+      var msg = q(doc, '#export-msg');
+      var calls = saverCalls.layout;
+      var before = calls.length;
+      await until(function () { return !btn.disabled; }, 3000, '导出按钮可用');
+      btn.click();
+      await until(function () { return text(btn) === '导出为图片' && !btn.disabled; }, 30000, '导出收尾');
+
+      if (calls.length === before) {
+        // 没有调用原生桥：只允许出现在「PWA 外壳」这一侧，且必须能证明源码里确实没有这条路径，
+        // 而不是安卓壳没能走到桥就悄悄回退（那种情况必须判失败）。
+        assert(!hasSaverRef(L),
+          '没有调用原生桥，页面源码里也不应出现 AndroidSaver：两端外壳差异必须由 @shell 标记明确表达');
+        assert(!/失败/.test(text(msg)), '回退分支也不应报错，实际：' + text(msg));
+        skip('PWA 外壳没有 AndroidSaver 桥（@shell:android-save / image-export 在 PWA 里不存在），'
+          + '导出走 <a download> + 手动保存回退；安卓壳对应路径由「安卓副本」那次运行覆盖');
+      }
+
+      var call = calls[calls.length - 1];
+      assertMatch(call.name, /^排版图_\d+\.png$/, '原生落盘文件名应带时间戳');
+      assertEq(call.mime, 'image/png', '原生落盘 MIME 类型');
+      assertMatch(call.base64, /^iVBORw0KGgo/, '原生落盘内容应是 PNG 的 base64（不能是空串或乱码）');
+      assertMatch(text(msg), /^已保存到相册：/, '安卓壳应提示「已保存到相册」，实际：' + text(msg));
     });
 
     test('layout/文案超长时禁用导出并提示，清空后恢复', async function () {
@@ -545,6 +611,55 @@
       assert(doc.querySelector('#out .empty'), '清空后应显示占位');
     });
 
+    test('cardgen/外壳：导出台账 —— 安卓走原生桥，PWA 走文档化回退', async function () {
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三');
+      q(doc, '#gen-btn').click();
+      var b = q(doc, '#export-btn');
+      var calls = saverCalls.cardgen;
+      var before = calls.length;
+      b.click();
+
+      if (calls.length === before) {
+        assert(!hasSaverRef(C),
+          '没有调用原生桥，页面源码里也不应出现 AndroidSaver：两端外壳差异必须由 @shell 标记明确表达');
+        assert(/已导出|请手动复制/.test(text(b)), '回退分支应给出下载/手动保存反馈，实际：' + text(b));
+        closeLayers(doc);
+        skip('PWA 外壳没有 AndroidSaver 桥（@shell:android-save / export 在 PWA 里不存在），'
+          + '导出台账走 <a download> 回退；安卓壳对应路径由「安卓副本」那次运行覆盖');
+      }
+
+      var call = calls[calls.length - 1];
+      assertMatch(call.name, /^卡密台账_\d{8}\.csv$/, '原生落盘文件名');
+      assertEq(call.mime, 'text/csv', '原生落盘 MIME 类型');
+      // 用应用自己的 base64ToUtf8 解回来，顺带证明桥这头的编码契约（UTF-8）没被写错
+      var csv = g().base64ToUtf8(call.base64);
+      assert(/^\uFEFF机器码,卡密,备注/.test(csv), '原生落盘内容应是带 BOM 与表头的台账 CSV，实际开头：' + JSON.stringify(csv.slice(0, 20)));
+      assert(/ABCD-EFGH-JKMN-PQRS/.test(csv), '原生落盘内容应包含台账里的机器码');
+      assertEq(text(b), '已保存', '安卓壳应提示「已保存」，实际：' + text(b));
+    });
+
+    test('cardgen/外壳：下载模板 —— 安卓走原生桥，PWA 走文档化回退', async function () {
+      var b = q(doc, '#template-btn');
+      var calls = saverCalls.cardgen;
+      var before = calls.length;
+      b.click();
+
+      if (calls.length === before) {
+        assert(!hasSaverRef(C),
+          '没有调用原生桥，页面源码里也不应出现 AndroidSaver：@shell:template 只在安卓壳里，PWA 侧必须是干净的回退');
+        assert(/已下载|请手动复制/.test(text(b)), '回退分支应给出下载/手动保存反馈，实际：' + text(b));
+        closeLayers(doc);
+        skip('PWA 外壳没有模板原生落盘（@shell:template 只存在于安卓壳），模板走 <a download> 回退；'
+          + '安卓壳对应路径由「安卓副本」那次运行覆盖');
+      }
+
+      var call = calls[calls.length - 1];
+      assertEq(call.name, '卡密导入模板.csv', '原生落盘文件名');
+      assertEq(call.mime, 'text/csv', '原生落盘 MIME 类型');
+      assert(/^\uFEFF机器码,卡密,备注/.test(g().base64ToUtf8(call.base64)), '原生落盘内容应是带 BOM 与表头的模板 CSV');
+      assertEq(text(b), '已保存', '安卓壳应提示「已保存」，实际：' + text(b));
+    });
+
     test('cardgen/对照线上清单：点击即反馈并收敛到终态', async function () {
       var btn = q(doc, '#online-check-btn');
       var tip = q(doc, '#online-tip');
@@ -678,6 +793,10 @@
     var lf = await frameReady('frame-layout');
     var cf = await frameReady('frame-cardgen');
     var L = lf.contentWindow, C = cf.contentWindow;
+    // 两端对称：同一个「假原生落盘桥」注入两个 iframe。只有安卓外壳的代码会去读它，
+    // 于是安卓壳独有的落盘分支在执行层面真的被跑到，PWA 侧则被显式标注为跳过。
+    installFakeSaver(lf, 'layout');
+    installFakeSaver(cf, 'cardgen');
     watchErrors(L, 'layout');
     watchErrors(C, 'cardgen');
 
@@ -698,22 +817,33 @@
         await c.fn();
         results.push({ name: c.name, ok: true });
       } catch (e) {
-        results.push({ name: c.name, ok: false, error: (e && e.message) || String(e) });
+        var why = (e && e.message) || String(e);
+        if (e && e.__skip) results.push({ name: c.name, ok: true, skipped: true, note: why });
+        else results.push({ name: c.name, ok: false, error: why });
       }
     }
   }
 
   function render() {
     var failed = results.filter(function (r) { return !r.ok; });
+    var skipped = results.filter(function (r) { return r.skipped; });
+    var entry = window.__entry || {};
     var lines = [];
+    // 报告头写明本次实际跑的是哪一份副本：同一套用例会分别对 PWA 与安卓 assets 各跑一遍
+    if (entry.layout) lines.push('入口 layout ：' + entry.layout);
+    if (entry.cardgen) lines.push('入口 cardgen：' + entry.cardgen);
+    lines.push('');
     results.forEach(function (r) {
-      lines.push((r.ok ? '[PASS] ' : '[FAIL] ') + r.name);
+      lines.push((r.skipped ? '[SKIP] ' : (r.ok ? '[PASS] ' : '[FAIL] ')) + r.name);
+      if (r.skipped) lines.push('       → 跳过原因：' + r.note);
       if (!r.ok) lines.push('       → ' + String(r.error).split('\n').join('\n       '));
     });
     lines.push('');
-    lines.push('合计 ' + results.length + ' 项，失败 ' + failed.length + ' 项。');
+    lines.push('合计 ' + results.length + ' 项，通过 ' + (results.length - failed.length - skipped.length)
+      + ' 项，跳过 ' + skipped.length + ' 项，失败 ' + failed.length + ' 项。');
     document.getElementById('report').textContent = lines.join('\n');
-    document.title = 'LMTTEST ' + (failed.length ? 'fail' : 'pass') + ' ' + (results.length - failed.length) + '/' + results.length;
+    document.title = 'LMTTEST ' + (failed.length ? 'fail' : 'pass') + ' ' + (results.length - failed.length) + '/' + results.length
+      + (skipped.length ? '（跳过 ' + skipped.length + '）' : '');
     teardown();
   }
 

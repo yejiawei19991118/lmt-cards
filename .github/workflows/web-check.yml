@@ -1,18 +1,34 @@
 name: web-check
 
-# CI 侧两道守卫：
+# CI 侧四道守卫：
 #   1. sw-hash   —— 校验每个 docs/<app>/sw.js 里的 @index-hash 是否与该 app 的 index.html 归一化内容一致。
 #                   不一致 = 改了 index.html 却忘了升 SW 缓存版本（用户会一直看到旧界面）。
 #   2. web-tests —— 用无头 Chromium 真实加载 tests/harness.html，把两个应用放进 iframe 里跑交互用例，
 #                   守住「点击无反应 / 反馈缺失 / 模板切换失效 / 导出台账往返损坏」这类回归。
+#   3. cross-repo-sync —— 把 PWA 与安卓当成一个整体验证：共享核心逐字比对 + 同一套用例改跑安卓 assets 副本。
+#   4. android-unit-tests —— 安卓更新模块的纯 JVM 单元测试（私有仓库里，只能在能检出它的一侧跑）。
+#
+# 本仓库只有 PWA 副本（docs/），所以 web-tests 跑的是 PWA 那一份，预期结果是「30 项全过、其中 3 项外壳用例显式跳过」。
+# 两端对称的另一半由本文件的 cross-repo-sync 作业承担：它用只读部署密钥把私有 android 仓库检出到同级 android/，
+# 于是 CI 里复刻出本地工作区的「android/ + lmt-cards/」布局，随后：
+#   · tools/web-sync.ps1 -Check                     双份源码的共享核心必须逐字一致（含改了共享核心却忘了改另一端）
+#   · tests/run.ps1 -LayoutTarget/-CardgenTarget    同一套用例改跑安卓 assets 副本（那 3 项外壳用例在这里会真的执行到原生桥）
+# 同步守卫放在本仓库而不是 android 仓库：android 是私有仓库，跨仓库检出只能由有部署密钥的一侧发起，反向还需要额外 PAT。
+#
 # 本地可用 tools/web-sync.ps1 -Bump 一键升版并写回 @index-hash；
-# 同时用 tools/web-sync.ps1 -Check 校验 PWA 与 Android 副本的共享核心是否一致（需本地工作区）；
-# 交互用例本地跑：pwsh -File tests/run.ps1（会自动探测 Edge / Chrome / Chromium）。
+# 交互用例本地跑：pwsh -File tests/run.ps1（会自动探测 Edge / Chrome / Chromium）：
+#   · 跑 PWA 副本（默认）
+#   · 跑安卓副本：-LayoutTarget ../../android/lmt-layout/src/main/assets/index.html
+#                 -CardgenTarget ../../android/lmt-cardgen/src/main/assets/index.html
 
 on:
   push:
     branches: [main]
   pull_request:
+  # 定时兜底：只在 android 私有仓库单边改共享核心（或改安卓外壳）时，本仓库不会有 push 事件，
+  # 只能靠每天一次的定时任务把这种「静默不同步」捞出来（另一个方向由 push 即时触发）。
+  schedule:
+    - cron: '23 2 * * *' # 每天 UTC 02:23（北京时间 10:23）
   workflow_dispatch:
 
 jobs:
@@ -53,7 +69,64 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 无头 Chromium 跑交互测试
+      - name: 无头 Chromium 跑交互测试（PWA 副本）
         # 运行器自带 google-chrome，也自带 pwsh；run.ps1 会按 CHROME_PATH → 常见安装路径 → PATH 依次探测。
         # 用例全部离线运行（--host-resolver-rules 强制断网），因此不依赖任何线上资源。
+        # 只有 PWA 副本可跑：安卓 assets 副本不在本仓库，由 cross-repo-sync 作业用同一套用例覆盖。
         run: pwsh -NoProfile -File tests/run.ps1
+
+  # 把两端当成一个整体验证：同一套用例换一副外壳再跑一遍，并逐字比对共享核心。
+  cross-repo-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出 lmt-cards（本仓库，清单与测试都在这里）
+        uses: actions/checkout@v4
+        with:
+          path: lmt-cards
+
+      - name: 检出 android（私有工程，只读部署密钥）
+        uses: actions/checkout@v4
+        with:
+          repository: yejiawei19991118/lmt-android
+          ssh-key: ${{ secrets.LMT_ANDROID_DEPLOY_KEY }}
+          path: android
+
+      - name: 双份源码共享核心必须逐字一致
+        # 脚本自 <工作区>/lmt-cards/tools/ 向上查找同时含 android/ 与 lmt-cards/ 的目录，
+        # 与上面两个 checkout 的 path 布局正好吻合（与 release.ps1 用的是同一套约定）。
+        run: pwsh -NoProfile -File lmt-cards/tools/web-sync.ps1 -Check
+
+      - name: 无头 Chromium 跑交互测试（安卓 assets 副本）
+        # 用同一套用例、只换 iframe 的入口，因此 @shell 标记包住的安卓外壳（原生落盘桥）也真的被跑到。
+        # 目标路径相对 tests/ 目录解析，与本地工作区完全一致。
+        working-directory: lmt-cards
+        run: >-
+          pwsh -NoProfile -File tests/run.ps1
+          -LayoutTarget ../../android/lmt-layout/src/main/assets/index.html
+          -CardgenTarget ../../android/lmt-cardgen/src/main/assets/index.html
+
+  # 安卓更新模块的纯 JVM 单元测试（两个应用模块共用 shared/ 源码，只在私有仓库里，故一并在这里跑）。
+  android-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出 android（私有工程，只读部署密钥）
+        uses: actions/checkout@v4
+        with:
+          repository: yejiawei19991118/lmt-android
+          ssh-key: ${{ secrets.LMT_ANDROID_DEPLOY_KEY }}
+          path: android
+
+      - name: 准备 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 单元测试
+        working-directory: android
+        # 不额外安装 Android SDK：release.yml 已在同一个 runner 镜像上成功跑过 assembleRelease，
+        # 说明镜像自带的 SDK 足以满足 compileSdk 34，这里沿用同一套环境即可。
+        run: |
+          set -euo pipefail
+          chmod +x gradlew # 仓库里 gradlew 无执行位；版本库中存的是 LF，Linux 下可直接运行（与 release.yml 一致）
+          ./gradlew test --no-daemon --console=plain
