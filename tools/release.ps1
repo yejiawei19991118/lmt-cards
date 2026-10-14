@@ -7,8 +7,11 @@
 #   powershell -ExecutionPolicy Bypass -File tools/release.ps1 -DryRun          # 只打印计划，不构建/不上传/不提交
 #
 # 说明：
-#   · 版本号集中在 android/version.properties 维护；脚本把参与发版的应用 versionCode +1，
-#     versionName 取 -Version（缺省则把当前版本号末位 +1）。
+#   · 版本号以仓库内 update.json 为准（App 端就是拿它与已装版本比较）：versionCode = 清单当前值 +1，
+#     versionName 取 -Version（缺省则把清单当前版本名末位 +1）。
+#     版本经 Gradle 属性注入构建，不回写 android/version.properties，CI 无需写私有仓库。
+#   · 同一脚本在 GitHub Actions（tag apk-v* 触发，见 .github/workflows/release.yml）与本机均可运行：
+#     本机工具链路径仅在存在时覆盖环境，构建命令按平台选 gradlew.bat / ./gradlew。
 #   · APK 作为 GitHub Release 资产上传，不写入 git 历史，避免仓库膨胀。
 #   · 更新清单 lmt-cards/update.json 提交到仓库，App 启动时通过 raw 主源 + jsDelivr 备源读取。
 
@@ -28,7 +31,7 @@ $GitHubRepo = 'yejiawei19991118/lmt-cards'
 $ApkMirrorDir = 'docs/apk'
 # Pages 站点根地址（source = main 分支 /docs 目录）。
 $PagesBase = 'https://yejiawei19991118.github.io/lmt-cards'
-# 本机工具链位置（不在系统 PATH 中，脚本内自行拼接）。
+# 本机工具链位置（不在系统 PATH 中）；CI 上这些路径不存在，git/gh 已在 PATH 里、JAVA_HOME 由 setup-java 提供。
 $JdkHome = 'C:\Users\Administrator\jdk\jdk-17.0.20.1+1'
 $GitDir = 'C:\Users\Administrator\tools\git\cmd'
 $GhDir = 'C:\Users\Administrator\tools\gh'
@@ -56,8 +59,11 @@ $repoDir = Join-Path $root 'lmt-cards'
 $verFile = Join-Path $androidDir 'version.properties'
 $updateFile = Join-Path $repoDir 'update.json'
 
-$env:JAVA_HOME = $JdkHome
-$env:Path = "$GhDir;$GitDir;" + $env:Path
+# 仅在本机路径存在时才覆盖环境：CI 上 git/gh 已在 PATH 中，JAVA_HOME 由 actions/setup-java 提供。
+if (Test-Path $JdkHome) { $env:JAVA_HOME = $JdkHome }
+foreach ($d in @($GhDir, $GitDir)) {
+    if (Test-Path $d) { $env:Path = "$d;" + $env:Path }
+}
 
 function Write-Step([string]$msg) { Write-Host "`n=== $msg" -ForegroundColor Cyan }
 function Write-Info([string]$msg) { Write-Host "    $msg" }
@@ -135,11 +141,26 @@ function Get-ApkPath([string]$app) {
     return (Join-Path $androidDir "$app\build\outputs\apk\release\$app-release.apk")
 }
 
-# ===== 1. 计算目标版本号 =====
-Write-Step "1/8 计算目标版本号"
-$curName = Get-Ver ($App[0] + '.versionName')
+# ===== 1/7 计算目标版本号 =====
+Write-Step "1/7 计算目标版本号"
+# 版本以 update.json 为准：App 端就是拿清单里的 versionCode 与已装版本比较，故清单当前值 +1 必为单调递增。
+$curVersionName = ''
+$curCodes = @{}
+if (Test-Path $updateFile) {
+    try {
+        $oldManifest = [System.IO.File]::ReadAllText($updateFile) | ConvertFrom-Json
+        foreach ($a in $AllApps) {
+            $entry = $oldManifest.apps.$a
+            if ($null -ne $entry) { $curCodes[$a] = [int]$entry.versionCode }
+        }
+        $curVersionName = [string]$oldManifest.apps.($App[0]).versionName
+    } catch {
+        Write-Info "旧 update.json 解析失败，将回退到 android/version.properties"
+    }
+}
 if (-not $Version) {
-    $parts = $curName -split '\.'
+    if (-not $curVersionName) { $curVersionName = Get-Ver ($App[0] + '.versionName') }
+    $parts = $curVersionName -split '\.'
     $last = [int]$parts[$parts.Length - 1]
     $parts[$parts.Length - 1] = [string]($last + 1)
     $Version = ($parts -join '.')
@@ -147,53 +168,57 @@ if (-not $Version) {
 if (-not $Notes) { $Notes = "版本 $Version" }
 $newCodes = @{}
 foreach ($a in $App) {
-    $newCodes[$a] = [int](Get-Ver ($a + '.versionCode')) + 1
-    Write-Info "$a ：$curName（code $(Get-Ver ($a + '.versionCode'))） → $Version（code $($newCodes[$a])）"
+    $baseCode = $curCodes[$a]
+    if ($null -eq $baseCode) { $baseCode = [int](Get-Ver ($a + '.versionCode')) }
+    $newCodes[$a] = [int]$baseCode + 1
+    Write-Info "$a ：$curVersionName（code $baseCode） → $Version（code $($newCodes[$a])）"
 }
+# Gradle 的版本属性是全局的（-PlmtVersionCode 对所有模块生效），故各应用的新 versionCode 必须一致
+$distinctCodes = @($newCodes.Values | Sort-Object -Unique)
+if ($distinctCodes.Count -gt 1) {
+    $detail = ($newCodes.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '，'
+    throw "本次发版各应用的 versionCode 不一致（$detail）：Gradle 版本属性为全局，请把两个应用一起发版。"
+}
+$newCode = [int]$distinctCodes[0]
 $tag = "apk-v$Version"
 Write-Info "Release tag：$tag"
 
-# ===== 2. 写回 version.properties =====
-Write-Step "2/8 写入版本号"
-if ($DryRun) {
-    Write-Info "[DryRun] 跳过写回 $verFile"
-} else {
-    $newText = $verText
-    foreach ($a in $App) {
-        $newText = [regex]::Replace($newText, "(?m)^$([regex]::Escape($a))\.versionCode=.*$", "${a}.versionCode=$($newCodes[$a])")
-        $newText = [regex]::Replace($newText, "(?m)^$([regex]::Escape($a))\.versionName=.*$", "${a}.versionName=$Version")
-    }
-    [System.IO.File]::WriteAllText($verFile, $newText, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Info "已更新 $verFile"
-}
-
-# ===== 3. 双份源码升版（sw.js 的 CACHE 版本 + @index-hash） =====
-Write-Step "3/8 双份源码一致性 / SW 升版"
+# ===== 2/7 双份源码升版（sw.js 的 CACHE 版本 + @index-hash） =====
+Write-Step "2/7 双份源码一致性 / SW 升版"
 if ($DryRun) {
     Write-Info "[DryRun] 跳过 tools/web-sync.ps1 -Bump"
 } else {
     $webSync = Join-Path $PSScriptRoot 'web-sync.ps1'
-    Invoke-Native { & powershell -NoProfile -ExecutionPolicy Bypass -File $webSync -Bump } "web-sync.ps1 -Bump 执行失败"
+    # Windows 用自带的 powershell 5.1；CI（Linux）只有 pwsh，且不支持 -ExecutionPolicy
+    if ($env:OS -eq 'Windows_NT') {
+        $psArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $webSync, '-Bump')
+        Invoke-Native { & powershell @psArgs } "web-sync.ps1 -Bump 执行失败"
+    } else {
+        $psArgs = @('-NoProfile', '-File', $webSync, '-Bump')
+        Invoke-Native { & pwsh @psArgs } "web-sync.ps1 -Bump 执行失败"
+    }
 }
 
-# ===== 4. 构建 release APK =====
-Write-Step "4/8 构建 release APK"
+# ===== 3/7 构建 release APK =====
+Write-Step "3/7 构建 release APK"
 $gradleTasks = @()
 foreach ($a in $App) { $gradleTasks += ":$a`:assembleRelease" }
 if ($DryRun) {
-    Write-Info "[DryRun] 跳过 gradlew.bat $($gradleTasks -join ' ')"
+    Write-Info "[DryRun] 跳过 gradle $($gradleTasks -join ' ') -PlmtVersionCode=$newCode -PlmtVersionName=$Version"
 } else {
+    # 本机是 Windows 批处理；CI（Linux）用无扩展名的 gradlew，且需要可执行位
+    if ($env:OS -eq 'Windows_NT') { $gradlew = Join-Path $androidDir 'gradlew.bat' } else { $gradlew = Join-Path $androidDir 'gradlew' }
     Push-Location $androidDir
     try {
-        # 用数组展开传参：Gradle 需要每个任务各占一个参数
-        Invoke-Native { & .\gradlew.bat @gradleTasks --console=plain } "Gradle 构建失败"
+        # 用数组展开传参：Gradle 需要每个任务各占一个参数；版本按本次发版指定，不回写 version.properties
+        Invoke-Native { & $gradlew @gradleTasks --console=plain "-PlmtVersionCode=$newCode" "-PlmtVersionName=$Version" } "Gradle 构建失败"
     } finally {
         Pop-Location
     }
 }
 
-# ===== 5. 计算 APK 摘要 =====
-Write-Step "5/8 计算 APK SHA-256"
+# ===== 4/7 计算 APK 摘要 =====
+Write-Step "4/7 计算 APK SHA-256"
 $entries = @{}
 foreach ($a in $App) {
     $apk = Get-ApkPath $a
@@ -211,8 +236,8 @@ foreach ($a in $App) {
     }
 }
 
-# ===== 6. 生成 update.json 与 APK 镜像 =====
-Write-Step "6/8 生成 update.json 与 APK 镜像"
+# ===== 5/7 生成 update.json 与 APK 镜像 =====
+Write-Step "5/7 生成 update.json 与 APK 镜像"
 $apps = [ordered]@{}
 # 未被本次发版覆盖的应用，保留清单里的原有条目
 if (Test-Path $updateFile) {
@@ -284,8 +309,8 @@ if ($DryRun) {
     }
 }
 
-# ===== 7. 发布 GitHub Release =====
-Write-Step "7/8 发布 GitHub Release（$tag）"
+# ===== 6/7 发布 GitHub Release =====
+Write-Step "6/7 发布 GitHub Release（$tag）"
 if ($DryRun) {
     Write-Info "[DryRun] 跳过 gh release create / upload"
 } else {
@@ -310,8 +335,8 @@ if ($DryRun) {
     Write-Info "https://github.com/$GitHubRepo/releases/tag/$tag"
 }
 
-# ===== 8. 提交并推送 =====
-Write-Step "8/8 提交并推送"
+# ===== 7/7 提交并推送 =====
+Write-Step "7/7 提交并推送"
 if ($DryRun) {
     Write-Info "[DryRun] 跳过 git add/commit/pull/push"
     Write-Host "`nDryRun 完成：未改动任何文件、未构建、未上传、未提交。" -ForegroundColor Yellow
@@ -320,6 +345,13 @@ if ($DryRun) {
 
 Push-Location $repoDir
 try {
+    # CI 的 checkout 不带提交身份，缺失时补上；本机已有全局配置则保持原样
+    if (-not (Get-NativeOutput { & git config user.email })) {
+        Invoke-Native { & git config user.email 'lmt-release-bot@users.noreply.github.com' } "git config user.email 失败"
+    }
+    if (-not (Get-NativeOutput { & git config user.name })) {
+        Invoke-Native { & git config user.name 'lmt-release-bot' } "git config user.name 失败"
+    }
     Invoke-Native { & git add update.json } "git add 失败"
     # 若 web-sync 顺手升了 SW 版本号，一并提交
     $docsDirty = Get-NativeOutput { & git status --porcelain -- docs }

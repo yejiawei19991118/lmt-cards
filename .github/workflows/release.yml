@@ -1,0 +1,63 @@
+name: release-apk
+
+# 打 tag（apk-v*）即触发：构建两个应用的 release APK → 发布 GitHub Release → 更新 update.json 与 Pages 镜像 → 推送 main。
+# 构建只在 CI 上进行，本机不再保留工程文件，也不需要本地签名私钥。
+on:
+  push:
+    tags:
+      - 'apk-v*'
+
+# 需要写权限：创建 Release、上传资产、把 update.json 推回仓库。
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # 两个 checkout 必须同级：tools/release.ps1 与 tools/web-sync.ps1 靠「同级 android/ + lmt-cards/」定位工作区根目录。
+      - name: 检出 lmt-cards（清单与发布脚本）
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: lmt-cards
+          fetch-depth: 0
+
+      # Android 工程在私有仓库：用只读部署密钥检出，CI 不需要、也不授予写权限。
+      - name: 检出 android（私有工程，只读部署密钥）
+        uses: actions/checkout@v4
+        with:
+          repository: yejiawei19991118/lmt-android
+          ssh-key: ${{ secrets.LMT_ANDROID_DEPLOY_KEY }}
+          path: android
+
+      - name: 准备 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 还原 release 签名
+        env:
+          KEYSTORE_BASE64: ${{ secrets.LMT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.LMT_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.LMT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 -d > android/lmt-release.jks
+          {
+            echo "storeFile=lmt-release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=lmt"
+            echo "keyPassword=$KEY_PASSWORD"
+            echo "storeType=PKCS12"
+          } > android/keystore.properties
+
+      - name: 构建并发布
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          VERSION="${GITHUB_REF_NAME#apk-v}"
+          pwsh lmt-cards/tools/release.ps1 -Version "$VERSION" -Notes "GitHub Actions 自动发布（$GITHUB_REF_NAME）"
