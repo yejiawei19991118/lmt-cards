@@ -114,11 +114,28 @@
   }
 
   // ---------- 前置：载入 iframe 并旁听未捕获异常 ----------
+  // lmt-layout 用 requestAnimationFrame 合并同一帧内的多次重排（scheduleFit）。
+  // 无头浏览器里，完全移出视口的 iframe 的 rAF 会被节流甚至根本不触发，
+  // 于是「文案超长 → 禁用导出」这类真实的响应式行为会在 CI（新版 Chrome / Linux）上假失败。
+  // 这里只把调度方式换成等价的 16ms 定时回调：应用自身的合并与判定逻辑照旧原样执行。
+  function shimFrameAnimation(f) {
+    var win;
+    try { win = f.contentWindow; } catch (e) { return; }
+    if (!win) return;
+    try {
+      win.requestAnimationFrame = function (cb) {
+        return win.setTimeout(function () { cb(Date.now()); }, 16);
+      };
+      win.cancelAnimationFrame = function (id) { win.clearTimeout(id); };
+    } catch (e) { /* 跨源受限时保持浏览器原行为 */ }
+  }
   function frameReady(id) {
     return new Promise(function (resolve) {
       var f = document.getElementById(id);
-      f.addEventListener('load', function () { resolve(f); });
-      if (f.contentDocument && f.contentDocument.readyState === 'complete') { setTimeout(function () { resolve(f); }, 0); }
+      f.addEventListener('load', function () { shimFrameAnimation(f); resolve(f); });
+      if (f.contentDocument && f.contentDocument.readyState === 'complete') {
+        setTimeout(function () { shimFrameAnimation(f); resolve(f); }, 0);
+      }
     });
   }
   function watchErrors(win, tag) {
