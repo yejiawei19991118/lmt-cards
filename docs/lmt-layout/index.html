@@ -883,8 +883,11 @@
         var ID_KEY = 'lmt_install_id';
 
         // ---------- 基础工具 ----------
+        var _utf8Encoder = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
         function utf8Bytes(str) {
-            var bin = unescape(encodeURIComponent(String(str)));
+            str = String(str);
+            if (_utf8Encoder) return _utf8Encoder.encode(str);
+            var bin = unescape(encodeURIComponent(str));
             var out = new Uint8Array(bin.length);
             for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) & 0xff;
             return out;

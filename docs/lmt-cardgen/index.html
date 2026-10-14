@@ -282,8 +282,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     var ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
     // ---------- 与主程序完全一致的算法实现 ----------
+    var _utf8Encoder = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
     function utf8Bytes(str) {
-        var bin = unescape(encodeURIComponent(String(str)));
+        str = String(str);
+        if (_utf8Encoder) return _utf8Encoder.encode(str);
+        // file:// / 极旧 WebView 降级
+        var bin = unescape(encodeURIComponent(str));
         var out = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) & 0xff;
         return out;
@@ -1090,8 +1094,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     // base64 编解码（UTF-8 安全）：GitHub Contents API 的 content 要求 base64；
     // 清单含中文/换行，直接 btoa(str) 会因字符 >255 抛错，故先转 UTF-8 字节。
-    function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(String(str)))); }
-    function base64ToUtf8(b64) { return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, '')))); }
+    var _utf8Decoder = (typeof TextDecoder !== 'undefined') ? new TextDecoder() : null;
+    function utf8ToBase64(str) {
+        var bytes = utf8Bytes(str);
+        var bin = ''; for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin);
+    }
+    function base64ToUtf8(b64) {
+        var bin = atob(String(b64).replace(/\s/g, ''));
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        if (_utf8Decoder) return _utf8Decoder.decode(bytes);
+        return decodeURIComponent(escape(String.fromCharCode.apply(null, bytes)));
+    }
 
     // 上传前与远端清单合并：白名单取并集、吊销名单取并集（归一化去重后重新分组 + 重签名）。
     // 目的：本机没记录的卡密（例如另一台机器加的）不会被覆盖删除，避免误锁用户。
@@ -1196,6 +1211,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var local = buildManifestObj();
         var pending = null;
         var message = '';
+        var applyUploaded = function (obj) {
+            // 同步缓存，避免后续 buildManifest() 返回过期的本地版本覆盖掉已上传的合并结果
+            manifestObjCache.result = obj;
+            manifestObjCache.date = obj.updated;
+            // 不更新 manifestObjCache.mc/revoke：台账文本没变，签名日期已同步过
+            // (mergeWithRemote 只动白名单和吊销名单的并集，用户本机台账文本保持原样)
+        };
         return ghGetFile(target).then(function (remote) {
             pending = mergeWithRemote(local, remote);
             var text = JSON.stringify(pending, null, 2);
@@ -1206,7 +1228,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             message = '更新 cards.json：白名单 ' + pending.cards.length + ' 张 / 吊销 ' + pending.revoked.length + ' 张';
             setUploadTip('正在提交到 GitHub…');
             return ghPutFile(target, text, remote.sha, message).then(function (res) {
-                if (res.ok) { lastUploadedJson = text; manifestOut.value = text; return true; }
+                if (res.ok) { lastUploadedJson = text; manifestOut.value = text; applyUploaded(pending); return true; }
                 if (!res.conflict) throw new Error('提交失败（HTTP ' + res.status + '）');
                 // sha 过期（远端刚被改动）：重新读取并合并后重试一次
                 return ghGetFile(target).then(function (again) {
@@ -1216,6 +1238,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                         if (!r2.ok) throw new Error('提交失败（HTTP ' + r2.status + '）');
                         lastUploadedJson = text2;
                         manifestOut.value = text2;
+                        applyUploaded(pending);
                         return true;
                     });
                 });
