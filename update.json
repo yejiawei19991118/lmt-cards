@@ -2,20 +2,22 @@
   "updated": "2026-10-14",
   "apps": {
     "lmt-layout": {
-      "versionCode": 5,
-      "versionName": "1.4",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.4/lmt-layout-release.apk",
-      "sha256": "8360159f5453e0a77cf4fb6a1bfc1fc1ddf3a5b31539cc8e53f0638fec31f741",
-      "size": 102554,
-      "notes": "新增联网后自动刷新：重新联网即自动重查更新/重拉在线清单，断网启动后无需重启应用"
+      "versionCode": 6,
+      "versionName": "1.5",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.5/lmt-layout-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk"],
+      "sha256": "445557564811560ce773b6a8f8380d41576a7b38ec4dabfe39a9d104234d76cb",
+      "size": 103534,
+      "notes": "修复更新链路：新增安装包镜像（jsDelivr / GitHub Pages），主链不可达时自动探测切换线路；发版自动刷新 jsDelivr 缓存"
     },
     "lmt-cardgen": {
-      "versionCode": 5,
-      "versionName": "1.4",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.4/lmt-cardgen-release.apk",
-      "sha256": "f29012535e8e6da8583915c2398907b82b27059e701bdfc5978984573a62f574",
-      "size": 47847,
-      "notes": "新增联网后自动刷新：重新联网即自动重查更新/重拉在线清单，断网启动后无需重启应用"
+      "versionCode": 6,
+      "versionName": "1.5",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.5/lmt-cardgen-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk"],
+      "sha256": "5dcd3ea14eb7fe16ba5d99ac79b1e4b7bd45f9e57f66b6f8b86ed11181b43032",
+      "size": 48835,
+      "notes": "修复更新链路：新增安装包镜像（jsDelivr / GitHub Pages），主链不可达时自动探测切换线路；发版自动刷新 jsDelivr 缓存"
     }
   }
 }
