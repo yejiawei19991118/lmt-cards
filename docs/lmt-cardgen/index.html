@@ -137,6 +137,28 @@
     }
     .auth-gate .card { width: 100%; max-width: 360px; }
     .auth-err { font-size: 12.5px; color: #b42318; margin: 10px 0 0; min-height: 16px; }
+
+    /* 键盘可达性：按钮与复选标签在 Tab 聚焦时给出统一外圈（鼠标点击不触发） */
+    button:focus-visible, .inline-check:focus-within { outline: 2px solid rgba(47, 109, 246, .5); outline-offset: 2px; }
+    /* 结果行：hover / 键盘聚焦时给一层浅底，明确「这一行可以操作」 */
+    .item { transition: background .15s, border-color .15s; }
+    .item:hover, .item:focus-within { background: #f4f7fc; border-color: #dbe4f0; }
+    /* 弹层打开时锁定背景滚动，避免移动端手指在浮层上滑动时背景跟着一起滚 */
+    body.modal-open { overflow: hidden; }
+    /* 弹层入场：轻微上浮 + 淡入，给出「这是新出现的一层」的反馈 */
+    @keyframes lmt-pop-in {
+        from { opacity: 0; transform: translateY(8px) scale(.98); }
+        to { opacity: 1; transform: none; }
+    }
+    .manual-copy-card, .auth-gate .card { animation: lmt-pop-in .18s ease-out both; }
+    /* 无障碍：系统开启「减少动态效果」时，去掉所有过渡与动画（保留状态变化，仅取消动效） */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            transition-duration: .001ms !important;
+            animation-duration: .001ms !important;
+            animation-iteration-count: 1 !important;
+        }
+    }
 </style>
 </head>
 <body>
@@ -517,16 +539,30 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return out;
     }
 
-    // 按机器码去重（保留首次出现的顺序；后出现的有备注而先前没有时补上备注）
-    function uniqueEntries(text) {
-        var seen = {}, order = [];
-        parseEntries(text).forEach(function (e) {
+    // 台账单次解析缓存：同一份文本只解析一遍，供「台账统计」与「生成在线清单 / 结果列表」共用。
+    // 此前统计（splitRows）与清单（uniqueEntries）各解析一次，长台账下这是主要的 CPU 开销，现已合并为一次。
+    var ledgerCache = { text: null, data: null };
+    function analyzeLedger(text) {
+        if (ledgerCache.text === text && ledgerCache.data) return ledgerCache.data;
+        var seen = {}, entries = [], lines = 0, ok = 0;
+        splitRows(String(text == null ? '' : text)).forEach(function (line) {
+            if (!line.trim()) return;
+            lines++;
+            var e = parseEntry(line);
+            if (!e) return;
+            ok++;
             var prev = seen[e.key];
-            if (prev) { if (!prev.note && e.note) prev.note = e.note; return; }
-            seen[e.key] = e; order.push(e);
+            if (prev) { if (!prev.note && e.note) prev.note = e.note; }
+            else { seen[e.key] = e; entries.push(e); }
         });
-        return order;
+        var data = { entries: entries, lines: lines, ok: ok };
+        ledgerCache.text = text;
+        ledgerCache.data = data;
+        return data;
     }
+
+    // 按机器码去重（保留首次出现的顺序；后出现的有备注而先前没有时补上备注）
+    function uniqueEntries(text) { return analyzeLedger(text).entries; }
 
     function entryLine(e) { return e.note ? (e.mc + ',' + csvCell(e.note)) : e.mc; }
 
@@ -697,10 +733,26 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         }
         onDone(false);
     }
+    // ---------- 弹层通用能力 ----------
+    // 背景滚动锁定按引用计数：同时存在多层弹层时，最后一层关闭才恢复滚动。
+    var modalDepth = 0;
+    function lockScroll() { if (++modalDepth === 1) document.body.classList.add('modal-open'); }
+    function unlockScroll() { if (modalDepth > 0 && --modalDepth === 0) document.body.classList.remove('modal-open'); }
+    // 注册 ESC 关闭；返回解绑函数，供弹层销毁时调用，避免监听器泄漏。
+    function onEsc(handler) {
+        var fn = function (e) {
+            if (e.key === 'Escape' || e.keyCode === 27) { e.preventDefault(); handler(); }
+        };
+        document.addEventListener('keydown', fn);
+        return function () { document.removeEventListener('keydown', fn); };
+    }
+
     // 自动复制彻底不可用时的兜底出口（安卓 WebView 常见）
     function showManualCopy(text, title) {
         var mask = document.createElement('div');
         mask.className = 'manual-copy-mask';
+        mask.setAttribute('role', 'dialog');
+        mask.setAttribute('aria-modal', 'true');
         var card = document.createElement('div');
         card.className = 'manual-copy-card';
         var h = document.createElement('h3');
@@ -712,10 +764,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         ta.value = String(text == null ? '' : text);
         var actions = document.createElement('div');
         actions.className = 'manual-copy-actions';
+        // 统一出口：解绑 ESC、恢复背景滚动、移除浮层；重复调用也安全
+        var disposed = false, offEsc = null;
+        function dispose() {
+            if (disposed) return;
+            disposed = true;
+            if (offEsc) offEsc();
+            unlockScroll();
+            if (mask.parentNode) mask.parentNode.removeChild(mask);
+        }
         var close = document.createElement('button');
         close.type = 'button';
         close.textContent = '关闭';
-        close.addEventListener('click', function () { document.body.removeChild(mask); });
+        close.addEventListener('click', dispose);
         // 触屏上手动框选 24 位等宽卡密很费劲：给一个「全选」按钮，
         // 点完直接调起系统菜单里的复制即可
         var selectAll = document.createElement('button');
@@ -731,8 +792,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         card.appendChild(ta);
         card.appendChild(actions);
         mask.appendChild(card);
-        mask.addEventListener('click', function (e) { if (e.target === mask) document.body.removeChild(mask); });
+        mask.addEventListener('click', function (e) { if (e.target === mask) dispose(); });
         document.body.appendChild(mask);
+        lockScroll();
+        offEsc = onEsc(dispose);
         try { ta.focus(); ta.select(); } catch (e) {} // 桌面端可直接 Ctrl/Cmd+C
     }
     // 统一的「复制 + 按钮反馈 + 失败兜底」：任何环境都必定有可见反馈
@@ -746,21 +809,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     function updateLedgerTip() {
         if (!ledgerTip) return;
-        // 单次遍历统计：整份台账只解析一遍（splitRows + parseEntry）。
-        // 本函数只在防抖落盘（saveLedger）时被调用，不在每次 input 的同步路径上执行，
-        // 因此长台账输入时不会阻塞按键。用 splitRows 而非按 \n 切：备注里含换行的行要算作同一行，
-        // 否则统计会虚高并误报「无法识别」。
-        var seen = {}, users = 0, ok = 0, lines = 0;
-        splitRows(mcList.value).forEach(function (line) {
-            if (!line.trim()) return;
-            lines++;
-            var e = parseEntry(line);
-            if (!e) return;
-            ok++;
-            if (!seen[e.key]) { seen[e.key] = true; users++; }
-        });
-        var bad = lines - ok;
-        ledgerTip.textContent = '台账共 ' + users + ' 位用户' +
+        // 复用 analyzeLedger 的解析结果：与「生成在线清单」共用同一份缓存，
+        // 整份台账每次变化只解析一次（用 splitRows 而非按 \n 切：备注里含换行的行要算作同一行，
+        // 否则统计会虚高并误报「无法识别」）。
+        var s = analyzeLedger(mcList.value);
+        var bad = s.lines - s.ok;
+        ledgerTip.textContent = '台账共 ' + s.entries.length + ' 位用户' +
             (bad > 0 ? '（' + bad + ' 行无法识别，将被忽略）' : '') + ' · 已自动保存到本浏览器';
     }
 

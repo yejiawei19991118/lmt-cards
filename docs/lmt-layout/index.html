@@ -111,7 +111,15 @@
             background-position: right 12px center;
             background-size: 12px 12px;
         }
-        .file-upload { display: none; }
+        /* 隐藏文件输入但保留键盘可达性：display:none 会把它移出 Tab 序列，
+           键盘用户将永远无法触达上传入口；改用「视觉隐藏」，按 Tab 仍可聚焦、回车即可打开选择框。 */
+        .file-upload {
+            position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+            overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0; white-space: nowrap;
+        }
+        /* 文件输入获得焦点时点亮对应的上传按钮（输入是按钮 label 的兄弟节点，
+           故借容器的 :focus-within 间接给按钮加焦点环，补上键盘可见反馈） */
+        .control-group:focus-within .upload-btn { outline: 2px solid rgba(47, 109, 246, .5); outline-offset: 2px; }
         /* 用 block + text-align 而非 flex：flex 容器上的 text-overflow 对匿名文本子项不生效，
            长文件名会「啪」地被硬切掉；改成块级布局后才能真正显示省略号 */
         .upload-btn {
@@ -164,6 +172,8 @@
         /* 键盘可达性：Tab 聚焦时给出清晰外圈，鼠标点击不触发 */
         .btn-primary:focus-visible,
         .btn-ghost:focus-visible,
+        .upload-btn:focus-visible,
+        .manual-copy-actions button:focus-visible,
         .toggle-safe-zone:focus-within,
         .control-group select:focus-visible {
             outline: 2px solid rgba(47, 109, 246, .5); outline-offset: 2px;
@@ -587,6 +597,23 @@
             border-radius: 10px; border: 1px solid #e8ecf3; background: #fff;
         }
         .img-preview-card p { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
+
+        /* 弹层打开时锁定背景滚动，避免移动端手指在浮层上滑动时背景跟着一起滚 */
+        body.modal-open { overflow: hidden; }
+        /* 弹层入场：轻微上浮 + 淡入，给出「这是新出现的一层」的反馈 */
+        @keyframes lmt-pop-in {
+            from { opacity: 0; transform: translateY(8px) scale(.98); }
+            to { opacity: 1; transform: none; }
+        }
+        .manual-copy-card, .img-preview-card, .license-card { animation: lmt-pop-in .18s ease-out both; }
+        /* 无障碍：系统开启「减少动态效果」时，去掉所有过渡与动画（保留状态变化，仅取消动效） */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                transition-duration: .001ms !important;
+                animation-duration: .001ms !important;
+                animation-iteration-count: 1 !important;
+            }
+        }
 
         /* 必须放在 .license-gate 之后：同优先级下源码顺序靠后的规则才会生效 */
         @media (max-width: 780px) {
@@ -1257,10 +1284,31 @@
             }
             onDone(false);
         }
+        // ---------- 弹层通用能力 ----------
+        // 背景滚动锁定按引用计数：同时存在多层弹层时，最后一层关闭才恢复滚动。
+        function lockScroll() {
+            window.__modalDepth = (window.__modalDepth || 0) + 1;
+            document.body.classList.add('modal-open');
+        }
+        function unlockScroll() {
+            window.__modalDepth = Math.max(0, (window.__modalDepth || 0) - 1);
+            if (!window.__modalDepth) document.body.classList.remove('modal-open');
+        }
+        // 注册 ESC 关闭；返回解绑函数，供弹层销毁时调用，避免监听器泄漏。
+        function onEsc(handler) {
+            var fn = function (e) {
+                if (e.key === 'Escape' || e.keyCode === 27) { e.preventDefault(); handler(); }
+            };
+            document.addEventListener('keydown', fn);
+            return function () { document.removeEventListener('keydown', fn); };
+        }
+
         // 自动复制彻底不可用时的兜底出口（安卓 WebView 常见）
         function showManualCopy(text, title) {
             var mask = document.createElement('div');
             mask.className = 'manual-copy-mask';
+            mask.setAttribute('role', 'dialog');
+            mask.setAttribute('aria-modal', 'true');
             var card = document.createElement('div');
             card.className = 'manual-copy-card';
             var h = document.createElement('h3');
@@ -1272,10 +1320,19 @@
             ta.value = String(text == null ? '' : text);
             var actions = document.createElement('div');
             actions.className = 'manual-copy-actions';
+            // 统一出口：解绑 ESC、恢复背景滚动、移除浮层；重复调用也安全
+            var disposed = false, offEsc = null;
+            function dispose() {
+                if (disposed) return;
+                disposed = true;
+                if (offEsc) offEsc();
+                unlockScroll();
+                if (mask.parentNode) mask.parentNode.removeChild(mask);
+            }
             var close = document.createElement('button');
             close.type = 'button';
             close.textContent = '关闭';
-            close.addEventListener('click', function () { document.body.removeChild(mask); });
+            close.addEventListener('click', dispose);
             // 触屏上手动框选等宽字符串很费劲：给一个「全选」按钮，
             // 点完直接调起系统菜单里的复制即可
             var selectAll = document.createElement('button');
@@ -1291,8 +1348,10 @@
             card.appendChild(ta);
             card.appendChild(actions);
             mask.appendChild(card);
-            mask.addEventListener('click', function (e) { if (e.target === mask) document.body.removeChild(mask); });
+            mask.addEventListener('click', function (e) { if (e.target === mask) dispose(); });
             document.body.appendChild(mask);
+            lockScroll();
+            offEsc = onEsc(dispose);
             try { ta.focus(); ta.select(); } catch (e) {} // 桌面端可直接 Ctrl/Cmd+C
         }
 
@@ -1409,7 +1468,8 @@
             setManifestUrl: setManifestUrl, getManifest: getManifest,
             fetchManifest: fetchManifest, onlineDecision: onlineDecision,
             copyText: copyText, showManualCopy: showManualCopy,
-            copyWithFeedback: copyWithFeedback, flashButton: flashButton, isIOSLike: isIOSLike
+            copyWithFeedback: copyWithFeedback, flashButton: flashButton, isIOSLike: isIOSLike,
+            lockScroll: lockScroll, unlockScroll: unlockScroll, onEsc: onEsc
         };
     })();
     </script>
@@ -1572,19 +1632,34 @@
         //       缩到下限仍溢出才报警并禁用导出，避免导出被裁掉的图。
         const FIT_MIN = 0.7;   // 字号最小缩到原始的 70%
         const FIT_STEP = 0.02; // 每次缩 2%，避免一次缩过头显得过小
+        // 候选档位（从大到小，步长 FIT_STEP，下限 FIT_MIN）：取值集合与原逐档扫描完全一致，
+        // 只构造一次并全程复用。
+        const FIT_GRID = (function () {
+            const g = [];
+            for (let k = 1; k * FIT_STEP <= 1 - FIT_MIN + 1e-9; k++) {
+                g.push(Math.round((1 - k * FIT_STEP) * 100) / 100);
+            }
+            return g; // [0.98, 0.96, …, 0.70]
+        })();
         function fitsAt(fit) {
             exportTarget.style.setProperty('--fit', String(fit));
             return exportTarget.scrollHeight <= exportTarget.clientHeight + 1;
         }
         function checkContentFit() {
+            // fitsAt 会读取 scrollHeight，每次都触发一次同步布局/回流。字号越小越容易放下，
+            // 该判定随字号单调，故用二分查找取代原先最多 15 次的线性扫描：结果无损，重排次数降到 ~4 次。
             let fit = 1;
-            if (!fitsAt(1)) {
-                for (fit = 1 - FIT_STEP; fit > FIT_MIN; fit -= FIT_STEP) {
-                    if (fitsAt(Math.round(fit * 100) / 100)) break;
+            let ok = fitsAt(1);
+            if (!ok) {
+                let lo = 0, hi = FIT_GRID.length - 1, best = -1;
+                while (lo <= hi) {
+                    const mid = (lo + hi) >> 1;
+                    if (fitsAt(FIT_GRID[mid])) { best = mid; hi = mid - 1; } // 能放下 → 再试更大的档位
+                    else { lo = mid + 1; }                                   // 放不下 → 只能继续缩小
                 }
-                fit = Math.max(FIT_MIN, Math.round(fit * 100) / 100);
+                fit = best >= 0 ? FIT_GRID[best] : FIT_MIN;
+                ok = fitsAt(fit);
             }
-            const ok = fitsAt(fit);
 
             overflowWarn.classList.toggle('show', !ok);
             fitNote.classList.toggle('show', ok && fit < 1);
@@ -1809,6 +1884,8 @@
             });
             const mask = document.createElement('div');
             mask.className = 'manual-copy-mask img-preview-mask';
+            mask.setAttribute('role', 'dialog');
+            mask.setAttribute('aria-modal', 'true');
             const card = document.createElement('div');
             card.className = 'img-preview-card';
             const img = document.createElement('img');
@@ -1826,8 +1903,13 @@
             const close = document.createElement('button');
             close.type = 'button';
             close.textContent = '关闭';
-            // 统一出口：移除浮层的同时释放 blob 地址，避免内存一直占着
+            // 统一出口：移除浮层的同时解绑 ESC、恢复背景滚动并释放 blob 地址，避免内存一直占着
+            let disposed = false, offEsc = null;
             const dispose = () => {
+                if (disposed) return;
+                disposed = true;
+                if (offEsc) offEsc();
+                window.__license.unlockScroll();
                 mask.remove();
                 if (typeof onClose === 'function') { const f = onClose; onClose = null; f(); }
             };
@@ -1841,6 +1923,9 @@
             mask.appendChild(card);
             mask.addEventListener('click', (e) => { if (e.target === mask) dispose(); });
             document.body.appendChild(mask);
+            // 打开时锁背景滚动 + 支持 ESC 关闭（与手动复制浮层行为一致）
+            window.__license.lockScroll();
+            offEsc = window.__license.onEsc(dispose);
         };
 
         exportBtn.addEventListener('click', async () => {
