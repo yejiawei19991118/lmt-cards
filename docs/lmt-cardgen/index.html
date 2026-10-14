@@ -562,7 +562,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
 
     // 按机器码去重（保留首次出现的顺序；后出现的有备注而先前没有时补上备注）
-    function uniqueEntries(text) { return analyzeLedger(text).entries; }
+    // 返回解析结果的副本：analyzeLedger 的结果会被缓存复用，若直接把内部数组交出去，
+    // 调用方一旦就地改动（排序、补备注）就会污染缓存，影响后续统计与清单。
+    function uniqueEntries(text) { return analyzeLedger(text).entries.slice(); }
 
     function entryLine(e) { return e.note ? (e.mc + ',' + csvCell(e.note)) : e.mc; }
 
@@ -859,9 +861,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     // 导出台账为 CSV（机器码,卡密,备注），带 BOM 便于 Excel 正确识别中文
     function buildLedgerCsv() {
-        render(); // 先用当前台账重算，保证导出的卡密是最新的
+        var ps = computePairs(); // 只用当前台账重算卡密，避免像旧实现那样整表重排 DOM
         var rows = [['机器码', '卡密', '备注']];
-        pairs.forEach(function (p) { rows.push([group(p.mc, 4), p.card, p.note || '']); });
+        ps.forEach(function (p) { rows.push([group(p.mc, 4), p.card, p.note || '']); });
         return '\uFEFF' + rows.map(function (r) {
             return r.map(csvCell).join(',');
         }).join('\r\n');
@@ -917,9 +919,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     // 交付文案：一段可直接发给用户的文字，机器码与卡密一目了然（有备注时以备注作标题）。
     function buildDeliverText() {
-        render();
-        if (!pairs.length) return '';
-        return pairs.map(function (p) {
+        var ps = computePairs(); // 纯计算，无需重排结果列表 DOM
+        if (!ps.length) return '';
+        return ps.map(function (p) {
             var lines = [];
             if (p.note) lines.push('【' + p.note + '】');
             lines.push('机器码：' + group(p.mc, 4));
@@ -1202,21 +1204,28 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         })['then'](function (r) { uploadBusy = false; return r; });
     }
 
+    // 台账 → 卡密对的纯计算（不触碰 DOM）：结果列表渲染、导出 CSV、交付文案三处共用。
+    // 旧实现里导出 CSV / 生成交付文案都要调用 render() 重排整个结果列表，只为拿一份卡密，
+    // 长台账下既浪费又会产生看不见的 DOM 副作用；这里拆出无副作用的计算函数。
+    function computePairs() {
+        // 只处理有效机器码（4 组共 16 位）；无法识别的行被忽略，也不会进入在线清单
+        return uniqueEntries(mcList.value).map(function (e) {
+            return { mc: e.key, display: e.mc, card: makeCard(e.key), note: e.note };
+        });
+    }
+
     function render() {
         out.textContent = '';
-        pairs = [];
-        // 只处理有效机器码（4 组共 16 位）；无法识别的行被忽略，也不会进入在线清单
-        uniqueEntries(mcList.value).forEach(function (e) {
-            var mc = e.key;
-            var card = makeCard(mc);
-            pairs.push({ mc: mc, card: card, note: e.note });
+        pairs = computePairs();
+        pairs.forEach(function (p) {
+            var card = p.card;
 
             var item = document.createElement('div');
             item.className = 'item';
 
             var mcEl = document.createElement('span');
             mcEl.className = 'mc';
-            mcEl.textContent = e.mc;
+            mcEl.textContent = p.display;
 
             var arrow = document.createElement('span');
             arrow.className = 'arrow';
@@ -1237,14 +1246,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             item.appendChild(mcEl);
             item.appendChild(arrow);
             item.appendChild(cardEl);
-            if (e.note) {
+            if (p.note) {
                 var noteEl = document.createElement('span');
                 noteEl.className = 'note';
-                noteEl.textContent = e.note;
+                noteEl.textContent = p.note;
                 item.appendChild(noteEl);
             }
             if (onlineStatus) {
-                var st = onlineStatus[e.key] || 'notup';
+                var st = onlineStatus[p.mc] || 'notup';
                 var badge = document.createElement('span');
                 badge.className = 'status-badge ' + (st === 'revoked' ? 'is-revoked' : (st === 'up' ? 'is-up' : 'is-notup'));
                 badge.textContent = st === 'revoked' ? '已吊销' : (st === 'up' ? '已上传' : '未上传');

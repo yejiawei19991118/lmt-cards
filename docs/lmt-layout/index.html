@@ -1862,7 +1862,7 @@
             const asDataUrl = () => {
                 try { return canvas.toDataURL('image/png'); } catch (e) { return ''; }
             };
-            const fail = () => { const d = asDataUrl(); resolve({ url: d, toDataUrl: () => d, release: null }); };
+            const fail = () => { const d = asDataUrl(); resolve({ url: d, toDataUrl: () => d, blob: null, release: null }); };
             if (typeof canvas.toBlob !== 'function' || typeof URL.createObjectURL !== 'function') { fail(); return; }
             try {
                 canvas.toBlob((blob) => {
@@ -1871,6 +1871,7 @@
                     resolve({
                         url: url,
                         toDataUrl: asDataUrl,
+                        blob: blob, // 留给安卓壳异步转 base64：避免在主线程同步编码数 MB 数据
                         release: () => { try { URL.revokeObjectURL(url); } catch (e) {} }
                     });
                 }, 'image/png');
@@ -1972,9 +1973,9 @@
                     height: 667, // 强制截取完整高度
                 });
 
-                restore();
-
                 const shot = await canvasToUrl(canvas);
+                // 拿到可下载地址后才恢复按钮：否则 toBlob 未完成期间按钮已可点，能重入导出
+                restore();
                 const fileName = '排版图_' + new Date().getTime() + '.png';
                 // @shell:image-export
                 triggerDownload(shot.url, fileName);
