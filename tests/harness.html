@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>LMTTEST running</title>
+<style>
+  body { font: 13px/1.6 Consolas, monospace; margin: 0; background: #fff; }
+  #report { margin: 0; padding: 8px 12px; white-space: pre-wrap; }
+  iframe { border: 0; display: block; }
+  #frames { position: fixed; left: -4000px; top: 0; }
+</style>
+</head>
+<body>
+<!-- 两个应用都放在 iframe 里真实渲染；测试通过事件派发模拟点击，断言可见反馈。
+     这里加载的是 docs/ 下的 PWA 副本：Android assets 副本的共享核心由 tools/web-sync.ps1 -Check
+     保证逐字一致，因此跑通这一份即可覆盖两端。 -->
+<div id="frames">
+  <iframe id="frame-layout" src="../docs/lmt-layout/index.html" width="375" height="667" style="width:375px;height:667px"></iframe>
+  <iframe id="frame-cardgen" src="../docs/lmt-cardgen/index.html" width="1024" height="900" style="width:1024px;height:900px"></iframe>
+</div>
+<pre id="report">测试运行中…</pre>
+<script src="./harness.js"></script>
+</body>
+</html>

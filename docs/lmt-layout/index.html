@@ -2026,7 +2026,7 @@
         // 首次加载：应用默认模板（橱窗排版）
         applyTemplate(templateSelect.value);
 
-        // 暴露纯函数，供单元测试页（图文排版生成器.tests.html）在 iframe 中直接复用
+        // 暴露纯函数与测试钩子，供仓库 tests/harness.html 里的 iframe 直接复用
         window.__layoutTool = { escapeHtml: escapeHtml, computeDrawRect: computeDrawRect, isMobileUA: isMobileUA, isTouchPrimary: isTouchPrimary };
     }
 
