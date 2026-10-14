@@ -1,0 +1,21 @@
+{
+  "updated": "2026-10-14",
+  "apps": {
+    "lmt-layout": {
+      "versionCode": 2,
+      "versionName": "1.1",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.1/lmt-layout-release.apk",
+      "sha256": "bd5731031ec156aff98f4f4d8581e608fc6233afb1984ea9608c24c4e1ac3af5",
+      "size": 99938,
+      "notes": "首个支持自动更新的版本：启动时自动检查新版本，发现更新可直接在应用内下载并安装。"
+    },
+    "lmt-cardgen": {
+      "versionCode": 2,
+      "versionName": "1.1",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.1/lmt-cardgen-release.apk",
+      "sha256": "79190e253534572818fd4738758618699c95824e855abab740356c0ca6e0f096",
+      "size": 45259,
+      "notes": "首个支持自动更新的版本：启动时自动检查新版本，发现更新可直接在应用内下载并安装。"
+    }
+  }
+}
