@@ -13,7 +13,9 @@
 #   · 同一脚本在 GitHub Actions（tag apk-v* 触发，见 .github/workflows/release.yml）与本机均可运行：
 #     本机工具链路径仅在存在时覆盖环境，构建命令按平台选 gradlew.bat / ./gradlew。
 #   · APK 作为 GitHub Release 资产上传，不写入 git 历史，避免仓库膨胀。
-#   · 更新清单 lmt-cards/update.json 提交到仓库，App 启动时通过 raw 主源 + jsDelivr 备源读取。
+#   · 更新清单 lmt-cards/update.json 提交到仓库，并同步一份到 docs/update.json（GitHub Pages 承载）。
+#     App 启动时逐个读取 raw / Pages / jsDelivr 三个来源，取 versionCode 最大的一条，
+#     避免任一来源的 CDN 缓存停留在旧版本时把新清单挡在后面。
 
 param(
     [string]$Version = '',
@@ -299,6 +301,12 @@ if ($DryRun) {
     $null = [System.IO.File]::ReadAllText($updateFile) | ConvertFrom-Json  # 合法性自检
     Write-Info "已写入并校验 $updateFile"
 
+    # Pages（docs/）同步一份：GitHub Pages 的缓存远短于 raw 的边缘缓存与 jsDelivr 的 12 小时缓存，
+    # App 把它列为最可靠的清单来源之一，发版后能第一时间读到新版本。
+    $pagesUpdateFile = Join-Path $repoDir 'docs\update.json'
+    [System.IO.File]::WriteAllText($pagesUpdateFile, $updateText, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Info "已同步写入 docs/update.json（供 GitHub Pages 承载）"
+
     # 把本次构建的安装包放进 docs/apk/：主链被墙时 App 会回退到这份镜像（同名文件直接覆盖，仓库不会持续膨胀）
     $mirrorRoot = Join-Path $repoDir $ApkMirrorDir
     if (-not (Test-Path $mirrorRoot)) { $null = New-Item -ItemType Directory -Force -Path $mirrorRoot }
@@ -382,11 +390,13 @@ try {
     Pop-Location
 }
 
-# ===== 刷新 jsDelivr 缓存 =====
-Write-Step "刷新 jsDelivr 缓存"
+# ===== 刷新 jsDelivr 缓存并校验各来源清单新鲜度 =====
+Write-Step "刷新 jsDelivr 并校验各来源清单"
 # jsDelivr 对 @main 这类分支引用有约 12 小时缓存；不主动清理，备源会长时间停在旧清单/旧安装包上，
 # 表现为「弹窗提示有新版本，却下载不到新包」。必须在 push 之后刷新——purge 会让 jsDelivr 重新回源。
 # cards.json 是卡密清单的 jsDelivr 备源，改动后同样是同款 12 小时缓存问题，一并刷新。
+# 只 purge 不校验会出现「以为刷新了、源上其实还是旧清单」：raw 的边缘缓存与 jsDelivr 的回源时机都可能错位，
+# 之前就出现过 purge 反而把旧内容固化进 12 小时缓存的情况。故这里逐轮重试，直到各来源都能读到本次的 versionCode。
 $purgeTargets = @(
     "https://purge.jsdelivr.net/gh/$GitHubRepo@main/update.json"
     "https://purge.jsdelivr.net/gh/$GitHubRepo@main/cards.json"
@@ -394,13 +404,50 @@ $purgeTargets = @(
 foreach ($a in $App) {
     $purgeTargets += "https://purge.jsdelivr.net/gh/$GitHubRepo@main/$ApkMirrorDir/$a-release.apk"
 }
-foreach ($u in $purgeTargets) {
+$manifestSources = @(
+    "https://raw.githubusercontent.com/$GitHubRepo/refs/heads/main/update.json"
+    "$PagesBase/update.json"
+    "https://cdn.jsdelivr.net/gh/$GitHubRepo@main/update.json"
+)
+
+# PowerShell 5.1 默认可能不带 TLS 1.2，直接访问 https 会失败
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+function Get-ManifestVersionCode([string]$url) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
-        $r = Invoke-RestMethod -Uri $u -TimeoutSec 30
-        Write-Info "已刷新（$($r.status)）：$u"
+        $r = Invoke-WebRequest -Uri $url -TimeoutSec 20 -UseBasicParsing
+        return [regex]::Match($r.Content, '"versionCode"\s*:\s*(\d+)').Groups[1].Value
     } catch {
-        Write-Info "刷新失败（不影响发版，缓存会在 12 小时内自行过期）：$u"
+        return ''
+    } finally {
+        $ErrorActionPreference = $prev
     }
+}
+
+$maxAttempts = 3
+$missing = @()
+for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    foreach ($u in $purgeTargets) {
+        try {
+            $r = Invoke-RestMethod -Uri $u -TimeoutSec 30
+            Write-Info "已刷新（$($r.status)）：$u"
+        } catch {
+            Write-Info "刷新失败（不影响发版，缓存会在 12 小时内自行过期）：$u"
+        }
+    }
+    Start-Sleep -Seconds 20
+    $missing = @($manifestSources | Where-Object { (Get-ManifestVersionCode $_) -ne [string]$newCode })
+    if ($missing.Count -eq 0) {
+        Write-Info "各来源清单均已生效（v$Version / code$newCode）"
+        break
+    }
+    Write-Info "第 $attempt/$maxAttempts 轮仍有来源未生效：$($missing -join '，')"
+    if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds 45 }
+}
+if ($missing.Count -gt 0) {
+    Write-Info "警告：以下来源在 $maxAttempts 轮后仍未读到 code$newCode，用户可能短时间内提示不到本版本：$($missing -join '，')"
 }
 
 Write-Host "`n发版完成：APK v$Version" -ForegroundColor Green
