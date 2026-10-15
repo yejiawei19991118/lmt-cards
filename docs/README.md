@@ -57,5 +57,6 @@
 
 ## 三、更新与维护
 
-- 修改任一应用文件后，请同步修改对应 `sw.js` 里的 `CACHE` 版本号（如 `lmt-layout-v1` → `lmt-layout-v2`），否则手机端可能仍读旧缓存。
+- 修改任一应用文件后，需同步升版对应 `sw.js` 里的 `CACHE` 版本号，否则手机端可能仍读旧缓存。这一步已由 `tools/web-sync.ps1 -Bump` 按 `index.html` 的指纹自动完成（发版时由 `tools/release.ps1` 调用），无需手工改。
 - 卡密生成器的在线清单地址（`MANIFEST_URL` 主源 + jsDelivr 备用源）位于 `lmt-cardgen/index.html` 内，与 Android 版保持一致，无需改动。
+- `cards.json` 现为 **ver=2** 的新契约清单，由卡密生成器用 Ed25519 私钥签发 `sig2`，客户端只嵌公钥验签；手改清单会导致验签失败。字段与规范化口径见仓库根目录 [README.md](../README.md) 的「清单契约」一节。

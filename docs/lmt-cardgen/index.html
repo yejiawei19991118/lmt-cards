@@ -170,6 +170,26 @@
     }
     .diff-report .lmt-diff-ok { color: #0f7b3f; font-weight: 600; }
 
+    /* ===== 新增：目标计数 / 快照时间点列表 / 发布自检（class 一律 lmt- 前缀） ===== */
+    .lmt-scope-count { font-size: 12px; font-weight: 600; color: var(--accent); align-self: center; }
+    .lmt-scope-count.is-warn { color: #b42318; }
+    .lmt-snapshot-list { display: flex; flex-direction: column; gap: 6px; }
+    .lmt-snapshot-item {
+        display: flex; align-items: center; gap: 8px; padding: 7px 10px; box-sizing: border-box;
+        border: 1px solid #e8ecf3; border-radius: 9px; background: #fbfcfe;
+        font-size: 12.5px; color: var(--text-sub); cursor: pointer;
+    }
+    .lmt-snapshot-item:hover { background: #f4f7fc; }
+    .lmt-snapshot-item.is-selected { border-color: var(--accent); background: #eef4ff; color: var(--text-main); }
+    .lmt-snapshot-item input { flex: 0 0 auto; margin: 0; cursor: pointer; }
+    .lmt-snapshot-empty { font-size: 12.5px; color: var(--text-sub); }
+    .lmt-note { font-size: 12px; color: var(--text-sub); line-height: 1.6; margin: 0; }
+    #publish-check.is-ok { color: #0f7b3f; }
+    #publish-check.is-bad { color: #b42318; }
+    #import-report.is-bad { color: #b42318; }
+    #import-report.is-ok { color: #0f7b3f; }
+    .manual-copy-card .inline-check { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; color: var(--text-main); }
+
     /* ===== 界面分区：与「图文排版生成器」共用同一套分区卡 / 按钮分级 =====
        主意：外层容器改浅灰底，内部白色区块卡自然分区；登录层仍是白卡（未挂 .app-shell）。 */
     .app-shell { background: #f7f9fc; padding: 18px; }
@@ -233,6 +253,7 @@
         <label for="auth-pass" style="margin-top:12px;">密码</label>
         <input type="password" id="auth-pass" autocomplete="current-password">
         <p class="auth-err" id="auth-err" role="alert"></p>
+        <p class="lmt-note" id="auth-note">本登录门仅作本地遮罩，<b>不是安全边界</b>；真正的门禁在「签名私钥 + 清单验签」，请勿据此判断安全性。</p>
         <div class="row"><button type="button" class="btn btn-primary" id="auth-btn" style="width:100%;">登录</button></div>
     </div>
 </div>
@@ -241,7 +262,8 @@
         <h1>卡密生成器</h1>
         <p class="sub">把用户在软件里看到的「机器码」粘贴到下面（每行一个，支持批量），点击生成即可得到对应卡密。</p>
         <div class="warn">
-            本工具仅供作者使用，请勿外传。密钥必须与主程序「图文排版生成器.html」中的 <code>LICENSE_SECRET</code> 完全一致，否则卡密无法通过校验。
+            本工具仅供作者使用，请勿外传。清单由你手上的私钥签名，客户端只内置公钥验签；
+            请在下方「账号与密钥」录入私钥，并用「与客户端公钥比对」确认配对无误，否则生成的清单无法被客户端校验通过。
         </div>
 
         <!-- 区块一：机器码台账（主流程：粘机器码 → 生成卡密） -->
@@ -256,42 +278,35 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
             <div class="row">
                 <button type="button" class="btn btn-primary" id="gen-btn">生成卡密</button>
-                <button type="button" class="btn btn-ghost" id="copy-all">复制全部</button>
+                <button type="button" class="btn btn-ghost" id="copy-ledger-table" title="复制台账对照表（机器码 / 备注 / 有效期 三列，复制前重算卡密）">复制台账表</button>
             </div>
             <div class="row">
-                <button type="button" class="btn btn-ghost" id="export-btn">导出台账</button>
-                <button type="button" class="btn btn-ghost" id="import-btn">导入台账</button>
-                <button type="button" class="btn btn-ghost" id="template-btn">下载模板</button>
+                <button type="button" class="btn btn-ghost" id="export-btn" title="导出三列 CSV（机器码 / 备注 / 有效期），与「导入台账」无损回环">导出台账</button>
+                <button type="button" class="btn btn-ghost" id="import-btn" title="读入 CSV / TXT；导入前先确认合并或覆盖">导入台账</button>
+                <button type="button" class="btn btn-ghost" id="template-btn" title="下载三列模板，与「导出台账」同构">下载模板</button>
+                <button type="button" class="btn btn-ghost" id="export-deliver-btn" title="导出四列 CSV（机器码 / 卡密 / 备注 / 有效期），仅供查阅与交付，不与「导入台账」混用">导出含卡密台账</button>
                 <button type="button" class="btn btn-danger" id="clear-btn">清空台账</button>
             </div>
             <div class="ledger-tip" id="ledger-tip" role="status" aria-live="polite">台账为空 · 已自动保存到本浏览器</div>
+            <div class="ledger-tip" id="import-report" role="status" aria-live="polite" style="display:none;"></div>
             <input type="file" id="import-file" accept=".csv,.txt,text/plain,text/csv" style="display:none">
+
+            <!-- 导入方式选择：导入前必弹，明示「当前 N 条 → 将被覆盖」并选合并 / 覆盖 -->
+            <div class="manual-copy-mask" id="import-confirm" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="import-confirm-title">
+                <div class="manual-copy-card">
+                    <h3 id="import-confirm-title">导入台账</h3>
+                    <p id="import-confirm-desc"></p>
+                    <label class="inline-check"><input type="radio" name="import-mode" id="import-mode-merge" checked> 合并到当前台账（按机器码去重，保留现有条目）</label>
+                    <label class="inline-check"><input type="radio" name="import-mode" id="import-mode-replace"> 覆盖当前台账（清空后写入文件内容）</label>
+                    <div class="manual-copy-actions">
+                        <button type="button" class="btn btn-ghost" id="import-confirm-cancel">取消</button>
+                        <button type="button" class="btn btn-primary" id="import-confirm-ok">确认导入</button>
+                    </div>
+                </div>
+            </div>
         </section>
 
-        <!-- 区块二：交付与备份（交付话术/交付图、备份恢复、快照、线上对照） -->
-        <section class="panel-block">
-            <h2 class="panel-block-title">交付与备份</h2>
-
-            <div class="row">
-                <button type="button" class="btn btn-ghost" id="deliver-btn">复制交付文案</button>
-                <button type="button" class="btn btn-ghost" id="deliver-img-btn">导出交付图</button>
-            </div>
-            <div class="row">
-                <button type="button" class="btn btn-ghost" id="backup-btn">备份台账</button>
-                <button type="button" class="btn btn-ghost" id="restore-btn">恢复备份</button>
-                <button type="button" class="btn btn-ghost" id="online-check-btn">对照线上清单</button>
-            </div>
-            <div class="row">
-                <button type="button" class="btn btn-ghost" id="snapshot-btn">下载最近快照</button>
-                <button type="button" class="btn btn-ghost" id="snapshot-restore-btn">恢复最近快照</button>
-            </div>
-            <div class="ledger-tip" id="snapshot-tip" role="status" aria-live="polite">尚未生成快照</div>
-            <div class="ledger-tip" id="online-tip" role="status" aria-live="polite"></div>
-            <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
-            <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
-        </section>
-
-        <!-- 区块三：生成结果（筛选 / 批量续期与吊销 / 逐条复制） -->
+        <!-- 区块二：结果（原「生成结果」区块） -->
         <section class="panel-block">
             <h2 class="panel-block-title" id="out-title">生成结果</h2>
 
@@ -303,44 +318,83 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                     <button type="button" class="btn btn-ghost" id="renew-btn" title="给目标卡密延长有效期">续期目标卡密</button>
                 </div>
             </div>
-            <p class="sub" id="scope-tip">批量操作（续期 / 吊销 / 复制话术 / 导出交付图）的作用范围：优先「已勾选的行」，没有勾选时按当前筛选结果。</p>
+            <p class="sub" id="scope-tip">批量操作（续期 / 吊销 / 复制话术 / 导出交付图）的作用范围：优先「已勾选的行」；没有勾选时按当前筛选结果；二者皆空时需要二次确认并回显将影响的条数。</p>
+            <div class="ledger-tip" id="scope-count" role="status" aria-live="polite"></div>
             <div class="row">
                 <button type="button" class="btn btn-danger" id="revoke-filtered-btn" title="作废目标卡密：写入下方「已吊销卡密」并刷新清单">吊销目标卡密</button>
-                <button type="button" class="btn btn-ghost" id="deliver-filtered-btn" title="把目标卡密的交付话术复制到剪贴板">复制目标话术</button>
+                <button type="button" class="btn btn-ghost" id="deliver-filtered-btn" title="把目标卡密的交付话术复制到剪贴板（复制前重算卡密）">复制目标话术</button>
             </div>
             <div id="out"></div>
         </section>
 
-        <!-- 区块四：在线清单与发布（低频且影响线上，默认收起） -->
+        <!-- 区块三：交付 -->
+        <section class="panel-block">
+            <h2 class="panel-block-title">交付</h2>
+
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="deliver-btn" title="复制整份台账的交付文案（机器码 / 卡密 / 有效期 / 激活指引），复制前重算卡密">复制交付文案</button>
+                <button type="button" class="btn btn-ghost" id="deliver-img-btn" title="给目标卡密一卡一图（720×360）；单条直出 PNG，多条打包 ZIP">导出交付图</button>
+                <span class="lmt-scope-count" id="deliver-img-count"></span>
+            </div>
+        </section>
+
+        <!-- 区块四：备份与对照 -->
+        <section class="panel-block">
+            <h2 class="panel-block-title">备份与对照</h2>
+
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="backup-btn">备份台账</button>
+                <button type="button" class="btn btn-ghost" id="restore-btn">恢复备份</button>
+                <button type="button" class="btn btn-ghost" id="online-check-btn">对照线上清单</button>
+            </div>
+
+            <div class="control-group">
+                <label id="snapshot-label">台账快照（自动留存最近若干份；选取一个时间点后可下载 / 恢复）</label>
+                <div class="lmt-snapshot-list" id="snapshot-list" role="listbox" aria-labelledby="snapshot-label"></div>
+                <div class="row">
+                    <button type="button" class="btn btn-ghost" id="snapshot-btn" title="下载所选时间点的台账快照 CSV">下载所选快照</button>
+                    <button type="button" class="btn btn-ghost" id="snapshot-restore-btn" title="把所选时间点快照合并回台账">恢复所选快照</button>
+                </div>
+            </div>
+
+            <div class="ledger-tip" id="snapshot-tip" role="status" aria-live="polite">尚未生成快照</div>
+            <div class="ledger-tip" id="online-tip" role="status" aria-live="polite"></div>
+            <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
+            <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
+        </section>
+
+        <!-- 区块五：在线清单与发布（可折叠；低频且影响线上，默认收起） -->
         <details class="panel-block is-aux">
             <summary class="panel-block-title">在线清单与发布</summary>
             <div class="panel-block-body">
-                <p class="sub">复制下方 JSON，覆盖上传到「清单托管地址」，约 5 分钟生效。</p>
+                <p class="sub">「上传到 GitHub」是首发通道（提交后约 5 分钟生效）；「复制清单 JSON」降为备用 / 兜底通道，仅在无法上传时使用。</p>
                 <textarea id="manifest-out" readonly="" spellcheck="false" style="min-height:160px;"></textarea>
                 <div class="row">
-                    <button type="button" class="btn btn-ghost" id="copy-manifest">复制清单 JSON</button>
+                    <button type="button" class="btn btn-ghost" id="upload-btn">上传到 GitHub（首发）</button>
+                    <button type="button" class="btn btn-ghost" id="copy-manifest" title="备用 / 兜底通道：复制清单全文，自行覆盖上传到托管地址">复制清单 JSON（备用）</button>
                 </div>
                 <div class="row">
-                    <button type="button" class="btn btn-ghost" id="upload-btn">上传到 GitHub</button>
-                    <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（台账变化后自动提交）</label>
+                    <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（默认关闭；开启后需停止输入数秒且通过发布前自检才提交）</label>
                 </div>
                 <div class="row">
                     <button type="button" class="btn btn-ghost" id="publish-btn">一键发布</button>
                 </div>
+                <div class="ledger-tip" id="publish-check" role="status" aria-live="polite"></div>
                 <div class="ledger-tip" id="receipt-tip" role="status" aria-live="polite"></div>
 
                 <div class="control-group">
-                    <label for="gh-token">GitHub 令牌（细粒度 PAT，仅需本仓库的 Contents 读写权限；只保存在本机）</label>
+                    <label for="gh-token">GitHub 令牌（细粒度 PAT，仅需本仓库的 Contents 读写权限；默认仅本次会话有效）</label>
                     <input type="password" id="gh-token" placeholder="粘贴令牌后点「保存令牌」" spellcheck="false" autocomplete="off">
                     <div class="row">
                         <button type="button" class="btn btn-ghost" id="gh-token-save">保存令牌</button>
                         <button type="button" class="btn btn-ghost" id="gh-token-clear">清除令牌</button>
+                        <label class="inline-check" for="gh-token-persist"><input type="checkbox" id="gh-token-persist"> 记住令牌（持久化到本机，存在 XSS 风险）</label>
                     </div>
                 </div>
                 <div class="ledger-tip" id="upload-tip" role="status" aria-live="polite"></div>
 
                 <div class="control-group">
-                    <label for="revoke-list">已吊销卡密（可选，每行一个）</label>
+                    <label for="revoke-list">已吊销卡密（可选，每行一个；吊销优先于白名单，命中即拒绝激活）</label>
                     <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并上传覆盖，即可在线吊销" spellcheck="false"></textarea>
                 </div>
 
@@ -355,16 +409,25 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             </div>
         </details>
 
-        <!-- 区块五：账号（密钥查看 + 退出登录） -->
+        <!-- 区块六：账号与密钥（私钥录入 / 公钥指纹自检 + 退出登录） -->
         <section class="panel-block">
-            <h2 class="panel-block-title">账号</h2>
+            <h2 class="panel-block-title">账号与密钥</h2>
 
-            <p class="secret">
-                当前密钥：<code id="secret-view">aca0d140848ed9718184e7341d3c6ed7ff68283b50574258</code>
-            </p>
+            <div class="control-group">
+                <label for="secret-input">签名私钥（32 字节 seed：base32 52 字符 或 hex 64 字符；只保存在本机，绝不写入清单、绝不上传）</label>
+                <textarea id="secret-input" placeholder="粘贴私钥后点「保存私钥」" spellcheck="false" autocomplete="off" style="min-height:64px;"></textarea>
+                <div class="row">
+                    <button type="button" class="btn btn-ghost" id="secret-save">保存私钥</button>
+                    <button type="button" class="btn btn-ghost" id="secret-clear">清除私钥</button>
+                    <label class="inline-check" for="secret-persist"><input type="checkbox" id="secret-persist"> 记住私钥（默认仅本标签页有效）</label>
+                </div>
+            </div>
+            <p class="sub">当前私钥派生的公钥指纹：<code id="secret-fingerprint">未录入</code></p>
             <div class="row">
+                <button type="button" class="btn btn-ghost" id="secret-compare-btn" title="把当前私钥派生的公钥与客户端内置公钥比对，只返回是否一致，不回显明文">与客户端公钥比对</button>
                 <button type="button" class="btn btn-ghost" id="logout-btn">退出登录</button>
             </div>
+            <div class="ledger-tip" id="secret-tip" role="status" aria-live="polite"></div>
         </section>
     </div>
 </div>
@@ -373,8 +436,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 (function () {
     'use strict';
 
-    // ★★★ 请自行修改：必须与「图文排版生成器.html」里的 LICENSE_SECRET 保持一致 ★★★
-    var LICENSE_SECRET = 'aca0d140848ed9718184e7341d3c6ed7ff68283b50574258';
+    // ★★★ 私钥不写进本文件 ★★★
+    // 本工具是作者侧「签发」工具：清单（cards.json）用作者私钥做 Ed25519 签名，
+    // 客户端只内置公钥验签。私钥默认只存 sessionStorage（关掉标签页即失效），
+    // 勾选「记住私钥」才写入本机 localStorage；任何时候都不会写进清单或上传。
+    // 私钥 = 32 字节 seed，支持 base32（52 字符，可带分组横线）或 hex（64 字符）录入。
+    // 下面这个公钥必须与客户端「图文排版生成器」里的 LICENSE_PUBKEY 完全一致，
+    // 用于自检「当前私钥派生的公钥」是否就是客户端会认的那把，避免签出没人能验过的清单。
+    var EXPECTED_PUBKEY = 'M67HT17D19HYQS5CHWKRN05GVEFSTVVV01ADAXP579C66A09RFN0';
+    var PRIVKEY_KEY = 'lmt_privkey_v1';
+    var PRIVKEY_PERSIST_KEY = 'lmt_privkey_persist_v1';
+
+    // 清单契约版本：客户端只认 ver === 2 的清单（见 lmt-layout 的 MANIFEST_VER），两侧必须一致。
+    var MANIFEST_VER = 2;
 
     // ★★★ 请自行修改：在线清单的托管地址，必须与「图文排版生成器.html」里的 MANIFEST_URL 完全一致 ★★★
     //   生成器不会联网，这里只用于界面展示 / 复制，方便你知道清单该覆盖上传到哪里。
@@ -394,6 +468,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     var UPLOAD_TOKEN_KEY = 'lmt_gh_token_v2';
     var UPLOAD_TOKEN_LEGACY_KEY = 'lmt_gh_token_v1';
     var AUTO_UPLOAD_KEY = 'lmt_gh_auto_v1';
+    // 令牌默认「仅本次会话有效」：会话通道用 sessionStorage（关掉标签页即失效），
+    // 只有显式勾选「记住令牌」才写入 localStorage 持久化（见 setToken/getToken）。
+    var TOKEN_SESSION_KEY = 'lmt_gh_token_session_v1';
+    var TOKEN_PERSIST_KEY = 'lmt_gh_token_persist_v1';
     // 上传回执 / 台账快照：独立的本机 localStorage 键，互不影响既有键。
     var UPLOAD_RECEIPT_KEY = 'lmt_last_upload_v1';
     var SNAPSHOT_KEY = 'lmt_ledger_snapshots_v1';
@@ -528,34 +606,516 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
     function normalize(code) { return String(code == null ? '' : code).toUpperCase().replace(/[^0-9A-Z]/g, ''); }
 
-    // 清单条目统一取卡密：旧格式是字符串，新格式是对象 {card, mc, note, exp}。
-    // 所有「按卡密比较 / 签名 / 去重」的地方都走这里，两种格式都能读，签名载荷也与旧版逐字一致。
+    function sha256Hex(str) { return bytesToHex(sha256Bytes(utf8Bytes(str))); }
+
+    // ================= 密码学层（零依赖纯 JS） =================
+    // Ed25519（RFC 8032）+ SHA-512 + base32 编解码，全部自研、无第三方依赖。
+    // ⚠️ 绝不使用 `1n` 这类 BigInt 字面量：它是语法错误，安卓 8 出厂 WebView（无 BigInt）
+    //    会因此让整段内联脚本解析失败、应用直接白屏。一律用 BigInt('..')，并做运行时能力检测。
+    function ed25519Supported() { return typeof BigInt === 'function'; }
+
+    /* ---------- 5 位字母表（与 base32Encode 完全一致，保证互为逆运算） ---------- */
+    var LMT_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+    var LMT_ALPHABET_INDEX = (function () {
+        var m = {}, i;
+        for (i = 0; i < LMT_ALPHABET.length; i++) m[LMT_ALPHABET.charAt(i)] = i;
+        return m;
+    })();
+
+    // base32 解码：忽略分隔符与空白、大小写不敏感，取 byteLen 个字节；非法/长度不足返回 null。
+    function base32Decode(str, byteLen) {
+        var s = String(str == null ? '' : str).toUpperCase().replace(/[^0-9A-Z]/g, '');
+        var out = new Uint8Array(byteLen);
+        var buffer = 0, bits = 0, oi = 0;
+        for (var i = 0; i < s.length && oi < byteLen; i++) {
+            var v = LMT_ALPHABET_INDEX[s.charAt(i)];
+            if (v === undefined) return null;
+            buffer = (buffer << 5) | v;
+            bits += 5;
+            if (bits >= 8) {
+                bits -= 8;
+                out[oi++] = (buffer >>> bits) & 0xff;
+                buffer = buffer & ((1 << bits) - 1);
+            }
+        }
+        if (oi < byteLen) return null;
+        return out;
+    }
+
+    // base32 无损编码：末尾不足 5 位的组补零凑满一个字符。
+    // 原有 base32Encode(bytes, charCount) 是「按目标字符数截断」的接口，
+    // 32 字节 256 位只能凑出 51 个字符、无法与 base32Decode 构成往返；
+    // 这里补上末组零填充：32 字节 → 52 字符 → 解码回 32 字节，逐字节一致。
+    function base32EncodeFull(bytes) {
+        var s = '', buffer = 0, bits = 0;
+        for (var i = 0; i < bytes.length; i++) {
+            buffer = (buffer << 8) | bytes[i];
+            bits += 8;
+            while (bits >= 5) { bits -= 5; s += LMT_ALPHABET[(buffer >>> bits) & 31]; }
+            buffer = buffer & ((1 << bits) - 1);
+        }
+        if (bits > 0) s += LMT_ALPHABET[(buffer << (5 - bits)) & 31];
+        return s;
+    }
+
+    /* ---------- SHA-512（64 位用 hi/lo 32 位对表示） ---------- */
+    var LMT_K512 = [
+        [0x428a2f98, 0xd728ae22], [0x71374491, 0x23ef65cd], [0xb5c0fbcf, 0xec4d3b2f], [0xe9b5dba5, 0x8189dbbc],
+        [0x3956c25b, 0xf348b538], [0x59f111f1, 0xb605d019], [0x923f82a4, 0xaf194f9b], [0xab1c5ed5, 0xda6d8118],
+        [0xd807aa98, 0xa3030242], [0x12835b01, 0x45706fbe], [0x243185be, 0x4ee4b28c], [0x550c7dc3, 0xd5ffb4e2],
+        [0x72be5d74, 0xf27b896f], [0x80deb1fe, 0x3b1696b1], [0x9bdc06a7, 0x25c71235], [0xc19bf174, 0xcf692694],
+        [0xe49b69c1, 0x9ef14ad2], [0xefbe4786, 0x384f25e3], [0x0fc19dc6, 0x8b8cd5b5], [0x240ca1cc, 0x77ac9c65],
+        [0x2de92c6f, 0x592b0275], [0x4a7484aa, 0x6ea6e483], [0x5cb0a9dc, 0xbd41fbd4], [0x76f988da, 0x831153b5],
+        [0x983e5152, 0xee66dfab], [0xa831c66d, 0x2db43210], [0xb00327c8, 0x98fb213f], [0xbf597fc7, 0xbeef0ee4],
+        [0xc6e00bf3, 0x3da88fc2], [0xd5a79147, 0x930aa725], [0x06ca6351, 0xe003826f], [0x14292967, 0x0a0e6e70],
+        [0x27b70a85, 0x46d22ffc], [0x2e1b2138, 0x5c26c926], [0x4d2c6dfc, 0x5ac42aed], [0x53380d13, 0x9d95b3df],
+        [0x650a7354, 0x8baf63de], [0x766a0abb, 0x3c77b2a8], [0x81c2c92e, 0x47edaee6], [0x92722c85, 0x1482353b],
+        [0xa2bfe8a1, 0x4cf10364], [0xa81a664b, 0xbc423001], [0xc24b8b70, 0xd0f89791], [0xc76c51a3, 0x0654be30],
+        [0xd192e819, 0xd6ef5218], [0xd6990624, 0x5565a910], [0xf40e3585, 0x5771202a], [0x106aa070, 0x32bbd1b8],
+        [0x19a4c116, 0xb8d2d0c8], [0x1e376c08, 0x5141ab53], [0x2748774c, 0xdf8eeb99], [0x34b0bcb5, 0xe19b48a8],
+        [0x391c0cb3, 0xc5c95a63], [0x4ed8aa4a, 0xe3418acb], [0x5b9cca4f, 0x7763e373], [0x682e6ff3, 0xd6b2b8a3],
+        [0x748f82ee, 0x5defb2fc], [0x78a5636f, 0x43172f60], [0x84c87814, 0xa1f0ab72], [0x8cc70208, 0x1a6439ec],
+        [0x90befffa, 0x23631e28], [0xa4506ceb, 0xde82bde9], [0xbef9a3f7, 0xb2c67915], [0xc67178f2, 0xe372532b],
+        [0xca273ece, 0xea26619c], [0xd186b8c7, 0x21c0c207], [0xeada7dd6, 0xcde0eb1e], [0xf57d4f7f, 0xee6ed178],
+        [0x06f067aa, 0x72176fba], [0x0a637dc5, 0xa2c898a6], [0x113f9804, 0xbef90dae], [0x1b710b35, 0x131c471b],
+        [0x28db77f5, 0x23047d84], [0x32caab7b, 0x40c72493], [0x3c9ebe0a, 0x15c9bebc], [0x431d67c4, 0x9c100d4c],
+        [0x4cc5d4be, 0xcb3e42b6], [0x597f299c, 0xfc657e2a], [0x5fcb6fab, 0x3ad6faec], [0x6c44198c, 0x4a475817]
+    ];
+    var LMT_H512 = [
+        [0x6a09e667, 0xf3bcc908], [0xbb67ae85, 0x84caa73b], [0x3c6ef372, 0xfe94f82b], [0xa54ff53a, 0x5f1d36f1],
+        [0x510e527f, 0xade682d1], [0x9b05688c, 0x2b3e6c1f], [0x1f83d9ab, 0xfb41bd6b], [0x5be0cd19, 0x137e2179]
+    ];
+
+    function lmtAnd64(a, b) { return [(a[0] & b[0]) >>> 0, (a[1] & b[1]) >>> 0]; }
+    function lmtXor64(a, b) { return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0]; }
+    function lmtNot64(a) { return [(~a[0]) >>> 0, (~a[1]) >>> 0]; }
+    function lmtAdd64(a, b) {
+        var lo = a[1] + b[1];
+        var carry = lo >= 4294967296 ? 1 : 0;
+        var hi = a[0] + b[0] + carry;
+        return [hi >>> 0, lo >>> 0];
+    }
+    // 一次加多个 64 位数：分开累加 hi/lo，用 JS double（可精确表示 < 2^53）承载进位
+    function lmtAdd64N(list) {
+        var loSum = 0, hiSum = 0, i;
+        for (i = 0; i < list.length; i++) loSum += list[i][1];
+        hiSum = Math.floor(loSum / 4294967296);
+        var lo = loSum >>> 0;
+        for (i = 0; i < list.length; i++) hiSum += list[i][0];
+        return [hiSum >>> 0, lo];
+    }
+    function lmtShr64(x, n) {
+        var hi = x[0], lo = x[1];
+        if (n < 32) return [hi >>> n, ((lo >>> n) | (hi << (32 - n))) >>> 0];
+        return [0, (hi >>> (n - 32)) >>> 0];
+    }
+    function lmtRotr64(x, n) {
+        var hi = x[0], lo = x[1];
+        if (n < 32) return [((hi >>> n) | (lo << (32 - n))) >>> 0, ((lo >>> n) | (hi << (32 - n))) >>> 0];
+        if (n === 32) return [lo >>> 0, hi >>> 0];
+        var m = n - 32;
+        return [((lo >>> m) | (hi << (32 - m))) >>> 0, ((hi >>> m) | (lo << (32 - m))) >>> 0];
+    }
+    function lmtBigSigma0(x) { return lmtXor64(lmtXor64(lmtRotr64(x, 28), lmtRotr64(x, 34)), lmtRotr64(x, 39)); }
+    function lmtBigSigma1(x) { return lmtXor64(lmtXor64(lmtRotr64(x, 14), lmtRotr64(x, 18)), lmtRotr64(x, 41)); }
+    function lmtSmallSigma0(x) { return lmtXor64(lmtXor64(lmtRotr64(x, 1), lmtRotr64(x, 8)), lmtShr64(x, 7)); }
+    function lmtSmallSigma1(x) { return lmtXor64(lmtXor64(lmtRotr64(x, 19), lmtRotr64(x, 61)), lmtShr64(x, 6)); }
+
+    function sha512Bytes(bytes) {
+        var l = bytes.length;
+        var withOne = l + 1;
+        var padZeros = (112 - (withOne % 128) + 128) % 128;
+        var total = withOne + padZeros + 16; // 末尾 128 位（16 字节）大端位长度
+        var msg = new Uint8Array(total);
+        msg.set(bytes, 0);
+        msg[l] = 0x80;
+        // 末尾 128 位大端位长度：高 64 位恒为 0（消息远小于 2^61 字节），低 64 位 = l*8
+        var bits = l * 8;
+        var bhi = Math.floor(bits / 4294967296); // 低 64 位的高 32 位
+        var blo = bits >>> 0;                    // 低 64 位的低 32 位
+        for (var j = 0; j < 16; j++) msg[total - 16 + j] = 0;
+        for (j = 0; j < 4; j++) msg[total - 8 + j] = (bhi >>> (24 - j * 8)) & 0xff;
+        for (j = 0; j < 4; j++) msg[total - 4 + j] = (blo >>> (24 - j * 8)) & 0xff;
+
+        var H = [], i;
+        for (i = 0; i < 8; i++) H.push([LMT_H512[i][0], LMT_H512[i][1]]);
+        var w = new Array(80);
+        for (var off = 0; off < total; off += 128) {
+            for (i = 0; i < 16; i++) {
+                w[i] = [
+                    ((msg[off + i * 8] << 24) | (msg[off + i * 8 + 1] << 16) | (msg[off + i * 8 + 2] << 8) | msg[off + i * 8 + 3]) >>> 0,
+                    ((msg[off + i * 8 + 4] << 24) | (msg[off + i * 8 + 5] << 16) | (msg[off + i * 8 + 6] << 8) | msg[off + i * 8 + 7]) >>> 0
+                ];
+            }
+            for (i = 16; i < 80; i++) {
+                w[i] = lmtAdd64N([w[i - 16], lmtSmallSigma0(w[i - 15]), w[i - 7], lmtSmallSigma1(w[i - 2])]);
+            }
+            var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+            for (i = 0; i < 80; i++) {
+                var S1 = lmtBigSigma1(e);
+                var ch = lmtXor64(lmtAnd64(e, f), lmtAnd64(lmtNot64(e), g));
+                var t1 = lmtAdd64N([h, S1, ch, LMT_K512[i], w[i]]);
+                var S0 = lmtBigSigma0(a);
+                var maj = lmtXor64(lmtXor64(lmtAnd64(a, b), lmtAnd64(a, c)), lmtAnd64(b, c));
+                var t2 = lmtAdd64(S0, maj);
+                h = g; g = f; f = e; e = lmtAdd64(d, t1); d = c; c = b; b = a; a = lmtAdd64(t1, t2);
+            }
+            H[0] = lmtAdd64(H[0], a); H[1] = lmtAdd64(H[1], b); H[2] = lmtAdd64(H[2], c); H[3] = lmtAdd64(H[3], d);
+            H[4] = lmtAdd64(H[4], e); H[5] = lmtAdd64(H[5], f); H[6] = lmtAdd64(H[6], g); H[7] = lmtAdd64(H[7], h);
+        }
+        var out = new Uint8Array(64);
+        for (i = 0; i < 8; i++) {
+            out[i * 8] = (H[i][0] >>> 24) & 0xff;
+            out[i * 8 + 1] = (H[i][0] >>> 16) & 0xff;
+            out[i * 8 + 2] = (H[i][0] >>> 8) & 0xff;
+            out[i * 8 + 3] = H[i][0] & 0xff;
+            out[i * 8 + 4] = (H[i][1] >>> 24) & 0xff;
+            out[i * 8 + 5] = (H[i][1] >>> 16) & 0xff;
+            out[i * 8 + 6] = (H[i][1] >>> 8) & 0xff;
+            out[i * 8 + 7] = H[i][1] & 0xff;
+        }
+        return out;
+    }
+    function sha512Hex(str) { return bytesToHex(sha512Bytes(utf8Bytes(str))); }
+
+    /* ---------- Ed25519（RFC 8032） ---------- */
+    var ED_P = (BigInt(1) << BigInt(255)) - BigInt(19);
+    var ED_L = (BigInt(1) << BigInt(252)) + BigInt('27742317777372353535851937790883648493');
+
+    function edMod(a) { a = a % ED_P; return a < BigInt(0) ? a + ED_P : a; }
+    function edPowMod(a, e) {
+        a = edMod(a);
+        var r = BigInt(1);
+        while (e > BigInt(0)) {
+            if (e & BigInt(1)) r = edMod(r * a);
+            a = edMod(a * a);
+            e >>= BigInt(1);
+        }
+        return r;
+    }
+    function edInvMod(a) { return edPowMod(a, ED_P - BigInt(2)); }
+
+    var ED_D = edMod(BigInt(-121665) * edInvMod(BigInt(121666)));
+    var ED_SQRTM1 = edPowMod(BigInt(2), (ED_P - BigInt(1)) / BigInt(4));
+
+    function edLEToBig(bytes) {
+        var v = BigInt(0);
+        for (var i = bytes.length - 1; i >= 0; i--) v = (v << BigInt(8)) | BigInt(bytes[i]);
+        return v;
+    }
+    function edBigToLE(v, len) {
+        var out = new Uint8Array(len);
+        for (var i = 0; i < len; i++) { out[i] = Number(v & BigInt(255)); v >>= BigInt(8); }
+        return out;
+    }
+
+    // 由 y 恢复 x（曲线 x^2 = (y^2-1)/(d*y^2+1)）；sign 指定 x 的奇偶。失败返回 null。
+    function edRecoverX(y, sign) {
+        var y2 = edMod(y * y);
+        var u = edMod(y2 - BigInt(1));
+        var v = edMod(ED_D * y2 + BigInt(1));
+        var v3 = edMod(v * v * v);
+        var v7 = edMod(v3 * v3 * v);
+        var exp = (ED_P - BigInt(5)) / BigInt(8);
+        var cand = edMod(edMod(u * v3) * edPowMod(edMod(u * v7), exp));
+        var vc2 = edMod(v * cand * cand);
+        var x;
+        if (vc2 === edMod(u)) x = cand;
+        else if (vc2 === edMod(-u)) x = edMod(cand * ED_SQRTM1);
+        else return null;
+        if (x === BigInt(0) && sign === 1) return null;
+        if (Number(x & BigInt(1)) !== sign) x = edMod(-x);
+        return x;
+    }
+    // 32 字节小端点编码 → 扩展坐标点；任何非规范编码（含 y ≥ p）都返回 null
+    function edDecodePoint(bytes32) {
+        var sign = (bytes32[31] >> 7) & 1;
+        var yb = new Uint8Array(32);
+        for (var i = 0; i < 32; i++) yb[i] = bytes32[i];
+        yb[31] = yb[31] & 127;
+        var y = edLEToBig(yb);
+        if (y >= ED_P) return null;
+        var x = edRecoverX(y, sign);
+        if (x === null) return null;
+        return { X: x, Y: y, Z: BigInt(1), T: edMod(x * y) };
+    }
+    function edCompressPoint(P) {
+        var zinv = edInvMod(P.Z);
+        var x = edMod(P.X * zinv);
+        var y = edMod(P.Y * zinv);
+        var out = edBigToLE(y, 32);
+        out[31] = (out[31] & 127) | (Number(x & BigInt(1)) << 7);
+        return out;
+    }
+
+    var ED_BASE = (function () {
+        var y = edMod(BigInt(4) * edInvMod(BigInt(5))); // By = 4/5
+        var x = edRecoverX(y, 0);                        // Bx 取偶
+        return { X: x, Y: y, Z: BigInt(1), T: edMod(x * y) };
+    })();
+
+    function edAdd(P, Q) {
+        var A = edMod((P.Y - P.X) * (Q.Y - Q.X));
+        var B = edMod((P.Y + P.X) * (Q.Y + Q.X));
+        var C = edMod(edMod(BigInt(2) * P.T) * Q.T * ED_D);
+        var D = edMod(BigInt(2) * P.Z * Q.Z);
+        var E = edMod(B - A), F = edMod(D - C), G = edMod(D + C), H = edMod(B + A);
+        return { X: edMod(E * F), Y: edMod(G * H), T: edMod(E * H), Z: edMod(F * G) };
+    }
+    function edDouble(P) {
+        var A = edMod(P.X * P.X);
+        var B = edMod(P.Y * P.Y);
+        var C = edMod(BigInt(2) * P.Z * P.Z);
+        var D = edMod(-A);
+        var E = edMod(edMod((P.X + P.Y) * (P.X + P.Y)) - A - B);
+        var G = edMod(D + B);
+        var F = edMod(G - C);
+        var H = edMod(D - B);
+        return { X: edMod(E * F), Y: edMod(G * H), T: edMod(E * H), Z: edMod(F * G) };
+    }
+    function edScalarMult(P, k) {
+        var R = { X: BigInt(0), Y: BigInt(1), Z: BigInt(1), T: BigInt(0) };
+        for (var i = 255; i >= 0; i--) {
+            R = edDouble(R);
+            if ((k >> BigInt(i)) & BigInt(1)) R = edAdd(R, P);
+        }
+        return R;
+    }
+
+    function ed25519PublicKey(seed32) {
+        if (!seed32 || seed32.length !== 32) return null;
+        var h = sha512Bytes(seed32);
+        var a = new Uint8Array(h.subarray(0, 32));
+        a[0] = a[0] & 248; a[31] = a[31] & 127; a[31] = a[31] | 64;
+        return edCompressPoint(edScalarMult(ED_BASE, edLEToBig(a)));
+    }
+    function ed25519Sign(seed32, msgBytes) {
+        if (!seed32 || seed32.length !== 32) return null;
+        msgBytes = msgBytes || new Uint8Array(0);
+        var h = sha512Bytes(seed32);
+        var a = new Uint8Array(h.subarray(0, 32));
+        a[0] = a[0] & 248; a[31] = a[31] & 127; a[31] = a[31] | 64;
+        var prefix = new Uint8Array(h.subarray(32, 64));
+        var A = edCompressPoint(edScalarMult(ED_BASE, edLEToBig(a)));
+        var r = edLEToBig(sha512Bytes(concat(prefix, msgBytes))) % ED_L;
+        var R = edCompressPoint(edScalarMult(ED_BASE, r));
+        var k = edLEToBig(sha512Bytes(concat(concat(R, A), msgBytes))) % ED_L;
+        // RFC 8032：S = (r + k * s) mod L。必须直接对 L 取模，
+        // 不可先 edMod（对 P 取模）再对 L 取模——P 与 L 不同，二次取模结果是错的。
+        var S = (r + k * edLEToBig(a)) % ED_L;
+        return concat(R, edBigToLE(S, 32));
+    }
+    function ed25519Verify(pub32, msgBytes, sig64) {
+        try {
+            if (!pub32 || pub32.length !== 32 || !sig64 || sig64.length !== 64) return false;
+            msgBytes = msgBytes || new Uint8Array(0);
+            var A = edDecodePoint(pub32);
+            if (!A) return false;
+            var Rbytes = new Uint8Array(sig64.subarray(0, 32));
+            var R = edDecodePoint(Rbytes);
+            if (!R) return false;
+            var S = edLEToBig(sig64.subarray(32, 64));
+            if (S >= ED_L) return false; // 非规范 S 一律拒绝
+            var k = edLEToBig(sha512Bytes(concat(concat(Rbytes, pub32), msgBytes))) % ED_L;
+            var lhs = edScalarMult(ED_BASE, S);
+            var rhs = edAdd(R, edScalarMult(A, k));
+            var a = edCompressPoint(lhs), b = edCompressPoint(rhs);
+            var diff = 0;
+            for (var i = 0; i < 32; i++) diff |= (a[i] ^ b[i]);
+            return diff === 0;
+        } catch (e) { return false; }
+    }
+
+    // ---------- 私钥录入（作者侧持有；绝不写入产物、绝不参与上传） ----------
+    // 私钥 seed = 32 字节。base32（52 字符，可带分组横线）或 hex（64 字符）均可录入；
+    // 非法输入返回 null → 清单 sig2 为空 → 客户端验签必然失败，属明确的错误状态，需在界面上提示。
+    function parsePrivateKey(text) {
+        var s = String(text == null ? '' : text).trim();
+        if (!s) return null;
+        var compact = s.replace(/[^0-9a-fA-F]/g, '');
+        if (/^[0-9a-fA-F\s\-:]+$/.test(s) && compact.length === 64) return hexToBytes(compact.toLowerCase());
+        return base32Decode(s, 32);
+    }
+    var privKeyText = '';
+    var privPubB32 = ''; // 私钥派生公钥的 base32 缓存：Ed25519 标量乘很贵，不能每次界面刷新都重算
+    (function () {
+        try {
+            var s = sessionStorage.getItem(PRIVKEY_KEY);
+            if (s) { privKeyText = s; return; }
+        } catch (e) {}
+        try {
+            if (localStorage.getItem(PRIVKEY_PERSIST_KEY) === '1') privKeyText = localStorage.getItem(PRIVKEY_KEY) || '';
+        } catch (e) {}
+    })();
+    function privateKeySeed() { return parsePrivateKey(privKeyText); }
+    function privateKeyText() { return privKeyText; }
+    function refreshPrivPub() {
+        privPubB32 = '';
+        var seed = privateKeySeed();
+        if (!seed || !ed25519Supported()) return '';
+        var pub = ed25519PublicKey(seed);
+        if (pub) privPubB32 = base32EncodeFull(pub);
+        return privPubB32;
+    }
+    refreshPrivPub();
+    // 由私钥派生的公钥（base32，52 字符）；未录入/非法时返回空串
+    function pubKeyBase32() { return privPubB32; }
+    function privateKeyOk() { return !!privPubB32; }
+    function setPrivateKey(text) {
+        privKeyText = String(text == null ? '' : text).trim();
+        var persist = false;
+        try { persist = localStorage.getItem(PRIVKEY_PERSIST_KEY) === '1'; } catch (e) {}
+        try {
+            if (privKeyText) sessionStorage.setItem(PRIVKEY_KEY, privKeyText); else sessionStorage.removeItem(PRIVKEY_KEY);
+        } catch (e) {}
+        try {
+            if (persist && privKeyText) localStorage.setItem(PRIVKEY_KEY, privKeyText);
+            else localStorage.removeItem(PRIVKEY_KEY);
+        } catch (e) {}
+        refreshPrivPub();
+        return privateKeyOk();
+    }
+    function setPrivateKeyPersist(on) {
+        try { localStorage.setItem(PRIVKEY_PERSIST_KEY, on ? '1' : '0'); } catch (e) {}
+        setPrivateKey(privKeyText);
+    }
+    function privateKeyPersistOn() {
+        try { return localStorage.getItem(PRIVKEY_PERSIST_KEY) === '1'; } catch (e) { return false; }
+    }
+
+    // ---------- 清单规范化串与签名串（与「图文排版生成器」逐字一致，改动务必两侧同步） ----------
+    // 规范化口径：
+    //   card / mc → 转大写并剔除 [^0-9A-Z]（即去掉分组横线）
+    //   note / exp → 去首尾空白、原样保留
+    //   revoked   → 归一化后去重、升序
+    // revSource = ver "\n" updated "\n" cards 按 (mc,card) 升序逐行 "{card}|{mc}|{note}|{exp}" 用 "\n" 连接 "\n" revoked 升序 join(",")
+    // rev       = sha256Hex(revSource) 前 16 hex（用于「内容是否变化、是否需要重传」的探测）
+    // canonical = ver "\n" updated "\n" rev "\n"（同样的 cards 行）"\n" revoked 升序 join(",")
+    // sig2      = base32( ed25519Sign(私钥, utf8Bytes(canonical)) )
+    function manifestCardsLines(cardsMap) {
+        var rows = [], k;
+        for (k in cardsMap) {
+            if (!Object.prototype.hasOwnProperty.call(cardsMap, k)) continue;
+            var e = cardsMap[k];
+            rows.push({ key: e.mc + '\u0000' + e.card, line: e.card + '|' + e.mc + '|' + e.note + '|' + e.exp });
+        }
+        rows.sort(function (a, b) { return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0); });
+        var out = [];
+        for (var i = 0; i < rows.length; i++) out.push(rows[i].line);
+        return out.join('\n');
+    }
+    function manifestRevokedStr(revokedMap) {
+        var list = [], k;
+        for (k in revokedMap) { if (Object.prototype.hasOwnProperty.call(revokedMap, k)) list.push(k); }
+        list.sort();
+        return list.join(',');
+    }
+    // revSource：不含 rev 自身的规范化串，用于计算 rev
+    function manifestRevSource(ver, updated, cardsMap, revokedMap) {
+        return Number(ver) + '\n' + updated + '\n' + manifestCardsLines(cardsMap) + '\n' + manifestRevokedStr(revokedMap);
+    }
+    // canonical：参与签名 / 验签的最终规范化串（rev 由生成器给出，并被签名一并绑定）
+    function canonicalManifestString(ver, updated, rev, cardsMap, revokedMap) {
+        return Number(ver) + '\n' + updated + '\n' + rev + '\n' + manifestCardsLines(cardsMap) + '\n' + manifestRevokedStr(revokedMap);
+    }
+    // 卡密格式：随机 20 字符 base32（沿用 XXXX-XXXX-XXXX-XXXX 的分组展示形式）
+    function cardFormatOk(card) { return /^[0-9A-Z]{20}$/.test(normalize(card)); }
+    // 用私钥对 canonical 签名 → sig2（base32，64 字节 → 103 字符）。私钥不可用/环境不支持 BigInt 时返回空串。
+    function signCanonical(canonical) {
+        var seed = privateKeySeed();
+        if (!seed || !ed25519Supported()) return '';
+        var sig = ed25519Sign(seed, utf8Bytes(canonical));
+        return sig ? base32EncodeFull(sig) : '';
+    }
+    // 自检用：用「当前私钥派生的公钥」对 canonical + sig2 验签，确认签名链路自身可通
+    //（与客户端验签走的是同一条 ed25519Verify 路径，因此这里通过就能保证客户端能验过）。
+    function verifyCanonical(canonical, sigB32) {
+        if (!privPubB32 || !sigB32) return false;
+        var pub = base32Decode(privPubB32, 32);
+        var sig = base32Decode(sigB32, 64);
+        if (!pub || !sig) return false;
+        return ed25519Verify(pub, utf8Bytes(canonical), sig);
+    }
+
+    // 本地时间 → ISO 8601（含时区偏移），如 2026-10-15T12:34:56+08:00。
+    // 契约要求带时区：客户端只把它当「清单更新时间」文本参与验签，不解析，因此格式稳定即可。
+    function localIso(d) {
+        function pad(x, n) {
+            var s = String(Math.abs(x));
+            while (s.length < (n || 2)) s = '0' + s;
+            return s;
+        }
+        var off = -d.getTimezoneOffset(); // 分钟；东八区 = 480
+        var sign = off >= 0 ? '+' : '-';
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+            'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) +
+            sign + pad(Math.floor(Math.abs(off) / 60)) + ':' + pad(Math.abs(off) % 60);
+    }
+
+    // 清单条目统一取卡密：兼容旧格式（字符串）与新格式（对象 {card, mc, note, exp}）。
+    // 所有「按卡密比较 / 去重 / 吊销」的地方都走这里。
     function cardOf(c) { return normalize((c && typeof c === 'object') ? c.card : c); }
 
-    // 卡密结果按机器码缓存：双 SHA-256 是纯 JS 实现，同一机器码在「渲染 / 导出 / 上传 / 对照在线清单」
-    // 各条路径上会被反复重算，大台账下是主要卡顿来源；缓存后每条机器码只算一次。
-    var cardCache = {};
+    // ---------- 卡密生成：随机 20 字符 base32 + 机器码绑定落盘 ----------
+    // 非对称制式下「卡密 = 对机器码的签名」会使卡密长达 ~104 字符、用户无法输入；
+    // 因此卡密改为随机生成，「一卡一机」由已签名的清单条目 cards[].mc 绑定实现。
+    // 关键约束：同一机器码必须始终得到同一张卡密 —— 生成后立刻落盘（localStorage），
+    // 否则每次「生成卡密」都会换卡，用户手上刚拿到的卡密立刻失效。
+    var CARD_MAP_KEY = 'lmt_card_map_v1';
+    var cardMap = null; // { 归一化机器码: 'XXXX-XXXX-XXXX-XXXX' }
+    function loadCardMap() {
+        if (cardMap) return cardMap;
+        cardMap = {};
+        try {
+            var raw = localStorage.getItem(CARD_MAP_KEY);
+            var obj = raw ? JSON.parse(raw) : null;
+            if (obj && typeof obj === 'object') {
+                for (var k in obj) {
+                    if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+                    if (cardFormatOk(k)) cardMap[normalize(k)] = group(normalize(obj[k]), 4);
+                }
+            }
+        } catch (e) { cardMap = {}; }
+        return cardMap;
+    }
+    function saveCardMap() {
+        try { localStorage.setItem(CARD_MAP_KEY, JSON.stringify(cardMap || {})); } catch (e) {}
+    }
+    // 16 字节随机 → 20 字符 base32（128 位足以覆盖 20 字符信息量，且避免长卡密）
+    function randomCard() {
+        var bytes = new Uint8Array(16);
+        var i;
+        if (window.crypto && window.crypto.getRandomValues) {
+            window.crypto.getRandomValues(bytes);
+        } else {
+            for (i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+        }
+        return group(base32Encode(bytes, 20), 4);
+    }
+    // 按机器码取卡密：命中缓存 / 已落盘 → 直接返回；否则随机生成并落盘。
+    // 与旧实现（按机器码重算确定性卡密）接口保持一致，调用方无需改动。
     function makeCard(mc) {
         var key = normalize(mc);
-        if (key in cardCache) return cardCache[key];
-        var mac = hmacSha256Hex(LICENSE_SECRET, key);
-        var card = group(base32Encode(hexToBytes(mac), 20), 4);
-        cardCache[key] = card;
+        if (!key) return '';
+        var map = loadCardMap();
+        if (Object.prototype.hasOwnProperty.call(map, key)) return map[key];
+        var used = {}, k;
+        for (k in map) { if (Object.prototype.hasOwnProperty.call(map, k)) used[normalize(map[k])] = true; }
+        var card = randomCard(), guard = 0;
+        while (used[normalize(card)] && guard++ < 20) card = randomCard();
+        map[key] = card;
+        saveCardMap();
         return card;
     }
 
-    // 清单签名：对「更新日期 + 归一化白名单 + 归一化吊销名单」做 HMAC-SHA256，随清单一同上传。
-    // 主程序拉取后会重算比对，避免 cards.json 被随手篡改（两侧算法必须逐字一致，见 lmt-layout 的 manifestSignature）。
-    // 先归一化（去分隔符、转大写）再签名：签名只绑定卡密内容，不受分组写法影响，
-    // 白名单条目无论写成字符串还是对象 {card,...}，取出的载荷完全相同。
-    // 注意：卡密有效期 exp 刻意不参与签名——载荷仍只有「更新日期 + 白名单 + 吊销名单」。
-    // 这是双向兼容设计：旧版主程序不认识 exp 也能验签通过；新版读 exp 时旧清单缺省视为无有效期，
-    // 因此给老清单补 exp 或去掉 exp 都不会让主程序验签失败。
-    function manifestSignature(updated, cards, revoked) {
-        var payload = String(updated == null ? '' : updated) + '\n' +
-            cards.map(cardOf).join(',') + '\n' +
-            revoked.map(cardOf).join(',');
-        return hmacSha256Hex(LICENSE_SECRET, payload);
+    // 只查缓存、不生成：用于「解析台账」这类不应产生副作用的场景（生成卡密会写 localStorage）。
+    // 返回归一化后的卡密（20 位大写）或空串。
+    function peekCard(mc) {
+        var key = normalize(mc);
+        if (!key) return '';
+        var map = loadCardMap();
+        if (!Object.prototype.hasOwnProperty.call(map, key)) return '';
+        return normalize(map[key]);
     }
 
     // ---------- 登录校验（纯前端门槛） ----------
@@ -674,10 +1234,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var rest = fields.slice(1);
         // 丢掉卡密列（兼容带卡密的 CSV 行）。只在该列确实是卡密时才丢：
         //   · 后面还有列 → 就是「机器码,卡密,备注」的三列格式，直接丢；
-        //   · 它是最后一列 → 与本机器码重算出的卡密比对，完全一致才认定是卡密列。
+        //   · 它是最后一列 → 与本机器码「已落盘的卡密」比对，完全一致才认定是卡密列。
+        // 这里用 peekCard（只查不生成）：解析台账不应产生「顺手生成卡密并写 localStorage」的副作用。
         // 否则「恰好 20 位纯字母数字」的备注会被误当卡密静默丢弃。
         if (rest.length && normalize(rest[0]).length === 20 &&
-            (rest.length > 1 || normalize(rest[0]) === normalize(makeCard(n)))) {
+            (rest.length > 1 || normalize(rest[0]) === peekCard(n))) {
             rest.shift();
         }
         // 丢掉首尾的空列（如模板里的卡密列为空、或 CSV 行尾多出逗号）
@@ -822,7 +1383,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     var mcList = document.getElementById('mc-list');
     var out = document.getElementById('out');
     var outTitle = document.getElementById('out-title');
-    var copyAllBtn = document.getElementById('copy-all');
+    var copyLedgerBtn = document.getElementById('copy-ledger-table');
     var revokeList = document.getElementById('revoke-list');
     var manifestOut = document.getElementById('manifest-out');
     var manifestUrlEl = document.getElementById('manifest-url');
@@ -832,7 +1393,53 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     manifestUrlEl.value = MANIFEST_URL;
     var mirrorEl = document.getElementById('manifest-mirror');
     if (mirrorEl) mirrorEl.textContent = '备用源（主源不可达时自动回退）：' + MANIFEST_MIRRORS.join('、');
-    document.getElementById('secret-view').textContent = LICENSE_SECRET;
+
+    // ---------- 密钥区：私钥录入 + 公钥指纹自检 ----------
+    // 私钥只存本机、绝不进产物；界面不回显私钥明文作为「当前密钥」，
+    // 只展示由它派生的公钥指纹，用户拿它与客户端内置的公钥比对即可确认配对正确。
+    var secretInput = document.getElementById('secret-input');
+    var secretFp = document.getElementById('secret-fingerprint');
+    var secretPersist = document.getElementById('secret-persist');
+    var secretTip = document.getElementById('secret-tip');
+    function setSecretTip(msg) { if (secretTip) secretTip.textContent = msg || ''; }
+    function updateSecretUi() {
+        var pub = pubKeyBase32();
+        if (secretFp) secretFp.textContent = pub || '未录入';
+        if (secretInput) secretInput.value = privateKeyText();
+        if (secretPersist) secretPersist.checked = privateKeyPersistOn();
+    }
+    // persistOn 必须先于私钥写入设置：setPrivateKey 会依据该开关决定是否落 localStorage
+    function applyPrivateKey(text, persistOn) {
+        setPrivateKeyPersist(persistOn);
+        var ok = setPrivateKey(text);
+        updateSecretUi();
+        buildManifest(); // 私钥变化 → sig2 变化，立即重算清单，避免复制到没有签名的旧文本
+        return ok;
+    }
+    document.getElementById('secret-save').addEventListener('click', function () {
+        var ok = applyPrivateKey(secretInput.value, secretPersist.checked);
+        setSecretTip(ok
+            ? '已保存私钥（公钥指纹 ' + pubKeyBase32() + '）。'
+            : '私钥格式不正确：需要 32 字节 seed（base32 52 字符或 hex 64 字符）。');
+    });
+    document.getElementById('secret-clear').addEventListener('click', function () {
+        applyPrivateKey('', false);
+        setSecretTip('已清除本机保存的私钥，清单 sig2 将为空（客户端无法验签）。');
+    });
+    if (secretPersist) {
+        secretPersist.addEventListener('change', function () {
+            applyPrivateKey(secretInput.value, secretPersist.checked);
+            setSecretTip(secretPersist.checked ? '已记住私钥（写入本机浏览器）。' : '私钥改为仅本标签页有效。');
+        });
+    }
+    document.getElementById('secret-compare-btn').addEventListener('click', function () {
+        var pub = pubKeyBase32();
+        if (!pub) { setSecretTip('尚未录入私钥，无法比对。'); return; }
+        setSecretTip(pub === EXPECTED_PUBKEY
+            ? '一致：当前私钥派生的公钥与客户端内置公钥相同。'
+            : '不一致：当前私钥派生的公钥与客户端内置公钥不同，生成的清单将无法被客户端验签通过。');
+    });
+    updateSecretUi();
 
     var pairs = []; // 最近一次生成结果 [{ mc, card }]
     // 「对照线上清单」的结果缓存：key = 归一化机器码 → 'up'（已上传）/ 'notup'（未上传）/ 'revoked'（已吊销）。
@@ -841,50 +1448,94 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 是否已执行过一次「对照在线清单」：网络恢复后只对用过该功能的用户自动重查，避免无谓请求。
     var onlineCheckAttempted = false;
 
-    // 依据「当前台账 + 吊销名单」组装在线清单对象（白名单 + 吊销名单 + 日期 + 签名）。
+    // 依据「当前台账 + 吊销名单」组装在线清单对象（契约 ver 2：ver / updated / rev / cards / revoked / sig2）。
     // 与 buildManifest 拆开的原因：上传前需要先拿到本地对象、与远端合并后再重新签名。
-    // 白名单条目写成对象 {card, mc, note?, exp?}：作者看清单 JSON 就能把卡密对应到具体用户的名称与机器码，
-    // 不用再回台账里翻。主程序与旧版读法只取 card 字段（见 parseManifest 的 cardOf 写法），因此向后兼容；
-    // 签名仍只取归一化卡密，条目结构不参与签名，故清单对旧版主程序依旧可验签。
+    // 白名单条目写成对象 {card, mc, note, exp}：作者看清单 JSON 就能把卡密对应到具体用户的名称与机器码。
+    // 签名口径见 canonicalManifestString 上方注释（与主程序逐字一致，改动务必两侧同步）。
     function buildManifestObj() {
-        var seen = {};
-        var items = [];
-        var cards = [];
-        // 直接依据「当前台账文本」重算卡密，而不是复用上一次 render() 的结果（pairs）：
-        // 否则用户新粘了机器码但还没点「生成卡密」时，复制到的在线清单仍是旧的，
-        // 新用户的卡密不在白名单里、无法激活，且不易察觉。
+        // 归一化卡密 → {card, mc, note, exp}；签名与 rev 都基于归一化值，分组只影响 JSON 的可读性
+        var cardsMap = {};
         uniqueEntries(mcList.value).forEach(function (e) {
-            var card = makeCard(e.key);
-            if (seen[card]) return;
-            seen[card] = true;
-            cards.push(card);
-            var item = { card: card, mc: group(e.key, 4) };
-            if (e.note) item.note = e.note;
-            if (e.exp) item.exp = e.exp;
-            items.push(item);
+            var ncard = normalize(makeCard(e.key));
+            if (!ncard) return;
+            cardsMap[ncard] = {
+                card: group(ncard, 4),
+                mc: group(normalize(e.key), 4),
+                note: e.note ? String(e.note).trim() : '',
+                exp: e.exp ? String(e.exp).trim() : ''
+            };
         });
-        var revoked = [];
-        // 归一化后去重：吊销框里手抄多遍 / 分隔符写法不同会得到同一张卡密，
-        // 不去重会让清单 JSON 与签名里出现重复项、统计虚高。
-        var revSeen = {};
+        var revokedMap = {};
         revokeList.value.split(/\r?\n/).forEach(function (line) {
             var n = normalize(line);
-            if (n && !revSeen[n]) { revSeen[n] = true; revoked.push(group(n, 4)); }
+            if (n) revokedMap[n] = true;
         });
-        // 用本地日期而非 toISOString()（UTC）：东八区在 08:00 之前 UTC 仍是前一天，
-        // 会导致清单里的「更新于」日期比实际早一天，容易让人误判清单是否为最新。
-        var now = new Date();
-        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
-        var updated = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
-        // sig 覆盖「更新日期 + 白名单 + 吊销名单」；主程序验签不通过会拒绝该清单。
-        var sig = manifestSignature(updated, cards, revoked);
-        return { updated: updated, cards: items, revoked: revoked, sig: sig };
+        // 吊销优先：产出清单时先剔除与吊销名单冲突的白名单条目，
+        // 避免同一张卡密在清单里既「可用」又「已吊销」——客户端解析优先级也以吊销为准。
+        Object.keys(revokedMap).forEach(function (n) { delete cardsMap[n]; });
+        // ISO 8601 含时区（P-32）：用本地时间 + 时区偏移，不用 toISOString（UTC），
+        // 否则东八区 08:00 前会写成前一天，容易让人误判清单是否为最新。
+        var updated = localIso(new Date());
+        // ⚠️ 参与 rev / 签名的一律是「归一化」条目（card/mc 去分组横线）：
+        //    客户端 parseManifest 解析后也是先归一化再拼规范化串，两侧必须逐字一致；
+        //    分组横线只出现在写进 cards.json 的展示字段里，绝不进入规范化串。
+        var normForSign = normCardsMap(cardsMap);
+        var rev = sha256Hex(manifestRevSource(MANIFEST_VER, updated, normForSign, revokedMap)).substr(0, 16);
+        var canonical = canonicalManifestString(MANIFEST_VER, updated, rev, normForSign, revokedMap);
+        var cards = [], revoked = [], keys, i;
+        keys = Object.keys(cardsMap); keys.sort();
+        for (i = 0; i < keys.length; i++) cards.push(cardsMap[keys[i]]);
+        keys = Object.keys(revokedMap); keys.sort();
+        for (i = 0; i < keys.length; i++) revoked.push(group(keys[i], 4));
+        return {
+            ver: MANIFEST_VER,
+            updated: updated,
+            rev: rev,
+            cards: cards,
+            revoked: revoked,
+            sig2: signCanonical(canonical)
+        };
     }
 
     // 生成在线清单 JSON 文本（含白名单 + 吊销名单），供上传到静态空间；返回该文本。
+    // 同时刷新「发布前自检」（#publish-check），使界面上的自检结论与当前清单始终一致。
     function buildManifest() {
-        manifestOut.value = JSON.stringify(buildManifestObj(), null, 2);
+        var obj = buildManifestObj();
+        manifestOut.value = JSON.stringify(obj, null, 2);
+        updatePublishCheck(obj);
         return manifestOut.value;
+    }
+
+    // 发布前自检（P-01 / P-14）：校验清单结构完整性与 sig2 是否真的生成出来。
+    // 自动上传与「一键发布」都以本自检为门槛，避免把未签名 / 结构不完整的清单推到线上。
+    function manifestSelfCheck(obj) {
+        var problems = [];
+        if (!obj || typeof obj !== 'object') {
+            problems.push('清单对象为空');
+        } else {
+            if (obj.ver !== MANIFEST_VER) problems.push('ver 不是 ' + MANIFEST_VER);
+            if (!obj.updated) problems.push('缺少 updated');
+            if (!obj.rev) problems.push('缺少 rev');
+            if (!Array.isArray(obj.cards)) problems.push('cards 不是数组');
+            if (!Array.isArray(obj.revoked)) problems.push('revoked 不是数组');
+            if (!privateKeyOk()) problems.push('未录入签名私钥，sig2 无法生成');
+            else if (!obj.sig2) problems.push('缺少 sig2 签名');
+        }
+        return {
+            ok: problems.length === 0,
+            msg: problems.length
+                ? ('自检未通过：' + problems.join('；'))
+                : ('自检通过：ver ' + MANIFEST_VER + '、白名单 ' + obj.cards.length + ' 张、吊销 ' + obj.revoked.length + ' 张、sig2 已生成。')
+        };
+    }
+    function updatePublishCheck(obj) {
+        var el = document.getElementById('publish-check');
+        var r = manifestSelfCheck(obj);
+        if (el) {
+            el.textContent = r.msg;
+            el.className = 'ledger-tip ' + (r.ok ? 'is-ok' : 'is-bad');
+        }
+        return r;
     }
 
     // ---------- 复制（移动端优先走同步 execCommand） ----------
@@ -1036,6 +1687,52 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             flashButton(btn, ok ? (okText || '已复制') : '请手动复制');
             if (!ok) showManualCopy(text);
         });
+    }
+
+    // 通用二次确认弹层（自绘，不用 window.confirm；样式与「手动复制」浮层一致）。
+    // 用于：批量操作缺少显式目标时回显将影响的条数，避免静默作用于全量台账。
+    function showConfirm(title, message, okText, onOk) {
+        var mask = document.createElement('div');
+        mask.className = 'manual-copy-mask';
+        mask.setAttribute('role', 'dialog');
+        mask.setAttribute('aria-modal', 'true');
+        var card = document.createElement('div');
+        card.className = 'manual-copy-card';
+        var h = document.createElement('h3');
+        h.textContent = title;
+        var p = document.createElement('p');
+        p.textContent = message;
+        var actions = document.createElement('div');
+        actions.className = 'manual-copy-actions';
+        var disposed = false, offEsc = null;
+        function dispose() {
+            if (disposed) return;
+            disposed = true;
+            if (offEsc) offEsc();
+            unlockScroll();
+            if (mask.parentNode) mask.parentNode.removeChild(mask);
+        }
+        var cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'btn btn-ghost';
+        cancel.textContent = '取消';
+        cancel.addEventListener('click', dispose);
+        var ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'btn btn-primary';
+        ok.textContent = okText || '确认';
+        ok.addEventListener('click', function () { dispose(); if (onOk) onOk(); });
+        actions.appendChild(cancel);
+        actions.appendChild(ok);
+        card.appendChild(h);
+        card.appendChild(p);
+        card.appendChild(actions);
+        mask.appendChild(card);
+        mask.addEventListener('click', function (e) { if (e.target === mask) dispose(); });
+        document.body.appendChild(mask);
+        lockScroll();
+        offEsc = onEsc(dispose);
+        try { ok.focus(); } catch (e) {}
     }
 
     function updateLedgerTip() {
@@ -1812,19 +2509,29 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return /["\t,;\r\n，；]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
     }
 
-    // 导出台账为 CSV（机器码,卡密,备注,有效期），带 BOM 便于 Excel 正确识别中文
-    function buildLedgerCsv() {
+    // 台账 CSV 生成：列口径由 mode 决定。
+    //   · 三列（机器码 / 备注 / 有效期）→「导出台账」与台账快照，保证「导出 → 导入」无损回环；
+    //   · 四列（+卡密）→「导出含卡密台账」，仅供查阅与交付，不与导入混用。
+    // 带 BOM 便于 Excel 正确识别中文。
+    function ledgerCsvRows(mode) {
         var ps = computePairs(); // 只用当前台账重算卡密，避免像旧实现那样整表重排 DOM
-        var rows = [['机器码', '卡密', '备注', '有效期']];
-        ps.forEach(function (p) { rows.push([group(p.mc, 4), p.card, p.note || '', p.exp || '']); });
+        var withCard = mode === 'deliver';
+        var rows = [withCard ? ['机器码', '卡密', '备注', '有效期'] : ['机器码', '备注', '有效期']];
+        ps.forEach(function (p) {
+            rows.push(withCard
+                ? [group(p.mc, 4), p.card, p.note || '', p.exp || '']
+                : [group(p.mc, 4), p.note || '', p.exp || '']);
+        });
         return '\uFEFF' + rows.map(function (r) {
             return r.map(csvCell).join(',');
         }).join('\r\n');
     }
-    function ledgerFileName() {
+    function buildLedgerCsv() { return ledgerCsvRows('ledger'); }
+    function buildLedgerDeliverCsv() { return ledgerCsvRows('deliver'); }
+    function ledgerFileName(suffix) {
         var d = new Date();
         var pad = function (x) { return (x < 10 ? '0' : '') + x; };
-        return '卡密台账_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.csv';
+        return '卡密台账' + (suffix || '') + '_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.csv';
     }
     // 返回 undefined 表示已成功触发下载；返回字符串表示浏览器不支持下载（移动端 WebView），
     // 由调用方改用「手动复制」浮层兜底。
@@ -1858,14 +2565,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|HarmonyOS/i.test(String(ua));
     }
 
-    // 导入模板：与导出台账同格式（机器码,卡密,备注,有效期）。卡密列导入时会被自动忽略，
-    // 所以办理台账时可只填机器码和备注，卡密与有效期列留空或保留占位符都不影响。
+    // 导入模板：与「导出台账」同构的三列格式（机器码,备注,有效期）。
+    // 列位与导出完全对齐，导出文件可直接当作模板改写后再导入，无损回环。
     function buildTemplateCsv() {
         var rows = [
-            ['机器码', '卡密', '备注', '有效期'],
-            ['ABCD-EFGH-JKMN-PQRS', 'XXXX-XXXX-XXXX-XXXX-XXXX', '张三', '2027-12-31'],
-            ['STVW-XYZ0-1234-5678', 'XXXX-XXXX-XXXX-XXXX-XXXX', '李四', ''],
-            ['WXYZ-0123-4567-89AB', '', '王五', '']
+            ['机器码', '备注', '有效期'],
+            ['ABCD-EFGH-JKMN-PQRS', '张三', '2027-12-31'],
+            ['STVW-XYZ0-1234-5678', '李四', ''],
+            ['WXYZ-0123-4567-89AB', '王五', '']
         ];
         return '\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
     }
@@ -1970,12 +2677,56 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             return false;
         }
     }
+    var SNAPSHOT_KEEP = 5; // 快照保留份数
+    // 快照条目里的台账条数（跳过表头）
+    function snapshotCount(csv) {
+        var rows = String(csv == null ? '' : csv).replace(/^\uFEFF/, '').split(/\r?\n/)
+            .filter(function (l) { return String(l).trim(); });
+        return Math.max(0, rows.length - 1);
+    }
+    // 快照时间点选取（P-24）：列表化展示各时间点，选中项高亮；默认选中最新一份。
+    var selectedSnapshotIndex = -1;
+    function renderSnapshotList(items) {
+        var box = document.getElementById('snapshot-list');
+        if (!box) return;
+        box.textContent = '';
+        var store = items || loadSnapshots().items;
+        if (!store.length) {
+            selectedSnapshotIndex = -1;
+            var empty = document.createElement('div');
+            empty.className = 'lmt-snapshot-empty';
+            empty.textContent = '尚无自动快照。台账变化约 5 秒后会自动留存一份。';
+            box.appendChild(empty);
+            return;
+        }
+        if (selectedSnapshotIndex < 0 || selectedSnapshotIndex >= store.length) selectedSnapshotIndex = store.length - 1;
+        store.forEach(function (it, i) {
+            var row = document.createElement('label');
+            row.className = 'lmt-snapshot-item' + (i === selectedSnapshotIndex ? ' is-selected' : '');
+            var radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'snapshot-pick';
+            radio.checked = (i === selectedSnapshotIndex);
+            radio.addEventListener('change', function () {
+                selectedSnapshotIndex = i;
+                renderSnapshotList();
+            });
+            var txt = document.createElement('span');
+            txt.textContent = formatLocalTime(it.at) + '（' + snapshotCount(it.csv) + ' 条）';
+            row.appendChild(radio);
+            row.appendChild(txt);
+            box.appendChild(row);
+        });
+    }
     function updateSnapshotTip() {
-        var tip = document.getElementById('snapshot-tip');
-        if (!tip) return;
         var items = loadSnapshots().items;
-        if (!items.length) { tip.textContent = '尚未生成快照'; return; }
-        tip.textContent = '最近快照：' + formatLocalTime(items[items.length - 1].at) + ' · 共 ' + items.length + ' 份';
+        var tip = document.getElementById('snapshot-tip');
+        if (tip) {
+            tip.textContent = items.length
+                ? ('共 ' + items.length + ' 份（保留上限 ' + SNAPSHOT_KEEP + ' 份）· 最近：' + formatLocalTime(items[items.length - 1].at))
+                : ('尚未生成快照（保留上限 ' + SNAPSHOT_KEEP + ' 份）');
+        }
+        renderSnapshotList(items);
     }
     function saveSnapshot() {
         if (!String(mcList.value || '').trim()) return; // 空台账不生成快照
@@ -1997,8 +2748,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             return k !== day; // 同一天的那份被替换
         });
         store.items.push(buildSnapshotRecord(csv));
-        while (store.items.length > 5) store.items.shift(); // 最多 5 份
+        while (store.items.length > SNAPSHOT_KEEP) store.items.shift(); // 最多保留 SNAPSHOT_KEEP 份
         if (!writeSnapshots(store)) { setUploadTip('台账快照保存失败（本机存储空间不足）。'); return; }
+        selectedSnapshotIndex = store.items.length - 1; // 新快照写完后默认选中最新的那份
         updateSnapshotTip();
     }
     function scheduleSnapshot() {
@@ -2009,15 +2761,23 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var items = loadSnapshots().items;
         return items.length ? items[items.length - 1] : null;
     }
-    function restoreLatestSnapshot() {
-        var last = latestSnapshot();
-        if (!last) return null;
+    // 当前选中的时间点快照；没有列表选中时退化为最新一份。
+    function selectedSnapshot() {
+        var items = loadSnapshots().items;
+        if (!items.length) return null;
+        var i = (selectedSnapshotIndex >= 0 && selectedSnapshotIndex < items.length) ? selectedSnapshotIndex : items.length - 1;
+        return items[i];
+    }
+    // 把指定时间点快照合并回台账
+    function restoreSnapshot(rec) {
+        if (!rec) return null;
         var before = extractMc(mcList.value).length;
-        mcList.value = mergeCodes(mcList.value, last.csv || '');
+        mcList.value = mergeCodes(mcList.value, rec.csv || '');
         saveLedger();
         render();
-        return { added: extractMc(mcList.value).length - before, at: last.at };
+        return { added: extractMc(mcList.value).length - before, at: rec.at };
     }
+    function restoreLatestSnapshot() { return restoreSnapshot(selectedSnapshot()); }
 
     // ---------- 上传回执 / 待重传标记（功能②） ----------
     function getUploadReceipt() {
@@ -2106,7 +2866,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         try { parsed = JSON.parse(json); } catch (e) {}
         setUploadReceipt({
             at: new Date().toISOString(),
-            sig: parsed && parsed.sig ? String(parsed.sig).slice(0, 12) : '',
+            sig: parsed && parsed.sig2 ? String(parsed.sig2).slice(0, 12) : '',
             cards: parsed && parsed.cards ? parsed.cards.length : 0,
             revoked: parsed && parsed.revoked ? parsed.revoked.length : 0,
             json: json
@@ -2146,7 +2906,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         Object.keys(remoteRevoked).forEach(function (n) { if (localCards[n]) onlineRevokedLocalKept++; });
         return {
             updated: remote.updated || '',
-            signed: !!remote.sig,
+            signed: !!remote.sig2,
             remoteCards: Object.keys(remoteCards).length,
             remoteRevoked: Object.keys(remoteRevoked).length,
             notUploaded: notUploaded,
@@ -2170,6 +2930,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         }
         line('线上清单：更新于 ' + (report.updated || '未知') + (report.signed ? '（已签名）' : '（未签名）') +
             ' · 白名单 ' + report.remoteCards + ' 张 · 吊销 ' + report.remoteRevoked + ' 张');
+        // 冲突优先级明文成文（P-10）：吊销优先于白名单，命中即拒绝激活；
+        // 生成清单时会先剔除与吊销冲突的白名单条目，这里的计数只用于提示仍需清理的历史残留。
+        line('规则：吊销优先于白名单（命中「已吊销」即拒绝激活）；与吊销冲突的白名单条目在生成清单时已剔除。');
         if (report.consistent) {
             line('本地台账与线上清单一致（已上传 ' + report.remoteCards + ' 张）。', 'lmt-diff-ok');
         } else {
@@ -2206,14 +2969,17 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 批量操作的统一目标：优先「已勾选的行」；一条都没勾选时，退化为当前筛选结果（筛选为空即全部台账）。
     // 续期 / 吊销 / 复制话术 / 导出交付图 全部走这一个入口，
     // 避免同一界面状态下各按钮作用范围不同（同一个「筛选结果」按钮，行为却与「导出交付图」不一致）。
-    function currentTargets() {
-        var all = computePairs();
+    // 参数 all 可选：调用方已算出 computePairs() 时传入，避免重复计算。
+    function currentTargets(all) {
+        all = all || computePairs();
         var checked = checkedCards();
         if (!checked.length) return filterEntries(all);
         var set = {};
         checked.forEach(function (c) { var n = cardOf(c); if (n) set[n] = true; });
         return all.filter(function (p) { return set[normalize(p.card)] === true; });
     }
+    // 是否缺少「显式目标」：既没有勾选，也没有筛选 → 将作用于全量台账，需二次确认（P-04 / P-05 / P-21）。
+    function lacksExplicitTarget() { return !checkedCards().length && !filterText; }
     // 把一组卡密归一化去重后「追加」到吊销框；返回本次新增条数。
     function revokeCards(cards) {
         var seen = {};
@@ -2252,6 +3018,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         h.textContent = '批量续期';
         var p = document.createElement('p');
         p.textContent = '给 ' + targets.length + ' 条卡密延长有效期（范围：已勾选的行，未勾选时为当前筛选结果）。' +
+            (lacksExplicitTarget() ? '⚠ 当前既未勾选也未筛选，将作用于全部台账共 ' + targets.length + ' 条。' : '') +
             '选择基准与月数后点「确定续期」，会回写台账并刷新清单。';
         var label = document.createElement('label');
         label.textContent = '延长月数';
@@ -2390,7 +3157,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             renderDiffReport(buildDiffReport(buildManifestObj(), data));
             flashButton(b, notUp > 0 ? (notUp + ' 张未上传') : '全部已上传');
             if (tip) tip.textContent = '线上清单更新于 ' + (data.updated || '未知') +
-                (data.sig ? '（已签名）' : '（未签名）') +
+                (data.sig2 ? '（已签名）' : '（未签名）') +
                 ' · 已上传 ' + up + ' · 未上传 ' + notUp + ' · 已吊销 ' + rev;
         })['catch'](function () {
             flashButton(b, '拉取失败');
@@ -2429,26 +3196,42 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         t = String(t == null ? '' : t);
         return /^(ghp_|github_pat_|gho_)/.test(t) && t.length >= 8;
     }
-    function getToken() {
+    // 令牌持久化开关（P-15）：默认关闭 → 只写 sessionStorage（关标签页即失效）；
+    // 只有显式勾选「记住令牌」才允许写入 localStorage，并提示 XSS 风险。
+    function tokenPersistOn() {
+        try { return localStorage.getItem(TOKEN_PERSIST_KEY) === '1'; } catch (e) { return false; }
+    }
+    function setTokenPersist(on) {
+        try { if (on) localStorage.setItem(TOKEN_PERSIST_KEY, '1'); else localStorage.removeItem(TOKEN_PERSIST_KEY); } catch (e) {}
+    }
+    function readTokenRec() {
         var rec = null;
+        // 会话通道优先（默认通道）
+        try {
+            var s = sessionStorage.getItem(TOKEN_SESSION_KEY);
+            if (s) { var ds = JSON.parse(s); if (ds && typeof ds === 'object' && typeof ds.t === 'string') rec = ds; }
+        } catch (e) { rec = null; }
+        if (rec) return rec;
+        if (!tokenPersistOn()) return null;
         try {
             var raw = localStorage.getItem(UPLOAD_TOKEN_KEY);
-            if (raw) {
-                var d = JSON.parse(raw);
-                if (d && typeof d === 'object' && typeof d.t === 'string') rec = d;
-            }
+            if (raw) { var d = JSON.parse(raw); if (d && typeof d === 'object' && typeof d.t === 'string') rec = d; }
         } catch (e) { rec = null; }
         if (!rec) {
             // 旧键迁移：前缀合法才迁移一次并删除旧键；不合法直接清除旧键。
             try {
                 var old = localStorage.getItem(UPLOAD_TOKEN_LEGACY_KEY);
                 if (old) {
-                    if (isTokenUsable(old)) { setToken(old); rec = { t: old, at: new Date().toISOString() }; }
+                    if (isTokenUsable(old)) { setToken(old, true); rec = { t: old, at: new Date().toISOString() }; }
                     localStorage.removeItem(UPLOAD_TOKEN_LEGACY_KEY);
                 }
             } catch (e2) {}
-            if (!rec) return '';
         }
+        return rec;
+    }
+    function getToken() {
+        var rec = readTokenRec();
+        if (!rec) return '';
         // 30 天后视为过期：返回空并提示（不打印、不回填）。
         if (rec.at) {
             var at = Date.parse(rec.at);
@@ -2460,11 +3243,23 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         }
         return rec.t || '';
     }
-    function setToken(t) {
+    // persist=true 才写入 localStorage；默认只写 sessionStorage（仅本次会话）。
+    function setToken(t, persist) {
         try {
-            if (!t) { localStorage.removeItem(UPLOAD_TOKEN_KEY); return true; }
+            if (!t) {
+                try { sessionStorage.removeItem(TOKEN_SESSION_KEY); } catch (e1) {}
+                localStorage.removeItem(UPLOAD_TOKEN_KEY);
+                return true;
+            }
             if (!isTokenUsable(t)) return false; // 格式不符：不落盘
-            localStorage.setItem(UPLOAD_TOKEN_KEY, JSON.stringify({ v: 1, t: String(t), at: new Date().toISOString() }));
+            var rec = JSON.stringify({ v: 1, t: String(t), at: new Date().toISOString() });
+            if (persist) {
+                localStorage.setItem(UPLOAD_TOKEN_KEY, rec);
+                try { sessionStorage.removeItem(TOKEN_SESSION_KEY); } catch (e2) {}
+            } else {
+                try { sessionStorage.setItem(TOKEN_SESSION_KEY, rec); } catch (e3) {}
+                localStorage.removeItem(UPLOAD_TOKEN_KEY);
+            }
             return true;
         } catch (e) { return false; }
     }
@@ -2474,42 +3269,74 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(String(str)))); }
     function base64ToUtf8(b64) { return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, '')))); }
 
-    // 上传前与远端清单合并：白名单取并集（归一化去重后重新分组 + 重签名），
+    // 上传前与远端清单合并：白名单取并集（归一化去重后重新分组 + 重新签名），
     // 目的：本机没记录的卡密（例如另一台机器加的）不会被覆盖删除，避免误锁用户。
     // 吊销名单则以「本机吊销框」为准，不与远端取并集：否则把某项从吊销框删掉再上传，
     // 会被远端的旧记录并回来，用户无法用本工具解除吊销（撤销只能通过重新生成清单来完成）。
-    // 条目保留 名称 / 机器码 / 有效期：远端旧格式（字符串数组 + 顶层 exp 映射）也一并读入后归一化，
-    // 保证合并结果里每张卡密都带上能对应用户的信息，不再退化成光秃秃一串卡密。
+    // 合并结果按 ver 2 契约重算 rev 并用私钥重新签名；旧格式清单（字符串条目 + 顶层 exp 映射）
+    // 也一并读入后归一化，保证合并结果里每张卡密都尽量带上能对应用户的信息。
     function mergeWithRemote(local, remote) {
         local = local || {};
         remote = remote || {};
-        var cardSeen = {}, cards = [];
+        var cardsMap = {};
         function addCard(c, expMap) {
             var n = cardOf(c);
-            if (!n || cardSeen[n]) return;
+            if (!n || cardsMap[n]) return;
             var src = (c && typeof c === 'object') ? c : null;
             var exp = (src && src.exp) || (expMap && expMap[n]) || '';
-            var item = { card: group(n, 4) };
-            if (src && src.mc) item.mc = group(normalize(src.mc), 4);
-            if (src && src.note) item.note = src.note;
-            if (exp) item.exp = exp;
-            cardSeen[n] = item;
-            cards.push(item);
+            cardsMap[n] = {
+                card: group(n, 4),
+                mc: (src && src.mc) ? group(normalize(src.mc), 4) : '',
+                note: (src && src.note) ? String(src.note) : '',
+                exp: exp ? String(exp) : ''
+            };
         }
+        (remote.cards || []).forEach(function (c) { addCard(c, remote.exp); }); // 远端先入，本机再补（本机信息更全不覆盖远端补充）
         (local.cards || []).forEach(function (c) { addCard(c, local.exp); });
-        (remote.cards || []).forEach(function (c) { addCard(c, remote.exp); });
-        var revSeen = {}, revoked = [];
-        function addRev(code) {
+        var revokedMap = {};
+        subRev(local.revoked, revokedMap); // 只取本机吊销框（见上方注释：允许解除吊销）
+        Object.keys(revokedMap).forEach(function (n) { delete cardsMap[n]; });
+        var updated = String(local.updated || '');
+        // cardsMap 的 card/mc 是分组展示形式，参与规范化串前必须统一去分组（normCardsMap）
+        var norm = normCardsMap(cardsMap);
+        var rev = sha256Hex(manifestRevSource(MANIFEST_VER, updated, norm, revokedMap)).substr(0, 16);
+        var canonical = canonicalManifestString(MANIFEST_VER, updated, rev, norm, revokedMap);
+        var cards = [], revoked = [], keys, i;
+        keys = Object.keys(cardsMap); keys.sort();
+        for (i = 0; i < keys.length; i++) cards.push(cardsMap[keys[i]]);
+        keys = Object.keys(revokedMap); keys.sort();
+        for (i = 0; i < keys.length; i++) revoked.push(group(keys[i], 4));
+        return {
+            ver: MANIFEST_VER,
+            updated: updated,
+            rev: rev,
+            cards: cards,
+            revoked: revoked,
+            sig2: signCanonical(canonical)
+        };
+    }
+    // 归一化卡密集合（合并时远端可能是旧格式，必须统一后再参与规范化串）
+    function subRev(list, out) {
+        (list || []).forEach(function (code) {
             var n = cardOf(code);
-            if (!n || revSeen[n]) return;
-            revSeen[n] = true;
-            revoked.push(group(n, 4));
+            if (n) out[n] = true;
+        });
+        return out;
+    }
+    // 把 {归一化卡密:{card,mc,note,exp}} 统一成签名用的规范化条目（card/mc 去分组并大写）
+    function normCardsMap(map) {
+        var out = {}, k;
+        for (k in map) {
+            if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+            var e = map[k];
+            out[k] = {
+                card: normalize(e.card),
+                mc: normalize(e.mc),
+                note: String(e.note == null ? '' : e.note).trim(),
+                exp: String(e.exp == null ? '' : e.exp).trim()
+            };
         }
-        (local.revoked || []).forEach(addRev);
-        var updated = local.updated;
-        var merged = { updated: updated, cards: cards, revoked: revoked };
-        merged.sig = manifestSignature(updated, cards, revoked);
-        return merged;
+        return out;
     }
 
     // 读取远端 cards.json：用 API 而非 raw CDN，避免 CDN 缓存拿到过期内容。
@@ -2568,11 +3395,18 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return !!(cb && cb.checked);
     }
 
-    // 台账/吊销名单变化后按防抖触发自动上传（避免每次输入都提交一次）
+    // 台账/吊销名单变化后按防抖触发自动上传（P-14）：
+    // 默认关闭；开启后必须「停止输入若干秒」且「通过发布前自检」才真正提交，
+    // 避免边打字边提交半截清单、或把未签名的坏清单推上线。
     function scheduleAutoUpload() {
         if (!autoUploadEnabled() || !getToken()) return;
         if (autoUploadTimer) clearTimeout(autoUploadTimer);
-        autoUploadTimer = setTimeout(function () { autoUploadTimer = 0; uploadManifest(false); }, 3000);
+        autoUploadTimer = setTimeout(function () {
+            autoUploadTimer = 0;
+            var obj = buildManifestObj();
+            if (!updatePublishCheck(obj).ok) { setUploadTip('自动上传已跳过：发布前自检未通过。'); return; }
+            uploadManifest(false);
+        }, 5000);
     }
 
     // 上传当前清单到 GitHub（与远端取并集合并 + 重新签名）。
@@ -2643,6 +3477,25 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         });
     }
 
+    // 目标计数（P-04 / P-21）：实时展示「将影响 N 条」；未勾选且未筛选（=全量）时给出警示。
+    function updateScopeCount(all) {
+        var list = all || computePairs();
+        var targets = currentTargets(list);
+        var checked = checkedCards().length;
+        var el = document.getElementById('scope-count');
+        if (el) {
+            var msg, warn = false;
+            if (!list.length) msg = '当前无可作用的目标（台账为空）。';
+            else if (checked) msg = '将影响 ' + targets.length + ' 条（来自已勾选的 ' + checked + ' 行）。';
+            else if (filterText) msg = '将影响 ' + targets.length + ' 条（未勾选，按当前筛选结果）。';
+            else { warn = targets.length > 0; msg = '将影响 ' + targets.length + ' 条（未勾选、未筛选 → 作用于全部台账，操作前需二次确认）。'; }
+            el.textContent = msg;
+            el.className = 'ledger-tip' + (warn ? ' is-warn' : '');
+        }
+        var imgEl = document.getElementById('deliver-img-count');
+        if (imgEl) imgEl.textContent = targets.length ? ('将生成 ' + targets.length + ' 张') : '';
+    }
+
     function render() {
         out.textContent = '';
         pairs = computePairs();
@@ -2663,6 +3516,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             check.className = 'lmt-check';
             check.value = card;
             check.setAttribute('aria-label', '选择 ' + p.display);
+            // 勾选即刷新目标计数（updateScopeCount 依赖 checkedCards()），否则「将影响 N 条」会滞后。
+            check.addEventListener('change', function () { updateScopeCount(); });
             item.appendChild(check);
 
             var mcEl = document.createElement('span');
@@ -2726,6 +3581,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         }
         out.appendChild(frag);
         buildManifest();
+        updateScopeCount(pairs);
     }
 
     document.getElementById('gen-btn').addEventListener('click', render);
@@ -2746,17 +3602,18 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     document.getElementById('copy-manifest-url').addEventListener('click', function () {
         copyWithFeedback(MANIFEST_URL, document.getElementById('copy-manifest-url'), '已复制地址');
     });
-    copyAllBtn.addEventListener('click', function () {
+    copyLedgerBtn.addEventListener('click', function () {
         // 台账输入是防抖更新的、pairs 也只是「上次点生成卡密」的结果：复制前按当前台账重算一次，
         // 否则改了台账又没点「生成卡密」时会复制到过期卡密（与 copy-manifest 的处理保持一致）。
         var fresh = computePairs();
-        if (fresh.length === 0) { flashButton(copyAllBtn, '无结果'); return; }
-        // 四列固定对齐（机器码 / 卡密 / 备注 / 有效期），缺失的列输出空串，
+        if (fresh.length === 0) { flashButton(copyLedgerBtn, '无结果'); return; }
+        // 三列固定对齐（机器码 / 备注 / 有效期），缺失的列输出空串，
         // 与「导出台账」的列口径一致，避免粘贴进表格时列位错乱。
+        // 卡密不在此列：供内部查阅带卡密的台账请用「导出含卡密台账」（四列）。
         var text = fresh.map(function (p) {
-            return group(p.mc, 4) + '\t' + p.card + '\t' + (p.note || '') + '\t' + (p.exp || '');
+            return group(p.mc, 4) + '\t' + (p.note || '') + '\t' + (p.exp || '');
         }).join('\n');
-        copyWithFeedback(text, copyAllBtn, '已复制全部');
+        copyWithFeedback(text, copyLedgerBtn, '已复制台账表');
     });
     document.getElementById('export-btn').addEventListener('click', function () {
         var b = document.getElementById('export-btn');
@@ -2775,22 +3632,120 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         // @shell:end
         flashButton(b, '已导出');
     });
+    // ---------- 导入台账（P-13 / P-26）：先弹确认（合并 / 覆盖）再写入，并给出逐行校验报告 ----------
+    // 旧实现是「读到文件就静默合并」，用户既不知道当前 N 条会被怎么处理，也不知道哪些行被丢了。
+    // 现在拆成三步：解析并统计 → 弹层回显「当前 N 条 / 新增 M 条 / 将被覆盖」→ 用户选定后写入并出报告。
+    var pendingImport = null;
+    // 导入校验报告（CG-01-11）：显示「成功 N 条 / 丢弃 M 条」，丢弃项附行号与原因。
+    function setImportReport(text, ok) {
+        var el = document.getElementById('import-report');
+        if (!el) return;
+        if (!text) { el.style.display = 'none'; el.textContent = ''; return; }
+        el.className = 'ledger-tip ' + (ok ? 'is-ok' : 'is-bad');
+        el.textContent = text;
+        el.style.display = '';
+    }
+    // 逐行容错解析（CG-01-1 / P-26）：非法行不静默丢弃，而是记下行号与原因供报告展示。
+    function analyzeImport(text) {
+        var raw = String(text == null ? '' : text).replace(/^\uFEFF/, '');
+        var lines = raw.split(/\r?\n/);
+        var entries = [], seen = {}, bad = [];
+        lines.forEach(function (line, i) {
+            if (!String(line).trim()) return; // 空行不算丢弃（不是「无法识别」）
+            var e = parseEntry(line);
+            if (!e) { bad.push({ line: i + 1, text: String(line).trim().slice(0, 40), reason: '无法识别机器码（需 4 组共 16 位字符）' }); return; }
+            if (seen[e.key]) {
+                if (!seen[e.key].note && e.note) seen[e.key].note = e.note;
+                if (!seen[e.key].exp && e.exp) seen[e.key].exp = e.exp;
+                return;
+            }
+            seen[e.key] = e;
+            entries.push(e);
+        });
+        var currentKeys = {};
+        uniqueEntries(mcList.value).forEach(function (e) { currentKeys[e.key] = true; });
+        var added = entries.filter(function (e) { return !currentKeys[e.key]; }).length;
+        return { text: raw, entries: entries, added: added, dup: entries.length - added, bad: bad };
+    }
+    function openImportConfirm(info) {
+        pendingImport = info;
+        var cur = uniqueEntries(mcList.value).length;
+        var desc = document.getElementById('import-confirm-desc');
+        if (desc) {
+            desc.textContent = '文件有效去重后 ' + info.entries.length + ' 条（新增 ' + info.added + ' 条、与现有台账重复 ' + info.dup + ' 条）' +
+                (info.bad.length ? ('，另有 ' + info.bad.length + ' 行无法识别将被丢弃') : '') +
+                '。当前台账 ' + cur + ' 条：选「合并」保留现有并补入新增；选「覆盖」会清空当前台账后写入文件内容。';
+        }
+        var merge = document.getElementById('import-mode-merge');
+        if (merge) merge.checked = true; // 默认「合并」（更安全，不会误删现有台账）
+        var mask = document.getElementById('import-confirm');
+        if (mask) { mask.style.display = ''; lockScroll(); }
+        var okBtn = document.getElementById('import-confirm-ok');
+        if (okBtn && okBtn.focus) { try { okBtn.focus(); } catch (e) {} }
+    }
+    function closeImportConfirm() {
+        var mask = document.getElementById('import-confirm');
+        if (mask) mask.style.display = 'none';
+        unlockScroll();
+        pendingImport = null;
+    }
+    function doImport() {
+        var info = pendingImport;
+        if (!info) { closeImportConfirm(); return; }
+        var mergeEl = document.getElementById('import-mode-merge');
+        var replaceMode = !(mergeEl && mergeEl.checked);
+        var before = uniqueEntries(mcList.value).length;
+        if (replaceMode) mcList.value = info.entries.map(entryLine).join('\n');
+        else mcList.value = mergeCodes(mcList.value, info.text);
+        var after = uniqueEntries(mcList.value).length;
+        saveLedger();
+        render();
+        closeImportConfirm();
+        var parts = ['导入完成（' + (replaceMode ? '覆盖' : '合并') + '）：台账 ' + before + ' → ' + after + ' 条（新增 ' + Math.max(0, after - before) + '）',
+            '成功 ' + info.entries.length + ' 条'];
+        if (info.dup) parts.push('重复合并 ' + info.dup + ' 条');
+        if (info.bad.length) parts.push('丢弃 ' + info.bad.length + ' 行（' + info.bad.slice(0, 5).map(function (b) { return '第' + b.line + '行 ' + b.reason; }).join('；') + (info.bad.length > 5 ? ' 等' : '') + '）');
+        setImportReport(parts.join(' · '), info.bad.length === 0);
+        flashButton(document.getElementById('import-btn'), after > before ? ('已导入 +' + (after - before)) : (replaceMode ? '已覆盖' : '无新机器码'));
+    }
     document.getElementById('import-btn').addEventListener('click', function () { importFile.click(); });
     importFile.addEventListener('change', function () {
         var f = importFile.files && importFile.files[0];
         if (!f) return;
         var reader = new FileReader();
         reader.onload = function () {
-            var before = extractMc(mcList.value).length;
-            mcList.value = mergeCodes(mcList.value, String(reader.result || ''));
-            var after = extractMc(mcList.value).length;
-            saveLedger();
-            render();
-            flashButton(document.getElementById('import-btn'), after > before ? ('已导入 +' + (after - before)) : '无新机器码');
             importFile.value = ''; // 读完后清空，允许重复导入同一个文件
+            var info = analyzeImport(String(reader.result || ''));
+            if (!info.entries.length && !info.bad.length) { setImportReport('文件为空，未导入任何内容。', false); flashButton(document.getElementById('import-btn'), '文件为空'); return; }
+            openImportConfirm(info);
         };
         reader.onerror = function () { flashButton(document.getElementById('import-btn'), '读取失败'); importFile.value = ''; };
         reader.readAsText(f);
+    });
+    document.getElementById('import-confirm-ok').addEventListener('click', doImport);
+    document.getElementById('import-confirm-cancel').addEventListener('click', closeImportConfirm);
+    // 导入确认弹层的无障碍交互：ESC 关闭、点遮罩空白处关闭（与其它弹层一致）。
+    // 注意：只在弹层确实可见时才真正关闭，避免 ESC 误减 modalDepth 解锁了别的弹层的滚动。
+    onEsc(function () {
+        var mask = document.getElementById('import-confirm');
+        if (mask && mask.style.display !== 'none') closeImportConfirm();
+    });
+    document.getElementById('import-confirm').addEventListener('click', function (e) { if (e.target === this) closeImportConfirm(); });
+    // 导入含卡密台账（CG-01-12 / P-12）：四列 CSV，仅供查阅与交付，不与「导入台账」混用。
+    // 走共享核心的 tryNativeSave / downloadFile 双通道，两壳共用同一份实现，无需 @shell 分叉。
+    document.getElementById('export-deliver-btn').addEventListener('click', function () {
+        var b = document.getElementById('export-deliver-btn');
+        if (extractMc(mcList.value).length === 0) { flashButton(b, '台账为空'); return; }
+        var csv = buildLedgerDeliverCsv();
+        var name = ledgerFileName('_含卡密');
+        if (tryNativeSave(name, 'text/csv', csv)) { flashButton(b, '已保存'); return; }
+        var downloaded = downloadFile(name, csv);
+        if (!downloaded || isMobileUA()) {
+            flashButton(b, downloaded ? '已导出' : '请手动复制');
+            showManualCopy(csv, downloaded ? '导出含卡密台账（若未自动保存，请长按复制）' : '导出含卡密台账（请手动保存为 CSV）');
+            return;
+        }
+        flashButton(b, '已导出');
     });
     document.getElementById('template-btn').addEventListener('click', function () {
         var b = document.getElementById('template-btn');
@@ -2866,10 +3821,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     });
     document.getElementById('online-check-btn').addEventListener('click', runOnlineCheck);
     document.getElementById('upload-btn').addEventListener('click', function () { uploadManifest(true); });
-    // 一键发布：生成清单 → 上传 → 成功后写回执（含清单指纹 / 张数 / 清单全文），并刷新差异报告。
+    // 一键发布：发布前自检（P-14）→ 生成清单 → 上传 → 成功后写回执（含清单指纹 / 张数 / 清单全文），并刷新差异报告。
     document.getElementById('publish-btn').addEventListener('click', function () {
         var b = document.getElementById('publish-btn');
-        buildManifest();
+        var obj = buildManifestObj();
+        // 自检未通过（未录私钥 / 结构不完整 / 无 sig2）时直接拦下，避免把不可验签的清单推到线上。
+        if (!updatePublishCheck(obj).ok) { flashButton(b, '自检未通过'); return; }
+        manifestOut.value = JSON.stringify(obj, null, 2);
         flashButton(b, '发布中…');
         uploadManifest(true).then(function (ok) {
             if (!ok) { flashButton(b, '发布失败'); updateReceiptTip(); return; }
@@ -2878,22 +3836,22 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             flashButton(b, '已发布');
         });
     });
-    // 台账快照：下载最近一份 / 合并回台账
+    // 台账快照：下载 / 恢复「所选时间点」的那一份（P-24，不再只认最近一份）
     document.getElementById('snapshot-btn').addEventListener('click', function () {
         var b = document.getElementById('snapshot-btn');
-        var last = latestSnapshot();
-        if (!last) { flashButton(b, '无快照'); return; }
-        var name = '台账快照_' + String(last.at || '').slice(0, 10).replace(/-/g, '') + '.csv';
-        if (!downloadFile(name, last.csv || '') || isMobileUA()) {
+        var rec = selectedSnapshot();
+        if (!rec) { flashButton(b, '无快照'); return; }
+        var name = '台账快照_' + String(rec.at || '').slice(0, 10).replace(/-/g, '') + '.csv';
+        if (!downloadFile(name, rec.csv || '') || isMobileUA()) {
             flashButton(b, isMobileUA() ? '请手动复制' : '已导出');
-            showManualCopy(last.csv || '', '台账快照（若未自动保存，请长按复制）');
+            showManualCopy(rec.csv || '', '台账快照（若未自动保存，请长按复制）');
             return;
         }
         flashButton(b, '已下载');
     });
     document.getElementById('snapshot-restore-btn').addEventListener('click', function () {
         var b = document.getElementById('snapshot-restore-btn');
-        var res = restoreLatestSnapshot();
+        var res = restoreSnapshot(selectedSnapshot());
         flashButton(b, res ? (res.added > 0 ? ('已恢复 +' + res.added) : '已合并（无新增）') : '无快照');
     });
     // 筛选 + 批量操作
@@ -2903,16 +3861,36 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     });
     document.getElementById('select-all-btn').addEventListener('click', function () {
         var boxes = Array.prototype.slice.call(out.querySelectorAll('input.lmt-check'));
-        var allChecked = boxes.length > 0 && boxes.every(function (x) { return x.checked; });
+        if (!boxes.length) { flashButton(document.getElementById('select-all-btn'), filterText ? '无匹配' : '无结果'); return; }
+        var allChecked = boxes.every(function (x) { return x.checked; });
         boxes.forEach(function (x) { x.checked = !allChecked; });
+        // 空筛选 = 全选全量：这是最容易误操作的一步，明确警示并刷新目标计数（P-21）。
+        var scope = document.getElementById('scope-count');
+        if (!allChecked && !filterText && scope) {
+            scope.textContent = '已全选全部台账 ' + boxes.length + ' 条（未筛选 → 批量操作将作用于全量，操作前需二次确认）。';
+            scope.className = 'ledger-tip is-warn';
+        } else {
+            updateScopeCount();
+        }
         flashButton(document.getElementById('select-all-btn'), allChecked ? '已取消全选' : '已全选');
     });
     document.getElementById('revoke-filtered-btn').addEventListener('click', function () {
         var b = document.getElementById('revoke-filtered-btn');
         // 作用范围与「续期 / 复制话术 / 导出交付图」一致：已勾选优先，否则当前筛选结果
-        var cards = currentTargets().map(function (p) { return p.card; });
-        if (!cards.length) { flashButton(b, filterText ? '无匹配' : '台账为空'); return; }
-        var n = revokeCards(cards);
+        var targets = currentTargets();
+        if (!targets.length) { flashButton(b, filterText ? '无匹配' : '台账为空'); return; }
+        // 无显式目标（既未勾选、也未筛选）= 将吊销全量：必须二次确认并回显条数（P-04 / P-05）。
+        if (lacksExplicitTarget()) {
+            showConfirm('吊销全部卡密？',
+                '当前既没有勾选任何行，也没有设置筛选，将吊销全部台账共 ' + targets.length + ' 张卡密（写入「已吊销卡密」并刷新清单）。此操作不可自动撤销。',
+                '确认吊销 ' + targets.length + ' 张',
+                function () {
+                    var n = revokeCards(targets.map(function (p) { return p.card; }));
+                    flashButton(b, n > 0 ? ('已吊销 ' + n + ' 张') : '已吊销');
+                });
+            return;
+        }
+        var n = revokeCards(targets.map(function (p) { return p.card; }));
         flashButton(b, n > 0 ? ('已吊销 ' + n + ' 张') : '已吊销');
     });
     document.getElementById('deliver-filtered-btn').addEventListener('click', function () {
@@ -2928,15 +3906,24 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var t = (input.value || '').trim();
         if (!t) { flashButton(b, '令牌为空'); return; }
         if (!isTokenUsable(t)) { flashButton(b, '格式不符'); setUploadTip('令牌格式不符（应以 ghp_ / github_pat_ / gho_ 开头），未保存。'); return; }
-        setToken(t);
+        // 令牌默认只写本次会话（sessionStorage）；持久化到本机必须显式勾选「记住令牌」（P-15）。
+        var persist = !!(document.getElementById('gh-token-persist') || {}).checked;
+        setToken(t, persist);
+        setTokenPersist(persist);
         input.value = ''; // 保存后立即清空输入框，避免令牌停留在 DOM 里
         input.placeholder = '已保存令牌 ' + tokenFingerprint(t) + '（如需更换可重新粘贴）';
         flashButton(b, '已保存');
-        setUploadTip('令牌已保存在本机，可随时点「清除令牌」删除。');
+        setUploadTip(persist
+            ? '令牌已保存到本机（持久化，存在 XSS 风险），可随时点「清除令牌」删除。'
+            : '令牌已保存，但仅对本次会话有效；关闭页面即失效。如需长期保存请勾选「记住令牌」。');
     });
     document.getElementById('gh-token-clear').addEventListener('click', function () {
         var b = document.getElementById('gh-token-clear');
         setToken('');
+        // 清除令牌时一并复位「记住令牌」开关，避免开关留着「已记住」却实际没有令牌的状态错位。
+        setTokenPersist(false);
+        var persistEl = document.getElementById('gh-token-persist');
+        if (persistEl) persistEl.checked = false;
         var input = document.getElementById('gh-token');
         input.value = '';
         input.placeholder = '粘贴令牌后点「保存令牌」';
@@ -2946,7 +3933,18 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     document.getElementById('auto-upload').addEventListener('change', function () {
         var cb = document.getElementById('auto-upload');
         try { localStorage.setItem(AUTO_UPLOAD_KEY, cb.checked ? '1' : '0'); } catch (e) {}
-        setUploadTip(cb.checked ? (getToken() ? '已开启自动上传。' : '已开启自动上传，但还没有保存令牌。') : '已关闭自动上传。');
+        // 勾选「记住令牌」但令牌还没落盘时，明确提示需要在「保存令牌」时生效。
+        if (cb.checked) setUploadTip(getToken() ? '已开启自动上传。' : '已开启自动上传，但还没有保存令牌。');
+        else setUploadTip('已关闭自动上传。');
+    });
+    document.getElementById('gh-token-persist').addEventListener('change', function () {
+        var on = !!this.checked;
+        if (!getToken()) { setTokenPersist(on); flashButton(document.getElementById('gh-token-save'), on ? '将持久化' : '仅本次会话'); return; }
+        // 已有令牌时切换开关，立即把令牌在两个存储间迁移，行为与勾选一致。
+        var t = getToken();
+        setToken(t, on);
+        setTokenPersist(on);
+        setUploadTip(on ? '令牌已改为持久化保存到本机（存在 XSS 风险）。' : '令牌已改为仅本次会话有效。');
     });
 
     // 登录层事件
@@ -2973,10 +3971,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (tk) document.getElementById('gh-token').placeholder = '已保存令牌 ' + tokenFingerprint(tk) + '（如需更换可重新粘贴）';
         var rec0 = getUploadReceipt();
         if (rec0 && rec0.json) lastUploadedJson = rec0.json;
+        // 「记住令牌」开关按落盘状态回填，避免显示与真实通道不一致（P-15）。
+        var persistEl = document.getElementById('gh-token-persist');
+        if (persistEl) persistEl.checked = tokenPersistOn();
         if (cb.checked) setUploadTip(getToken() ? '已开启自动上传。' : '已开启自动上传，但还没有保存令牌。');
     })();
     updateLedgerTip();
     render();
+    buildManifest(); // 首屏就按当前台账 + 私钥状态生成清单 JSON（未录入私钥时 sig2 为空）
     updateSnapshotTip();
     updateReceiptTip();
 
@@ -2993,7 +3995,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     window.__cardGen = {
         normalize: normalize, makeCard: makeCard, extractMc: extractMc, mergeCodes: mergeCodes,
         parseEntry: parseEntry, parseEntries: parseEntries, uniqueEntries: uniqueEntries, entryLine: entryLine,
-        splitRows: splitRows, manifestSignature: manifestSignature,
+        splitRows: splitRows,
+        // 新制式（ver 2）：签名 / 验签 / 规范化串 / 私钥 / 卡密模型，供测试与自检使用
+        signCanonical: signCanonical, verifyCanonical: verifyCanonical,
+        manifestCardsLines: manifestCardsLines, manifestRevokedStr: manifestRevokedStr,
+        manifestRevSource: manifestRevSource, canonicalManifestString: canonicalManifestString,
+        cardFormatOk: cardFormatOk, randomCard: randomCard, loadCardMap: loadCardMap,
+        parsePrivateKey: parsePrivateKey, privateKeyText: privateKeyText, setPrivateKey: setPrivateKey,
+        pubKeyBase32: pubKeyBase32, privateKeyOk: privateKeyOk, localIso: localIso,
+        base32EncodeFull: base32EncodeFull, base32Decode: base32Decode,
+        sha256Hex: sha256Hex, sha512Hex: sha512Hex,
+        ed25519Supported: ed25519Supported, ed25519PublicKey: ed25519PublicKey,
+        ed25519Sign: ed25519Sign, ed25519Verify: ed25519Verify,
+        MANIFEST_VER: MANIFEST_VER, EXPECTED_PUBKEY: EXPECTED_PUBKEY, CARD_MAP_KEY: CARD_MAP_KEY,
         buildDeliverText: buildDeliverText, buildLedgerBackup: buildLedgerBackup, applyLedgerBackup: applyLedgerBackup,
         fetchOnlineManifest: fetchOnlineManifest, runOnlineCheck: runOnlineCheck, MANIFEST_MIRRORS: MANIFEST_MIRRORS,
         getOnlineStatus: function () { return onlineStatus; },
@@ -3018,6 +4032,15 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         getFilterText: function () { return filterText; }, setFilterText: function (t) { filterText = t; },
         buildSnapshotRecord: buildSnapshotRecord, saveSnapshot: saveSnapshot, loadSnapshots: loadSnapshots,
         restoreLatestSnapshot: restoreLatestSnapshot,
+        // 阶段 2 组件级能力：快照按时间点选取 / 导入确认与报告 / 目标计数 / 发布前自检 / 令牌持久化开关
+        selectedSnapshot: selectedSnapshot, restoreSnapshot: restoreSnapshot, snapshotCount: snapshotCount,
+        analyzeImport: analyzeImport, openImportConfirm: openImportConfirm, closeImportConfirm: closeImportConfirm,
+        doImport: doImport, setImportReport: setImportReport,
+        updateScopeCount: updateScopeCount, lacksExplicitTarget: lacksExplicitTarget,
+        manifestSelfCheck: manifestSelfCheck, updatePublishCheck: updatePublishCheck,
+        buildLedgerDeliverCsv: buildLedgerDeliverCsv, showConfirm: showConfirm,
+        tokenPersistOn: tokenPersistOn, setTokenPersist: setTokenPersist,
+        TOKEN_SESSION_KEY: TOKEN_SESSION_KEY, TOKEN_PERSIST_KEY: TOKEN_PERSIST_KEY,
         getUploadReceipt: getUploadReceipt, setUploadReceipt: setUploadReceipt, isPendingUpload: isPendingUpload,
         tokenFingerprint: tokenFingerprint, isTokenUsable: isTokenUsable,
         UPLOAD_TOKEN_KEY: UPLOAD_TOKEN_KEY, UPLOAD_RECEIPT_KEY: UPLOAD_RECEIPT_KEY, SNAPSHOT_KEY: SNAPSHOT_KEY,

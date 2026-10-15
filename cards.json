@@ -1,12 +1,39 @@
 {
-  "updated": "2026-10-15",
+  "ver": 2,
+  "updated": "2026-10-16T02:04:25+08:00",
+  "rev": "04f45b7a9e5a21c7",
   "cards": [
-    "2X35-K748-B0Y9-1ARB-YJKJ",
-    "WTXR-82A4-H3F1-3BGA-Q1CW",
-    "YB5X-NCP4-BEWQ-PRJ6-VTK6",
-    "1GPB-DR91-51PB-8ZCV-06CS",
-    "GZVQ-0AT4-GMJF-7TJV-ZVV8"
+    {
+      "card": "1GPB-DR91-51PB-8ZCV-06CS",
+      "mc": "",
+      "note": "",
+      "exp": ""
+    },
+    {
+      "card": "2X35-K748-B0Y9-1ARB-YJKJ",
+      "mc": "",
+      "note": "",
+      "exp": ""
+    },
+    {
+      "card": "GZVQ-0AT4-GMJF-7TJV-ZVV8",
+      "mc": "",
+      "note": "",
+      "exp": ""
+    },
+    {
+      "card": "WTXR-82A4-H3F1-3BGA-Q1CW",
+      "mc": "",
+      "note": "",
+      "exp": ""
+    },
+    {
+      "card": "YB5X-NCP4-BEWQ-PRJ6-VTK6",
+      "mc": "",
+      "note": "",
+      "exp": ""
+    }
   ],
   "revoked": [],
-  "sig": "a546fa17a5a0f4b2d4ade2a6e480d7b3c40f31afa334438a75d3f2426233aa45"
+  "sig2": "T3XZW4RV8KKC94VYBPKKG1XHAS73FQNRNX0FGTGG071WY7G83SRHTX65TPK5N5P706Y0PJ6J2QJQB9PR3GPV3N47N3VHQN1PNJS8T1R"
 }

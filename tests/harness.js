@@ -76,10 +76,19 @@
   function setValue(el, v, win, evName) { el.value = v; fire(el, evName || 'input', win); }
   function text(el) { return el ? String(el.textContent) : ''; }
   function hasClass(el, c) { return !!el && el.classList.contains(c); }
+  // 在确认弹层里按文案找按钮：choices 模式下「取消」与选项同为按钮，只能靠文字区分。
+  function dialogButton(doc, re) {
+    var btns = qa(doc, '.lmt-modal-mask .lmt-btn-row button');
+    for (var i = 0; i < btns.length; i++) if (re.test(text(btns[i]))) return btns[i];
+    return null;
+  }
 
-  // 关掉所有自动弹层，避免影响后续用例
+  // 关掉所有自动弹层，避免影响后续用例。
+  // 只处理「当前真的显示着」的弹层：像 #import-confirm 这类静态写在 HTML 里的模板弹层，
+  // 平时就是 display:none，若这里顺手把它摘掉，后续用例再也找不到确认框（会被误判成「点了没反应」）。
   function closeLayers(doc) {
     qa(doc, '.manual-copy-mask, .img-preview-mask').forEach(function (mask) {
+      if (!isRendered(mask)) return;
       if (typeof mask.__dispose === 'function') { mask.__dispose(); return; }
       var btns = qa(mask, 'button');
       for (var i = 0; i < btns.length; i++) {
@@ -200,10 +209,73 @@
   }
 
   // ================================================================
+  // 新制式（ver 2）的跨应用契约：卡密与清单一律由「卡密生成器」（作者侧）用私钥签发，
+  // 主程序只内置公钥验签。测试里用一把固定的测试私钥（RFC8032 标准测试向量 seed），
+  // 走真实的「生成器签 → 客户端验」链路，而不是在测试里硬编码卡密或摘要。
+  // ================================================================
+  var TEST_PRIV = '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';
+  // 第二把私钥（同为 RFC8032 标准测试向量 seed）：只用于「换钥匙签出来的清单必须被拒绝」的负向对照
+  var TEST_PRIV2 = '4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb';
+  function blobUrl(win, obj) {
+    return win.URL.createObjectURL(new win.Blob([JSON.stringify(obj)], { type: 'application/json' }));
+  }
+  // 用卡密生成器的私钥签发一份 ver 2 清单。
+  //   cardsIn   [{card, mc, note, exp}]
+  //   revokedIn [卡密]（分组写法或归一化写法均可，内部统一归一化）
+  function signManifest(C, updated, cardsIn, revokedIn) {
+    var gen = C.__cardGen;
+    var cardsMap = {}, i;
+    for (i = 0; i < cardsIn.length; i++) {
+      var n = gen.normalize(cardsIn[i].card);
+      cardsMap[n] = {
+        card: n,
+        mc: gen.normalize(cardsIn[i].mc),
+        note: cardsIn[i].note || '',
+        exp: cardsIn[i].exp || ''
+      };
+    }
+    var revokedMap = {};
+    for (i = 0; i < (revokedIn || []).length; i++) {
+      var r = gen.normalize(revokedIn[i]);
+      if (r) revokedMap[r] = true;
+    }
+    var rev = gen.sha256Hex(gen.manifestRevSource(gen.MANIFEST_VER, updated, cardsMap, revokedMap)).substr(0, 16);
+    var canonical = gen.canonicalManifestString(gen.MANIFEST_VER, updated, rev, cardsMap, revokedMap);
+    return {
+      ver: gen.MANIFEST_VER,
+      updated: updated,
+      rev: rev,
+      cards: cardsIn.map(function (x) { return { card: x.card, mc: x.mc, note: x.note || '', exp: x.exp || '' }; }),
+      revoked: (revokedIn || []).slice(),
+      sig2: gen.signCanonical(canonical)
+    };
+  }
+  // 在 layout 应用里建立「已验签清单」：把测试私钥装进 cardgen、派生公钥装进 layout，
+  // 再按本机机器码签发一张卡密并签出清单，通过 blob URL 拉取（等价于一次成功的联网同步，
+  // 同时写入离线凭证缓存）。返回本机机器码 / 卡密 / 生成器实例，供后续断言复用。
+  async function prepareLicense(L, C, opts) {
+    opts = opts || {};
+    var lic = L.__license, gen = C.__cardGen;
+    gen.setPrivateKey(TEST_PRIV);
+    var pub = gen.pubKeyBase32();
+    assert(pub, '测试私钥应能派生出公钥');
+    lic.setPubKey(pub);
+    var mc = lic.machineCode();
+    var card = gen.makeCard(mc); // 一卡一机：卡密与机器码的绑定写在已签名的清单条目里
+    var updated = gen.localIso(new Date());
+    var obj = signManifest(C, updated,
+      [{ card: card, mc: mc, note: opts.note || '测试用户', exp: opts.exp || '' }],
+      opts.revoked || []);
+    var url = blobUrl(L, obj);
+    lic.setManifestUrl(url);
+    await lic.fetchManifest(url);
+    L.URL.revokeObjectURL(url);
+    return { lic: lic, gen: gen, mc: mc, card: card, updated: updated, pub: pub, manifest: obj };
+  }
+
+  // ================================================================
   // lmt-layout（图文排版生成器）
   // ================================================================
-  // C = 卡密生成器的 window：在线清单那条用例要用它签出清单喂给主程序，
-  // 以此证明「生成器签的清单主程序认」这条跨应用契约（而不必在测试里硬编码密钥）。
   function layoutCases(L, C) {
     var doc = L.document;
     function app() {
@@ -220,8 +292,10 @@
       var btn = q(doc, '#license-copy');
       await clickCopyAndAssertFeedback(btn, '授权门复制按钮');
       closeLayers(doc);
-      // 依赖脚本内部把机器码与卡密算法绑定的能力做一次一致性自检
-      assertEq(L.__license.verifyCard(L.__license.makeCard(mc.value)), true, '本机机器码对应的卡密应能通过本地校验');
+      // 新制式下主程序不再自己算卡密：机器码对应的卡密由「卡密生成器」按机器码生成，
+      // 这里只做一次格式一致性自检（生成器产出的卡密必须能被主程序认作合法格式）。
+      assertEq(L.__license.cardFormatOk(C.__cardGen.makeCard(mc.value)), true,
+        '生成器按本机机器码生成的卡密应通过主程序的格式校验');
     });
 
     test('layout/授权门：错误卡密给出提示，正确卡密解锁主界面', async function () {
@@ -229,18 +303,23 @@
       var act = q(doc, '#license-activate');
       var input = q(doc, '#license-input');
 
+      // 前置：装好测试公钥 + 按本机机器码签发的清单（等于「生成器签发、用户联网同步成功」这一步）
+      var setup = await prepareLicense(L, C, { exp: '2099-12-31' });
+      assert(setup.manifest.sig2, '前置：清单应带有 sig2 签名');
+
       input.value = 'XXXXXXXX-XXXX-XXXX-XXXX-XXXX';
       act.click();
       assertEq(text(msg), '正在校验…', '点击激活应立刻给出「正在校验…」反馈');
       await until(function () { return text(msg) && text(msg) !== '正在校验…'; }, 3000, '激活结果');
-      assert(/不正确|不匹配/.test(text(msg)), '错误卡密应提示不正确，实际：' + text(msg));
+      assert(/不在有效清单|不正确|不匹配/.test(text(msg)), '错误卡密应提示不被接受，实际：' + text(msg));
       assert(L.document.body.classList.contains('locked'), '错误卡密不应解锁');
 
-      input.value = L.__license.makeCard(L.__license.machineCode());
+      input.value = setup.card;
       act.click();
       await until(function () { return L.__layoutTool; }, 3000, 'bootApp 启动');
       assert(!L.document.body.classList.contains('locked'), '正确卡密应解锁主界面');
       assertEq(L.getComputedStyle(q(doc, '#license-gate')).display, 'none', '解锁后授权门应隐藏');
+      assertEq(L.__license.getPubKey(), setup.pub, '主程序内置公钥应等于生成器私钥派生的公钥');
     });
 
     test('layout/文案输入实时同步且转义 HTML', async function () {
@@ -442,81 +521,73 @@
 
     test('layout/在线清单：篡改被拒、白名单通过、吊销拒绝', async function () {
       var lic = L.__license;
-      var gen = C.__cardGen; // 签名一律由卡密生成器产出：两端算法必须逐字一致，主程序才可能认
-      var card = lic.makeCard('ABCD-EFGH-JKMN-PQRS');
-      var cardNorm = lic.normalize(card); // 清单里存的是去分隔符的卡密，签名载荷也用它
-      var updated = '2026-10-14';
-      // 前置步骤为了让「离线激活」路径生效而清空过 MANIFEST_URL；这里先放一个占位地址，
-      // onlineDecision 才会去查 manifest，而不是直接返回「未启用在线清单」。
-      lic.setManifestUrl('https://example.invalid/cards.json');
+      // 签名一律由卡密生成器（作者侧私钥）产出：两端规范化串与 Ed25519 算法必须逐字一致，主程序才可能验过
+      var setup = await prepareLicense(L, C, { exp: '2099-12-31' });
+      var card = setup.card, mc = setup.mc;
 
-      // 1) 签名对不上的清单必须被整份拒绝
-      var badUrl = blobUrl(L, { updated: updated, cards: [cardNorm], revoked: [], sig: 'deadbeef' });
+      // 1) 签名对不上的清单必须被整份拒绝。
+      //    先清空当前清单：fetchManifest 失败时按设计「保留原清单」，不清空就无法观察「整份被拒」。
+      lic.setManifestUrl('');
+      await lic.fetchManifest('');
+      assertEq(lic.getManifest(), null, '前置：应已清空为纯离线');
+
+      var bad = signManifest(C, setup.updated, [{ card: card, mc: mc, note: '测试用户', exp: '2099-12-31' }], []);
+      bad.sig2 = 'A'.repeat(bad.sig2.length); // 破坏签名（长度合法但内容不对）
+      var badUrl = blobUrl(L, bad);
+      lic.setManifestUrl(badUrl);
       await lic.fetchManifest(badUrl);
       L.URL.revokeObjectURL(badUrl);
-      assertEq(lic.getManifest(), null, '签名错误的清单不得被采纳');
-      assert(/签名/.test(lic.onlineDecision(card).msg), '应提示签名校验失败，实际：' + lic.onlineDecision(card).msg);
+      assertEq(lic.getManifest(), null, '签名错误的清单不得被采纳（不得回退成「无验签」直接放行）');
 
       // 2) 生成器签出的合法清单，且卡密在白名单：通过
-      var goodUrl = blobUrl(L, {
-        updated: updated, cards: [cardNorm], revoked: [],
-        sig: gen.manifestSignature(updated, [cardNorm], [])
-      });
+      var goodUrl = blobUrl(L, setup.manifest);
       await lic.fetchManifest(goodUrl);
       L.URL.revokeObjectURL(goodUrl);
       var m = lic.getManifest();
-      assert(m && m.verified === true, '生成器签出的清单应能通过主程序验签（两端算法必须一致）');
-      assertEq(m.cards[cardNorm], true, '白名单应包含该卡密');
+      assert(m && m.verified === true, '生成器签出的清单应能通过主程序验签（两端算法必须完全一致）');
+      assert(m.cards[lic.normalize(card)], '白名单应包含该卡密（按归一化卡密索引）');
+      assertEq(m.cards[lic.normalize(card)].mc, lic.normalize(mc), '清单条目应带上机器码，用于一卡一机校验');
       var d = lic.onlineDecision(card);
-      assertEq(d.ok, true, '白名单内的卡密应通过在线判定');
-      assertEq(d.decided, true, '应记录为已联网判定');
+      assertEq(d.ok, true, '白名单内且机器码匹配的卡密应通过在线判定');
+      assertEq(d.decided, true, '应记录为已判定');
 
-      // 3) 同一卡密进入吊销名单：拒绝
-      var revUrl = blobUrl(L, {
-        updated: updated, cards: [], revoked: [cardNorm],
-        sig: gen.manifestSignature(updated, [], [cardNorm])
-      });
+      // 3) 同一卡密进入吊销名单：拒绝（吊销优先于白名单）
+      var revUrl = blobUrl(L, signManifest(C, setup.updated, [{ card: card, mc: mc, note: '测试用户', exp: '2099-12-31' }], [card]));
+      lic.setManifestUrl(revUrl);
       await lic.fetchManifest(revUrl);
       L.URL.revokeObjectURL(revUrl);
       var d2 = lic.onlineDecision(card);
       assertEq(d2.ok, false, '已吊销的卡密应被拒绝');
       assert(/吊销/.test(d2.msg), '应提示已吊销，实际：' + d2.msg);
 
-      // 收尾：把清单与地址恢复成「纯离线」，避免这份吊销清单影响后续用例
-      lic.setManifestUrl('');
-      await lic.fetchManifest('');
-      assertEq(lic.getManifest(), null, '收尾后应清空清单，回到纯离线校验');
+      // 收尾：恢复成「本机可激活」的合法清单，避免影响后续用例
+      await prepareLicense(L, C, { exp: '2099-12-31' });
     });
 
-    test('layout/在线清单：有效期真的生效（过期拒绝激活、旧格式兼容、离线也拦）', async function () {
+    test('layout/在线清单：有效期真的生效（过期拒绝激活、离线也拦）', async function () {
       var lic = L.__license;
       var gen = C.__cardGen;
-      // 用本机真实机器码对应的卡密：这样 activate() 才既有白名单通过、又有一卡一机的本地校验通过
+      // 用本机真实机器码对应的卡密：这样 activate() 才能同时通过白名单与一卡一机的本地校验
       var mc = lic.machineCode();
-      var card = lic.makeCard(mc);
-      var cardNorm = lic.normalize(card);
-      var updated = '2026-10-14';
-      lic.setManifestUrl('https://example.invalid/cards.json');
+      gen.setPrivateKey(TEST_PRIV);
+      lic.setPubKey(gen.pubKeyBase32());
+      var card = gen.makeCard(mc);
+      var updated = gen.localIso(new Date());
 
-      // 1) 新版清单：条目带上名称 / 机器码 / 有效期；未过期 → 通过验签并通过判定
-      var cards1 = [{ card: cardNorm, mc: mc, note: '张三', exp: '2099-12-31' }];
-      var u1 = blobUrl(L, {
-        updated: updated, cards: cards1, revoked: [],
-        sig: gen.manifestSignature(updated, cards1, [])
-      });
+      // 1) 清单条目带名称 / 机器码 / 有效期；未过期 → 通过验签并通过判定
+      var obj1 = signManifest(C, updated, [{ card: card, mc: mc, note: '张三', exp: '2099-12-31' }], []);
+      var u1 = blobUrl(L, obj1);
+      lic.setManifestUrl(u1);
       await lic.fetchManifest(u1);
       L.URL.revokeObjectURL(u1);
       var m1 = lic.getManifest();
-      assert(m1 && m1.verified === true, '带名称/有效期的清单条目仍应能通过验签（有效期不参与签名载荷）');
-      assertEq(m1.exp[cardNorm], '2099-12-31', '清单条目里的有效期应被主程序解析出来');
+      assert(m1 && m1.verified === true, '带名称/有效期的清单条目仍应能通过验签（有效期也参与签名，属规范化串的一部分）');
+      assertEq(m1.cards[lic.normalize(card)].exp, '2099-12-31', '清单条目里的有效期应被主程序解析出来');
       assertEq(lic.onlineDecision(card).ok, true, '未过期的卡密应通过在线判定');
 
       // 2) 有效期已过 → 拒绝激活，且提示必须写明有效期
-      var cards2 = [{ card: cardNorm, mc: mc, note: '张三', exp: '2000-01-01' }];
-      var u2 = blobUrl(L, {
-        updated: updated, cards: cards2, revoked: [],
-        sig: gen.manifestSignature(updated, cards2, [])
-      });
+      var u2 = blobUrl(L, signManifest(C, updated, [{ card: card, mc: mc, note: '张三', exp: '2000-01-01' }], []));
+      lic.setManifestUrl(u2);
       await lic.fetchManifest(u2);
       L.URL.revokeObjectURL(u2);
       var d2 = lic.onlineDecision(card);
@@ -524,42 +595,33 @@
       assert(/有效期/.test(d2.msg) && /2000-01-01/.test(d2.msg), '过期提示应写明有效期，实际：' + d2.msg);
       assertEq(lic.activate(card).ok, false, 'activate 也必须拒绝已过期的卡密');
 
-      // 3) 旧版清单：有效期写在顶层 exp 映射里，同样生效（向下兼容已发布的清单格式）
-      var legacyExp = {}; legacyExp[cardNorm] = '2000-01-01';
-      var u3 = blobUrl(L, {
-        updated: updated, cards: [cardNorm], revoked: [],
-        exp: legacyExp,
-        sig: gen.manifestSignature(updated, [cardNorm], [])
-      });
+      // 3) 有效期写进激活记录：清空当前清单（模拟断网）后仍保持激活
+      var u3 = blobUrl(L, obj1);
+      lic.setManifestUrl(u3);
       await lic.fetchManifest(u3);
       L.URL.revokeObjectURL(u3);
-      var m3 = lic.getManifest();
-      assertEq(m3.exp[cardNorm], '2000-01-01', '旧版顶层 exp 映射应被解析（实际 exp=' + JSON.stringify(m3.exp) + '）');
-      assertEq(lic.onlineDecision(card).ok, false, '旧版顶层 exp 映射同样应判为过期');
-
-      // 4) 有效期写进激活记录：清空清单（模拟断网）后，过期判定依然生效
-      var u4 = blobUrl(L, {
-        updated: updated, cards: cards1, revoked: [],
-        sig: gen.manifestSignature(updated, cards1, [])
-      });
-      await lic.fetchManifest(u4);
-      L.URL.revokeObjectURL(u4);
       var act = lic.activate(card);
       assertEq(act.ok, true, '未过期的卡密应能激活');
       assertEq(act.exp, '2099-12-31', '激活结果应回带有效期（界面据此提示到期时间）');
       assertEq(lic.isActivated(), true, '前置：激活记录应生效');
+      // 模拟「断网后重启应用」：内存里的清单清空，只靠离线凭证（本地缓存清单）恢复
+      assertEq(lic.credFresh(), true, '刚刚成功取得过清单，离线凭证应当是新鲜的');
       lic.setManifestUrl('');
       await lic.fetchManifest('');
-      assertEq(lic.getManifest(), null, '前置：应回到纯离线');
-      assertEq(lic.isActivated(), true, '离线且未过期时仍应保持激活');
+      assertEq(lic.getManifest(), null, '前置：应回到纯离线（内存中的清单已清空）');
+      lic.boot();
+      assertEq(lic.getManifest() && lic.getManifest().verified, true, '离线重启应从离线凭证载入已验签清单');
+      assertEq(lic.isActivated(), true, '离线且离线凭证未过期时仍应保持激活');
 
-      // 5) 改成「已过期」的记录：离线也应立刻失效，不能靠断网绕过有效期
+      // 4) 改成「已过期」的记录：离线也应立刻失效，不能靠断网绕过有效期
       var rec = JSON.parse(L.localStorage.getItem('lmt_license'));
       rec.exp = '2000-01-01';
       L.localStorage.setItem('lmt_license', JSON.stringify(rec));
       assertEq(lic.isActivated(), false, '记录里的有效期已过，离线也必须判定为未激活');
 
-      lic.deactivate(); // 收尾：清掉激活记录，不影响后续用例（后续用例会重新激活）
+      // 收尾：恢复「本机已激活」的合法状态，后续用例依赖已启动的主程序
+      var back = await prepareLicense(L, C, { exp: '2099-12-31' });
+      assertEq(lic.activate(back.card).ok, true, '收尾：应能重新激活，恢复后续用例所需状态');
     });
 
     // ============================================================
@@ -727,16 +789,21 @@
       var btn = q(doc, '#batch-btn');
       var tip = q(doc, '#batch-tip');
       if (!t.listDrafts().length) { t.saveDraft('批量用例草稿'); }
-      var cbs = qa(doc, '#batch-list input[type="checkbox"]');
-      assert(cbs.length >= 1, '批量清单应列出至少 1 个任务（草稿或文案片段）');
+      // 「批量出图」以草稿为最小单元（常用文案库只用于给草稿套用指定字段），清单渲染在 #batch-tasks 里
+      var cbs = await until(function () {
+        var list = qa(doc, '#batch-tasks input[type="checkbox"]');
+        return list.length ? list : null;
+      }, 3000, '批量清单渲染（草稿是批量的最小单元）');
 
       // 未勾选：必须有即时提示，且不能进入批量流程
       btn.click();
-      assertEq(text(tip), '请先勾选要出图的任务', '未勾选点批量出图应给出提示');
+      assertEq(text(tip), '请先勾选要出图的草稿', '未勾选点批量出图应给出提示');
       assert(!btn.disabled, '未勾选时不应进入批量流程（按钮不应被禁用）');
 
       var before = saverCalls.layout.length;
       cbs[0].checked = true;
+      fire(cbs[0], 'change', L); // 触发 updateBatchCount：按钮文案应带上「将生成 N 张」
+      assertMatch(text(btn), /将生成 1 张/, '勾选后按钮应实时显示预计生成张数');
       btn.click();
       assert(btn.disabled, '批量过程中按钮应禁用，避免重入');
       await until(function () {
@@ -756,9 +823,212 @@
       }
     });
 
-    function blobUrl(win, obj) {
-      return win.URL.createObjectURL(new win.Blob([JSON.stringify(obj)], { type: 'application/json' }));
-    }
+    test('layout/导出尺寸与字号锁定（P-17 / P-33）', async function () {
+      var t = app();
+      var size = q(doc, '#export-size');
+      assertEq(qa(doc, '#export-size option').length, 2, '导出尺寸应提供两档（平台推荐 / 4× 高清）');
+      assertEq(size.value, '4', '默认应为 4× 高清档');
+      assertEq(t.currentExportScale(), 4, '默认导出倍率应为 4');
+      size.value = '2.88';
+      fire(size, 'change', L);
+      assertEq(t.currentExportScale(), 2.88, '切到平台推荐档后导出倍率应为 2.88');
+      size.value = '4';
+      fire(size, 'change', L);
+      assertEq(t.currentExportScale(), 4, '切回高清档应恢复 4');
+
+      // P-17：文案长到「原字号放不下、缩小才放得下」时必须明示当前缩放比例。
+      // 该中间状态对应的文案长度取决于运行时排版，因此按长度递增去命中它
+      // （先出现缩放提示，继续加长才会越到「缩到下限仍溢出、禁用导出」）。
+      var tpl = q(doc, '#template-select');
+      tpl.value = 'window';
+      fire(tpl, 'change', L);
+      var title = q(doc, '#input-title');
+      var note = q(doc, '#fit-note');
+      var btn = q(doc, '#export-btn');
+      var hit = false;
+      for (var n = 10; n <= 600 && !hit; n += 10) {
+        setValue(title, new Array(n + 1).join('缩放测试'), L);
+        await sleep(45);
+        if (hasClass(note, 'show')) {
+          hit = true;
+          assertMatch(text(note), /^已自动适配安全区：当前按 \d+% 缩放。$/, '应明示当前缩放百分比，实际：' + text(note));
+        } else if (btn.disabled) {
+          break; // 已越到「缩到下限仍溢出」，说明中间态没被覆盖到
+        }
+      }
+      assert(hit, '应存在「缩小字号后才放得下」的中间状态，此时必须提示缩放比例');
+
+      // 锁定字号：锁定后不再自动缩放（--fit 恒为 1），缩放提示也不再出现
+      var lock = q(doc, '#fit-lock');
+      lock.checked = true;
+      fire(lock, 'change', L);
+      await until(function () {
+        return q(doc, '#export-target').style.getPropertyValue('--fit') === '1';
+      }, 4000, '锁定字号后 --fit 应恒为 1（不再自动缩放）');
+      assert(!hasClass(note, 'show'), '锁定字号时不应再提示自动缩放');
+
+      lock.checked = false;
+      fire(lock, 'change', L);
+      setValue(title, '', L);
+      await until(function () { return !hasClass(note, 'show'); }, 4000, '清空文案后缩放提示应消失');
+    });
+
+    test('layout/机器码：格式稳定，且由本机安装 ID 派生', async function () {
+      var lic = L.__license;
+      var mc = lic.machineCode();
+      assertMatch(mc, /^[0-9A-Z]{4}(-[0-9A-Z]{4}){3}$/, '机器码应为 4 组 16 位（XXXX-XXXX-XXXX-XXXX）');
+      assertEq(lic.machineCode(), mc, '同一环境重复计算应稳定复现（不得随调用漂移）');
+
+      // 桌面 / iOS/PWA 环境没有原生稳定标识，机器码由本地安装 ID 派生：
+      // 换掉安装 ID，机器码必须跟着变（证明它确实参与派生，而不是被别的字段掩盖）。
+      var KEY = 'lmt_install_id';
+      var saved = L.localStorage.getItem(KEY);
+      try {
+        L.localStorage.setItem(KEY, 'harness-swapped-install-id');
+        assert(lic.machineCode() !== mc, '更换本地安装 ID 后机器码必须变化');
+      } finally {
+        if (saved == null) L.localStorage.removeItem(KEY); else L.localStorage.setItem(KEY, saved);
+      }
+      assertEq(lic.machineCode(), mc, '恢复安装 ID 后机器码应回到原值');
+    });
+
+    test('layout/文案片段字段随模板过滤（P-36）', async function () {
+      var t = app();
+      var sel = q(doc, '#snippet-field-select');
+      function opts() {
+        return qa(sel, 'option').map(function (o) { return o.value; });
+      }
+      t.refreshSnippetFieldOptions('window');
+      assertDeepEq(opts(), ['summary', 'title', 'keywords', 'subtitle'], '橱窗模板应只列出它用得到的字段');
+      t.refreshSnippetFieldOptions('three');
+      assertDeepEq(opts(), ['title', 'cap1', 'cap2', 'cap3'], '三图竖排应只列出它用得到的字段');
+
+      // 与界面联动：切模板时字段下拉必须跟着刷新
+      var tpl = q(doc, '#template-select');
+      tpl.value = 'three';
+      fire(tpl, 'change', L);
+      assertDeepEq(opts(), ['title', 'cap1', 'cap2', 'cap3'], '切到三图竖排后字段下拉应被刷新');
+
+      // 选中项在新模板里仍存在 → 保留；不存在 → 回落到第一个可用项
+      sel.value = 'cap2';
+      t.refreshSnippetFieldOptions('three');
+      assertEq(sel.value, 'cap2', '仍存在的选中字段应被保留');
+      sel.value = 'summary';
+      t.refreshSnippetFieldOptions('three');
+      assertEq(sel.value, 'title', '新模板里不存在的字段应回落到第一个可用项');
+
+      tpl.value = 'window';
+      fire(tpl, 'change', L);
+      assertDeepEq(opts(), ['summary', 'title', 'keywords', 'subtitle'], '切回橱窗后字段下拉应恢复');
+    });
+
+    test('layout/删除片段：二次确认 + 可撤销（P-28）', async function () {
+      var t = app();
+      t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+      assertEq(t.saveSnippet('summary', '待删除的片段'), true, '前置：应能存入一条片段');
+      var item = t.listSnippets()[0];
+
+      var sel = q(doc, '#snippet-select');
+      sel.value = item.id;
+      assertEq(sel.value, item.id, '前置：下拉框应能选中该片段');
+
+      var del = q(doc, '#snippet-delete-btn');
+      del.click();
+      var mask = await until(function () { return doc.querySelector('.lmt-modal-mask'); },
+        3000, '删除片段应弹出二次确认');
+      assertEq(mask.getAttribute('role'), 'dialog', '确认弹层应声明 role=dialog');
+      assertEq(mask.getAttribute('aria-modal'), 'true', '确认弹层应声明 aria-modal');
+      assertMatch(text(mask), /确定删除片段/, '确认弹层应说明删除对象');
+
+      // 取消：不得删除
+      dialogButton(doc, /^取消$/).click();
+      await until(function () { return !doc.querySelector('.lmt-modal-mask'); }, 3000, '取消后弹层应关闭');
+      assertEq(t.listSnippets().length, 1, '取消后片段必须还在');
+
+      // 确认：删除 + 底部弹出可撤销提示条
+      sel.value = item.id;
+      del.click();
+      await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '再次弹出确认');
+      dialogButton(doc, /^删除$/).click();
+      await until(function () { return !doc.querySelector('.lmt-modal-mask'); }, 3000, '确认后弹层应关闭');
+      assertEq(t.listSnippets().length, 0, '确认后片段应被删除');
+      assertEq(text(q(doc, '.lmt-undo-btn')), '撤销', '删除后应给出可撤销提示条');
+
+      // 撤销：片段原样恢复，提示条消失
+      q(doc, '.lmt-undo-btn').click();
+      await until(function () { return t.listSnippets().length === 1; }, 3000, '撤销后片段应恢复');
+      assertEq(t.listSnippets()[0].text, '待删除的片段', '撤销应恢复原片段内容');
+      await until(function () { return !doc.querySelector('.lmt-undo-toast'); }, 3000, '撤销后提示条应消失');
+      assertMatch(text(q(doc, '#tool-msg')), /已撤销删除/, '撤销应有反馈');
+    });
+
+    test('layout/分层重置：仅样式 / 草稿与偏好 / 全部（P-29）', async function () {
+      var t = app();
+      t.resetPrefs('all');
+      t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+      t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+
+      setValue(q(doc, '#input-title'), '受保护的标题', L);
+      assert(t.saveDraft('分层重置草稿').ok, '前置：应存入 1 份草稿');
+      assertEq(t.saveSnippet('summary', '受保护的片段'), true, '前置：应存入 1 条片段');
+      q(doc, '#fit-lock').checked = true;
+      fire(q(doc, '#fit-lock'), 'change', L);
+
+      var reset = q(doc, '#prefs-reset-btn');
+      var msg = q(doc, '#tool-msg');
+
+      // 取消：什么都不该发生
+      reset.click();
+      await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '重置应弹出范围选择');
+      dialogButton(doc, /^取消$/).click();
+      await until(function () { return !doc.querySelector('.lmt-modal-mask'); }, 3000, '取消后应关闭弹层');
+      assertEq(t.listDrafts().length, 1, '取消重置不应动草稿');
+
+      // 1) 仅重置样式：样式（含锁定字号）回落默认，草稿 / 片段 / 内容全部保留
+      reset.click();
+      await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '重置应弹出范围选择');
+      dialogButton(doc, /^仅重置样式$/).click();
+      await until(function () { return /已重置样式/.test(text(msg)); }, 3000, '应有「已重置样式」反馈');
+      assertEq(q(doc, '#fit-lock').checked, false, '仅重置样式应解除字号锁定');
+      assertEq(t.listDrafts().length, 1, '仅重置样式不得动草稿');
+      assertEq(t.listSnippets().length, 1, '仅重置样式不得动片段');
+      assertEq(q(doc, '#input-title').value, '受保护的标题', '仅重置样式不得动当前内容');
+
+      // 2) 重置草稿与偏好：清草稿 / 模板 / 片段 / 记忆，当前内容与图片保持
+      reset.click();
+      await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '重置应弹出范围选择');
+      dialogButton(doc, /^重置草稿与偏好$/).click();
+      await until(function () { return /已重置草稿与偏好/.test(text(msg)); }, 3000, '应有反馈');
+      assertEq(t.listDrafts().length, 0, '应清空草稿箱');
+      assertEq(t.listSnippets().length, 0, '应清空文案片段');
+      assertEq(q(doc, '#input-title').value, '受保护的标题', '重置草稿与偏好不得动当前内容');
+
+      // 3) 重置全部：内容 / 模板 / 安全区 / 导出尺寸一并回到默认
+      setValue(q(doc, '#input-title'), '再来一次', L);
+      reset.click();
+      await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '重置应弹出范围选择');
+      dialogButton(doc, /^重置全部$/).click();
+      await until(function () { return /已重置全部/.test(text(msg)); }, 3000, '应有反馈');
+      assertEq(q(doc, '#input-title').value, '', '重置全部应清空当前内容');
+      assertEq(q(doc, '#template-select').value, 'window', '重置全部应回落橱窗模板');
+      assertEq(q(doc, '#toggle-safe').checked, true, '重置全部应恢复安全区辅助线勾选');
+      assertEq(q(doc, '#export-size').value, '4', '重置全部应恢复 4× 导出尺寸');
+    });
+
+    test('layout/外壳：安卓壳读原生设备 ID，PWA 侧刻意不含该引用', async function () {
+      var src = String(L.document.documentElement.outerHTML);
+      var hasBridge = src.indexOf('LmtDevice') >= 0;
+      assertEq(hasBridge, hasSaverRef(L),
+        '安卓壳专属引用的存在性应一致（LmtDevice 与 AndroidSaver 同属 @shell 分叉），实际 LmtDevice=' + hasBridge);
+      if (hasBridge) {
+        assert(/LmtDevice[\s\S]{0,200}androidId/.test(src), '安卓壳应通过原生桥的 androidId() 取稳定设备 ID');
+        skip('安卓壳源码已接上 window.LmtDevice.androidId()（真机上取 ANDROID_ID，重装/清数据不变）；'
+          + '但该桥只有真机 WebView 才注入，无头桌面 Chromium 里不存在，机器码回落本地安装 ID，'
+          + '原生取值需在真机上人工验证');
+      }
+      skip('PWA/iOS 没有稳定的原生设备标识，机器码按设计由本地安装 ID 派生（见「机器码」用例）；'
+        + '安卓壳的原生分支由「安卓副本」那次运行覆盖');
+    });
   }
 
   // ================================================================
@@ -820,27 +1090,69 @@
       g().setLedger('');
       q(doc, '#gen-btn').click();
       assert(doc.querySelector('#out .empty'), '空台账应显示「暂无结果」占位');
-      var copyAll = q(doc, '#copy-all');
+      // 「复制全部」在阶段 2 改名为「复制台账表」（三列对照表，复制前重算卡密）
+      var copyAll = q(doc, '#copy-ledger-table');
       copyAll.click();
-      assertEq(text(copyAll), '无结果', '空台账点「复制全部」应提示无结果');
+      assertEq(text(copyAll), '无结果', '空台账点「复制台账表」应提示无结果');
       var exp = q(doc, '#export-btn');
       exp.click();
       assertEq(text(exp), '台账为空', '空台账点「导出台账」应提示台账为空');
       var del = q(doc, '#deliver-btn');
       del.click();
       assertEq(text(del), '无结果', '空台账点「复制交付文案」应提示无结果');
+      // 新增出口：导出含卡密台账 / 导出交付图，空台账时同样必须有明确反馈（不得静默无反应）
+      var deliver = q(doc, '#export-deliver-btn');
+      deliver.click();
+      assertEq(text(deliver), '台账为空', '空台账点「导出含卡密台账」应提示台账为空');
+      var imgBtn = q(doc, '#deliver-img-btn');
+      imgBtn.click();
+      assertEq(text(imgBtn), '无结果', '空台账点「导出交付图」应提示无结果，实际：' + text(imgBtn));
     });
 
-    test('cardgen/导入台账文件（含卡密列与 BOM）', async function () {
-      var csv = '\uFEFF机器码,卡密,备注\r\nABCD-EFGH-JKMN-PQRS,XXXX-XXXX-XXXX-XXXX-XXXX,张三\r\nSTVW-XYZ0-1234-5678,,李四\r\n';
+    test('cardgen/导入台账文件：导入前必须二次确认（合并 / 覆盖）', async function () {
+      g().setLedger('');
+      var csv = '\uFEFF机器码,卡密,备注,有效期\r\nABCD-EFGH-JKMN-PQRS,XXXX-XXXX-XXXX-XXXX-XXXX,张三,2027-12-31\r\nSTVW-XYZ0-1234-5678,,李四,\r\n';
       var input = q(doc, '#import-file');
       attachFile(C, input, 'ledger.csv', 'text/csv', new TextEncoder().encode(csv));
-      var btn = q(doc, '#import-btn');
-      await until(function () { return /已导入|无新机器码|读取失败/.test(text(btn)); }, FILE_WAIT_MS, '导入反馈');
-      assertEq(text(btn), '已导入 +2', '应反馈导入条数');
+
+      // 阶段 2 起导入不再直接写台账：先弹确认层（默认「合并」），避免误覆盖现有台账
+      var mask = await until(function () {
+        var el = doc.getElementById('import-confirm');
+        return (el && el.style.display !== 'none') ? el : null;
+      }, FILE_WAIT_MS, '导入确认弹层');
+      assertEq(mask.getAttribute('role'), 'dialog', '导入确认层应声明 role=dialog');
+      var desc = q(doc, '#import-confirm-desc');
+      assert(/新增 2 条/.test(text(desc)), '确认层应说明新增条数，实际：' + text(desc));
+      assert(q(doc, '#import-mode-merge').checked, '默认应选中「合并」（更安全，不误删现有台账）');
+
+      q(doc, '#import-confirm-ok').click();
+      var report = await until(function () {
+        var r = doc.getElementById('import-report');
+        return /导入完成/.test(text(r)) ? r : null;
+      }, FILE_WAIT_MS, '导入报告');
+      assert(/合并/.test(text(report)), '按默认的合并模式导入，实际：' + text(report));
       assert(/ABCD-EFGH-JKMN-PQRS/.test(q(doc, '#mc-list').value), '台账应写入机器码');
       assertEq(input.value, '', '导入后应清空 input，允许重复导入同一文件');
       assertEq(qa(doc, '#out .item').length, 2, '导入后应重排结果列表');
+    });
+
+    test('cardgen/导入台账文件（含卡密列的 CSV 也能识别，BOM 与卡密列均被丢弃）', async function () {
+      g().setLedger('');
+      // 导出的「含卡密台账」是四列 CSV：再导入时必须按机器码识别、自动丢弃卡密列
+      var csv = '\uFEFF机器码,卡密,备注,有效期\r\nWXYZ-0123-4567-89AB,YYYY-YYYY-YYYY-YYYY-YYYY,王五,2027-12-31\r\n';
+      var input = q(doc, '#import-file');
+      attachFile(C, input, 'deliver.csv', 'text/csv', new TextEncoder().encode(csv));
+      await until(function () {
+        var el = doc.getElementById('import-confirm');
+        return (el && el.style.display !== 'none') ? el : null;
+      }, FILE_WAIT_MS, '导入确认弹层');
+      q(doc, '#import-confirm-ok').click();
+      await until(function () { return /导入完成/.test(text(doc.getElementById('import-report'))); }, FILE_WAIT_MS, '导入报告');
+      var line = q(doc, '#mc-list').value;
+      assert(/WXYZ-0123-4567-89AB/.test(line), '台账应写入机器码');
+      assert(!/YYYY-YYYY/.test(line), '含卡密台账导入时卡密列应被丢弃（卡密由生成器按机器码重算）');
+      assert(/王五/.test(line), '备注应保留');
+      assert(/2027-12-31/.test(line), '有效期应保留');
     });
 
     test('cardgen/台账备份导出与恢复（含格式校验）', async function () {
@@ -869,7 +1181,8 @@
       assertEq(restoreInput.value, '', '恢复后应清空 input');
     });
 
-    test('cardgen/在线清单 JSON：生成、签名自校验、复制', async function () {
+    test('cardgen/在线清单 JSON：ver 2 结构、sig2 自校验、复制', async function () {
+      g().setPrivateKey(TEST_PRIV); // 新制式必须录入私钥才能签出 sig2
       g().setLedger('ABCD-EFGH-JKMN-PQRS,张三');
       setValue(q(doc, '#revoke-list'), 'H7S0-6M3M-GMA1-Y7T2-VNRM', C, 'input');
       var copyBtn = q(doc, '#copy-manifest');
@@ -878,15 +1191,30 @@
 
       var out = q(doc, '#manifest-out');
       var obj = JSON.parse(out.value);
-      assertMatch(obj.updated, /^\d{4}-\d{2}-\d{2}$/, 'updated 应为本地日期');
+      assertEq(obj.ver, 2, '清单应为契约 ver 2');
+      assertMatch(obj.updated, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/, 'updated 应为含时区的 ISO8601（P-32）');
+      assertMatch(obj.rev, /^[0-9a-f]{16}$/, 'rev 应为 sha256 前 16 位 hex');
       assertEq(obj.cards.length, 1, '白名单应有 1 张卡密');
       assertEq(obj.cards[0].card, g().makeCard('ABCDEFGHJKMNPQRS'), '白名单应是台账对应的卡密');
       assertEq(obj.cards[0].mc, 'ABCD-EFGH-JKMN-PQRS', '白名单条目应带分组机器码，便于按机器码排查');
       assertEq(obj.cards[0].note, '张三', '白名单条目应带名称（备注），清单里能看到是谁');
       assertEq(obj.revoked.length, 1, '吊销名单应有 1 张卡密');
       assertEq(obj.revoked[0], 'H7S0-6M3M-GMA1-Y7T2-VNRM', '吊销名单应保留分组写法');
-      assertEq(obj.sig, g().manifestSignature(obj.updated, obj.cards, obj.revoked), 'sig 必须与算法一致（主程序据此验签）');
-      assertMatch(obj.sig, /^[0-9a-f]{64}$/, 'sig 应为 64 位小写 hex');
+      // sig2 = base32(64 字节 ed25519 签名) → 103 个字符；且必须能被私钥派生的公钥验过
+      assertMatch(obj.sig2, /^[0-9A-Z]{103}$/, 'sig2 应为 103 字符 base32（64 字节 Ed25519 签名）');
+      var normCards = {}, revMap = {};
+      obj.cards.forEach(function (c) {
+        var n = g().normalize(c.card);
+        normCards[n] = { card: n, mc: g().normalize(c.mc), note: c.note || '', exp: c.exp || '' };
+      });
+      obj.revoked.forEach(function (c) { var n = g().normalize(c); if (n) revMap[n] = true; });
+      var canonical = g().canonicalManifestString(obj.ver, obj.updated, obj.rev, normCards, revMap);
+      assertEq(g().verifyCanonical(canonical, obj.sig2), true, 'sig2 必须能被私钥派生的公钥验过（否则主程序无法验签）');
+      // 发布前自检（#publish-check）必须通过，界面上的结论与清单一致
+      var chk = g().manifestSelfCheck(obj);
+      assertEq(chk.ok, true, '发布前自检应通过，实际：' + chk.msg);
+      assertEq(text(q(doc, '#publish-check')), chk.msg, '界面自检文案应与自检结果一致');
+      assert(hasClass(q(doc, '#publish-check'), 'is-ok'), '自检通过时结论样式应为 is-ok');
     });
 
     test('cardgen/令牌保存与清除，以及上传前置提示', async function () {
@@ -950,7 +1278,7 @@
       assertEq(call.mime, 'text/csv', '原生落盘 MIME 类型');
       // 用应用自己的 base64ToUtf8 解回来，顺带证明桥这头的编码契约（UTF-8）没被写错
       var csv = g().base64ToUtf8(call.base64);
-      assert(/^\uFEFF机器码,卡密,备注/.test(csv), '原生落盘内容应是带 BOM 与表头的台账 CSV，实际开头：' + JSON.stringify(csv.slice(0, 20)));
+      assert(/^\uFEFF机器码,备注,有效期/.test(csv), '原生落盘内容应是带 BOM 与三列表头的台账 CSV，实际开头：' + JSON.stringify(csv.slice(0, 20)));
       assert(/ABCD-EFGH-JKMN-PQRS/.test(csv), '原生落盘内容应包含台账里的机器码');
       assertEq(text(b), '已保存', '安卓壳应提示「已保存」，实际：' + text(b));
     });
@@ -976,7 +1304,7 @@
       var call = calls[calls.length - 1];
       assertEq(call.name, '卡密导入模板.csv', '原生落盘文件名');
       assertEq(call.mime, 'text/csv', '原生落盘 MIME 类型');
-      assert(/^\uFEFF机器码,卡密,备注/.test(g().base64ToUtf8(call.base64)), '原生落盘内容应是带 BOM 与表头的模板 CSV');
+      assert(/^\uFEFF机器码,备注,有效期/.test(g().base64ToUtf8(call.base64)), '原生落盘内容应是带 BOM 与三列表头的模板 CSV');
       assertEq(text(b), '已保存', '安卓壳应提示「已保存」，实际：' + text(b));
     });
 
@@ -1045,16 +1373,37 @@
       assertEq(t.parseEntry('ABCD-EFGH-JKMN-PQRS,5\'6"').note, '5\'6"', '字段中间的引号应按普通字符保留');
 
       assertEq(t.extractMc('ABCD-EFGH-JKMN-PQRS').join(','), 'ABCD-EFGH-JKMN-PQRS', 'extractMc 应返回分组写法');
-      assert(/^\uFEFF机器码,卡密,备注/.test(t.buildTemplateCsv()), '模板 CSV 应带 BOM 与表头');
-      assert(/^机器码,卡密,备注/.test(t.buildLedgerCsv().replace(/^\uFEFF/, '')), '台账 CSV 应带表头');
+      // 模板与台账导出都是「机器码,备注,有效期」三列（含卡密的四列只用于交付，不参与导入回环）
+      assert(/^\uFEFF机器码,备注,有效期/.test(t.buildTemplateCsv()), '模板 CSV 应带 BOM 与三列表头（机器码,备注,有效期）');
+      assert(/^机器码,备注,有效期/.test(t.buildLedgerCsv().replace(/^\uFEFF/, '')), '台账 CSV 应带三列表头');
+      assert(/^机器码,卡密,备注,有效期/.test(t.buildLedgerDeliverCsv().replace(/^\uFEFF/, '')), '含卡密台账 CSV 应带四列表头');
 
-      var raw = 'ABCD-EFGH-JKMN-PQRS-1234';
       assertMatch(t.makeCard('abcd efgh j/kmn-pqrs-1234'), /^[0-9A-Z]{4}(-[0-9A-Z]{4}){4}$/, '卡密应为 5 组 20 位');
       assertEq(t.makeCard('abcd efgh j/kmn-pqrs-1234'), t.makeCard('ABCDEFGHJKMNPQRS1234'), '卡密应与写法无关（先归一化）');
-      assertEq(t.manifestSignature('2026-10-14', ['abcd-efgh-jkmn-pqrs-1234'], []),
-        t.manifestSignature('2026-10-14', ['ABCDEFGHJKMNPQRS1234'], []), '签名应与分组写法无关');
-      assertMatch(t.manifestSignature('2026-10-14', [], []), /^[0-9a-f]{64}$/, '签名应为 64 位小写 hex');
-      assert(t.manifestSignature('2026-10-14', ['A'], []) !== t.manifestSignature('2026-10-15', ['A'], []), 'updated 变化应改变签名');
+
+      // 签名链路（新制式）：私钥 → 规范化串 → sig2 → 验签。
+      // 走的是与客户端同一条 ed25519Verify 路径，这里通过即代表客户端能验过。
+      t.setPrivateKey(TEST_PRIV);
+      assertEq(t.privateKeyOk(), true, '录入测试私钥后应可用');
+      function cardsMapOf(card, mc) {
+        var n = t.normalize(card), m = {};
+        m[n] = { card: n, mc: t.normalize(mc), note: '张三', exp: '2027-12-31' };
+        return m;
+      }
+      var cm1 = cardsMapOf('abcd-efgh-jkmn-pqrs-1234', 'ABCD-EFGH-JKMN-PQRS-1234');
+      var cm2 = cardsMapOf('ABCDEFGHJKMNPQRS1234', 'ABCDEFGHJKMNPQRS1234');
+      var U1 = '2026-10-14T10:00:00+08:00';
+      assertEq(t.manifestRevSource(t.MANIFEST_VER, U1, cm1, {}),
+        t.manifestRevSource(t.MANIFEST_VER, U1, cm2, {}), '规范化串应与分组写法无关');
+      var rev1 = t.sha256Hex(t.manifestRevSource(t.MANIFEST_VER, U1, cm1, {})).substr(0, 16);
+      assertMatch(rev1, /^[0-9a-f]{16}$/, 'rev 应为 16 位小写 hex');
+      var canon = t.canonicalManifestString(t.MANIFEST_VER, U1, rev1, cm1, {});
+      var sig = t.signCanonical(canon);
+      assertMatch(sig, /^[0-9A-Z]{103}$/, 'sig2 应为 103 字符 base32（64 字节签名）');
+      assertEq(t.verifyCanonical(canon, sig), true, '自己签的 sig2 应能验签通过');
+      assertEq(t.verifyCanonical(canon, sig.charAt(0) === 'A' ? 'B' + sig.slice(1) : 'A' + sig.slice(1)), false, '签名被篡改应验签失败');
+      assert(t.signCanonical(t.canonicalManifestString(t.MANIFEST_VER, '2026-10-15T10:00:00+08:00', rev1, cm1, {})) !== sig,
+        'updated 变化应改变签名');
 
       assertDeepEq(t.parseManifestTarget(), { owner: 'yejiawei19991118', repo: 'lmt-cards', branch: 'main', path: 'cards.json' }, '应从 MANIFEST_URL 解析出上传目标');
       assertEq(t.base64ToUtf8(t.utf8ToBase64('中文\n换行')), '中文\n换行', 'Base64 往返应保持 UTF-8');
@@ -1071,7 +1420,14 @@
       // 吊销名单以本机为准，不与远端取并集：否则把某项从吊销框删掉再上传会被远端旧记录并回来，
       // 用户永远解除不了吊销（撤销只能靠重新生成整份清单）。
       assertEq(merged.revoked.length, 0, '合并吊销名单应只保留本机吊销框内容，不得把远端旧记录并回来');
-      assertEq(merged.sig, t.manifestSignature(merged.updated, merged.cards, merged.revoked), '合并后必须重新签名');
+      assertEq(merged.ver, t.MANIFEST_VER, '合并后应为 ver 2 契约');
+      // 合并结果必须重新签名，且签名能被公钥验过（重建规范化串再验，等价于客户端的验签路径）
+      var mm = {}, rmm = {};
+      merged.cards.forEach(function (c) { mm[t.normalize(c.card)] = { card: t.normalize(c.card), mc: t.normalize(c.mc), note: String(c.note || '').trim(), exp: String(c.exp || '').trim() }; });
+      merged.revoked.forEach(function (r) { rmm[t.normalize(r)] = true; });
+      assertMatch(merged.sig2, /^[0-9A-Z]{103}$/, '合并后应重新签出 sig2');
+      assertEq(t.verifyCanonical(t.canonicalManifestString(t.MANIFEST_VER, merged.updated, merged.rev, mm, rmm), merged.sig2), true,
+        '合并后的 sig2 应能验签通过');
 
       // 本机吊销框有内容时应原样保留（归一化去重 + 恢复分组写法）。
       var merged2 = t.mergeWithRemote(
@@ -1079,7 +1435,6 @@
         { cards: [], revoked: ['STVW-XYZ0-1234-5678-89AB'] });
       assertEq(merged2.revoked.length, 1, '本机吊销项应归一化去重后保留');
       assertEq(merged2.revoked[0], 'H7S0-6M3M-GMA1-Y7T2-VNRM', '吊销项应恢复为分组写法');
-      assertEq(raw.length, 24, '用例自检');
     });
 
     // ============================================================
@@ -1234,6 +1589,34 @@
       assert(back && back.added === 2, '从快照恢复应补回 2 个机器码，实际 ' + JSON.stringify(back));
       assert(/ABCD-EFGH-JKMN-PQRS/.test(q(doc, '#mc-list').value), '恢复后台账应包含快照里的机器码');
       assertEq(qa(doc, '#out .item').length, 2, '恢复后结果列表应重排为 2 条');
+
+      // P-24：快照列表化 + 时间点选取。直接注入一份「昨天」的快照，再存今天这份，
+      // 列表应两行、默认选中最新，点选旧时间点后「恢复」也必须以该时间点为准。
+      var yCsv = '\uFEFF机器码,备注,有效期\r\nWXYZ-1234-5678-90AB,老王,';
+      C.localStorage.setItem(t.SNAPSHOT_KEY, JSON.stringify({
+        v: 1, items: [{ at: '2026-10-14T09:00:00.000Z', csv: yCsv }]
+      }));
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三\nSTVW-XYZ0-1234-5678,李四');
+      q(doc, '#gen-btn').click();
+      t.saveSnapshot();
+      var rows = qa(doc, '#snapshot-list .lmt-snapshot-item');
+      assertEq(rows.length, 2, '两个时间点的快照应各占一行');
+      assertMatch(text(rows[0]), /（1 条）/, '旧快照应显示自身条数');
+      assertMatch(text(rows[1]), /（2 条）/, '新快照应显示自身条数');
+      assert(hasClass(rows[1], 'is-selected'), '默认应选中最新一份');
+
+      // 点选旧时间点：高亮转移，且 selectedSnapshot 返回该时间点的内容
+      var radio0 = q(doc, '#snapshot-list .lmt-snapshot-item input[type="radio"]');
+      radio0.checked = true;
+      fire(radio0, 'change', C);
+      assert(hasClass(qa(doc, '#snapshot-list .lmt-snapshot-item')[0], 'is-selected'), '点选后旧时间点应高亮');
+      assert(/WXYZ-1234-5678-90AB/.test(t.selectedSnapshot().csv), 'selectedSnapshot 应返回被选中的时间点内容');
+
+      // 恢复以「选中的时间点」为准：清空台账后应只补回旧快照里的那 1 条
+      g().setLedger('');
+      var back2 = t.restoreLatestSnapshot();
+      assert(back2 && back2.added === 1, '恢复应以选中的时间点为准（1 条），实际 ' + JSON.stringify(back2));
+      assert(/WXYZ-1234-5678-90AB/.test(q(doc, '#mc-list').value), '恢复后台账应来自被选中的旧快照');
     });
 
     test('cardgen/上传回执与待重传：内容一致即不待传，台账变更后置为待传', async function () {
@@ -1368,33 +1751,169 @@
       t.setFilterText('');
       t.render();
     });
+
+    test('cardgen/密钥区：保存私钥 / 公钥指纹 / 与客户端比对 / 记住与否', async function () {
+      var t = g();
+      var input = q(doc, '#secret-input');
+      var fp = q(doc, '#secret-fingerprint');
+      var tip = q(doc, '#secret-tip');
+      var persist = q(doc, '#secret-persist');
+
+      q(doc, '#secret-clear').click();
+      assertEq(text(fp), '未录入', '未录入私钥时指纹应显示「未录入」');
+      assertEq(t.privateKeyOk(), false, '清除后不应有可用私钥');
+
+      // 非法私钥：明确拒绝，且不得产出公钥指纹
+      input.value = '这不是私钥';
+      q(doc, '#secret-save').click();
+      assertMatch(text(tip), /私钥格式不正确/, '非法私钥应给出格式提示，实际：' + text(tip));
+      assertEq(text(fp), '未录入', '非法私钥不应产出公钥指纹');
+
+      // 合法私钥（hex 64 字符）：保存后展示由它派生的公钥指纹
+      input.value = TEST_PRIV;
+      q(doc, '#secret-save').click();
+      assertEq(t.privateKeyOk(), true, '保存后私钥应可用');
+      assertEq(text(fp), t.pubKeyBase32(), '指纹应是当前私钥派生的公钥');
+      assertMatch(text(fp), /^[0-9A-Z]{52}$/, '公钥应为 52 字符 base32');
+
+      // 与客户端内置公钥比对：测试私钥不是生产私钥，必须报「不一致」
+      assert(t.pubKeyBase32() !== t.EXPECTED_PUBKEY, '前置：测试私钥不应等于客户端内置的生产公钥');
+      q(doc, '#secret-compare-btn').click();
+      assertMatch(text(tip), /不一致/, '不配对时应提示不一致，实际：' + text(tip));
+
+      // 未录入时的比对必须给出明确提示，而不是静默无反应
+      q(doc, '#secret-clear').click();
+      q(doc, '#secret-compare-btn').click();
+      assertMatch(text(tip), /尚未录入私钥/, '未录入私钥时比对应给出提示，实际：' + text(tip));
+
+      // 「记住私钥」：勾选才落 localStorage，取消勾选必须立刻抹掉
+      input.value = TEST_PRIV;
+      persist.checked = true;
+      fire(persist, 'change', C);
+      assertEq(C.localStorage.getItem('lmt_privkey_persist_v1'), '1', '勾选后应持久化「记住私钥」开关');
+      assertEq(C.localStorage.getItem('lmt_privkey_v1'), TEST_PRIV, '勾选后私钥应写入 localStorage');
+      assertMatch(text(tip), /已记住私钥/, '勾选应有反馈');
+      persist.checked = false;
+      fire(persist, 'change', C);
+      assertEq(C.localStorage.getItem('lmt_privkey_persist_v1'), '0', '取消勾选应更新开关状态');
+      assertEq(C.localStorage.getItem('lmt_privkey_v1'), null, '取消勾选后私钥不得再留在 localStorage');
+      assertEq(t.privateKeyOk(), true, '取消勾选后私钥仍应在本次会话可用（仅不再持久化）');
+
+      // 收尾：恢复测试私钥，供后续用例继续使用
+      input.value = TEST_PRIV;
+      q(doc, '#secret-save').click();
+      assertEq(t.privateKeyOk(), true, '收尾：测试私钥应可用');
+    });
+
+    test('cardgen/导出含卡密台账：四列 CSV（机器码,卡密,备注,有效期）', async function () {
+      var t = g();
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三,2027-12-31');
+      setValue(q(doc, '#revoke-list'), '', C, 'input');
+      q(doc, '#gen-btn').click();
+
+      var csv = t.buildLedgerDeliverCsv();
+      assert(/^\uFEFF机器码,卡密,备注,有效期/.test(csv), '含卡密台账应为四列表头（带 BOM）');
+      var lines = csv.replace(/^\uFEFF/, '').split('\r\n');
+      assertEq(lines[0], '机器码,卡密,备注,有效期', '四列表头应逐字一致');
+      assertMatch(lines[1], /^ABCD-EFGH-JKMN-PQRS,[0-9A-Z]{4}(-[0-9A-Z]{4}){4},张三,2027-12-31$/,
+        '四列行应依次为 机器码,卡密,备注,有效期');
+
+      var b = q(doc, '#export-deliver-btn');
+      // 空台账：不得产出文件，且必须给出明确反馈
+      g().setLedger('');
+      b.click();
+      assertEq(text(b), '台账为空', '空台账导出含卡密台账应给出提示');
+
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三,2027-12-31');
+      var calls = saverCalls.cardgen;
+      var before = calls.length;
+      b.click();
+
+      if (!hasSaverRef(C)) {
+        await until(function () { return /已保存|已导出|请手动复制/.test(text(b)); },
+          FILE_WAIT_MS, '导出含卡密台账回退反馈');
+        closeLayers(doc);
+        skip('PWA 外壳没有 AndroidSaver 桥（原生落盘只存在于安卓壳），导出含卡密台账走 <a download> 回退；'
+          + '安卓壳对应路径由「安卓副本」那次运行覆盖');
+      }
+
+      await until(function () { return calls.length > before; }, FILE_WAIT_MS,
+        '安卓壳导出含卡密台账必须调用原生桥（页面源码含 AndroidSaver，却未落盘）');
+      var call = calls[calls.length - 1];
+      assertMatch(call.name, /^卡密台账_含卡密_\d{8}\.csv$/, '原生落盘文件名应标明「含卡密」');
+      assertEq(call.mime, 'text/csv', '原生落盘 MIME 类型');
+      var out = t.base64ToUtf8(call.base64);
+      assert(/^\uFEFF机器码,卡密,备注,有效期/.test(out), '原生落盘内容应是四列表头的含卡密台账');
+      assert(/ABCD-EFGH-JKMN-PQRS/.test(out), '原生落盘内容应包含台账里的机器码');
+      assertEq(text(b), '已保存', '安卓壳应提示「已保存」，实际：' + text(b));
+    });
   }
 
   // ================================================================
   // 跨应用一致性 + 全局无异常
   // ================================================================
   function crossCases(L, C) {
-    test('跨应用：卡密算法与清单签名必须逐字一致', async function () {
+    test('跨应用：生成器签、主程序验（一卡一机 / 换钥匙必须被拒）', async function () {
       assert(L.__license && C.__cardGen, '两个应用都应已初始化');
-      var mc = 'ABCD-EFGH-JKMN-PQRS';
-      var a = C.__cardGen.makeCard(mc);
-      var b = L.__license.makeCard(mc);
-      assertEq(a, b, '生成器与主程序的卡密算法必须一致（否则生成的卡密无法激活）');
-      assertEq(L.__license.normalize('ab-cd 12'), C.__cardGen.normalize('ab-cd 12'), '两侧归一化规则必须一致');
-      assertMatch(a, /^[0-9A-Z]{4}(-[0-9A-Z]{4}){4}$/, '卡密应为 5 组 20 位');
+      var lic = L.__license, gen = C.__cardGen;
+      assertEq(lic.normalize('ab-cd 12'), gen.normalize('ab-cd 12'), '两侧归一化规则必须一致');
+      assertEq(lic.MANIFEST_VER, gen.MANIFEST_VER, '两侧清单版本号必须一致');
 
-      // 生成器产出的清单必须能被主程序验签并通过在线判定
-      var updated = '2026-10-14';
-      var cards = [a];
-      var sig = C.__cardGen.manifestSignature(updated, cards, []);
-      var url = L.URL.createObjectURL(new L.Blob(
-        [JSON.stringify({ updated: updated, cards: cards, revoked: [], sig: sig })],
-        { type: 'application/json' }));
-      await L.__license.fetchManifest(url);
+      // 生成器持私钥 → 派生公钥装进主程序（作者侧与用户侧的分工）
+      gen.setPrivateKey(TEST_PRIV);
+      var pub = gen.pubKeyBase32();
+      assertMatch(pub, /^[0-9A-Z]{52}$/, '私钥应派生出 52 字符 base32 公钥');
+      lic.setPubKey(pub);
+      assertEq(lic.getPubKey(), pub, '主程序应接受这把公钥');
+
+      // 一卡一机：本机卡密绑定本机机器码；另造一张别的机器的卡密用于反例
+      var mc = lic.machineCode();
+      var otherMc = 'ABCD-EFGH-JKMN-PQRS';
+      assert(mc !== otherMc, '测试机器码应与本机机器码不同');
+      var card = gen.makeCard(mc);
+      var otherCard = gen.makeCard(otherMc);
+      assertMatch(card, /^[0-9A-Z]{4}(-[0-9A-Z]{4}){4}$/, '卡密应为 5 组 20 位');
+      assert(card !== otherCard, '不同机器码应得到不同卡密');
+
+      // 1) 正确私钥签出的清单：整体验签通过 + 本机卡密放行 + 他机卡密被「一卡一机」拦下
+      var updated = gen.localIso(new Date());
+      var obj = signManifest(C, updated, [
+        { card: card, mc: mc, note: '本机', exp: '2099-12-31' },
+        { card: otherCard, mc: otherMc, note: '他机', exp: '2099-12-31' }
+      ], []);
+      var url = blobUrl(L, obj);
+      await lic.fetchManifest(url);
       L.URL.revokeObjectURL(url);
-      var m = L.__license.getManifest();
+      var m = lic.getManifest();
       assert(m && m.verified === true, '主程序必须能验签生成器产出的清单');
-      assertEq(L.__license.onlineDecision(a).ok, true, '生成器产出的卡密必须能通过主程序的在线判定');
+      assertEq(m.rev, obj.rev, '主程序算出的 rev 应与生成器一致');
+      var d1 = lic.onlineDecision(card);
+      assertEq(d1.ok, true, '生成器按本机机器码签发的卡密必须能通过主程序的在线判定');
+      assertEq(d1.exp, '2099-12-31', '有效期应随清单带出');
+      var d2 = lic.onlineDecision(otherCard);
+      assertEq(d2.ok, false, '他机卡密必须被拦下');
+      assertMatch(d2.msg, /一卡一机/, '他机卡密应给出「一卡一机」提示');
+
+      // 2) 换钥匙签出的清单必须被拒绝：主程序里装的是 TEST_PRIV 的公钥，
+      //    这里用 TEST_PRIV2 签一份只含 extraCard 的清单；拉取后它不得被采纳，
+      //    上一份有效清单也不能被顶掉（否则一次失败的拉取就等于把用户锁死）。
+      var extraCard = gen.randomCard();
+      gen.setPrivateKey(TEST_PRIV2);
+      var objWrong = signManifest(C, gen.localIso(new Date()), [{ card: extraCard, mc: mc, note: '假', exp: '' }], []);
+      gen.setPrivateKey(TEST_PRIV);
+      var urlWrong = blobUrl(L, objWrong);
+      await lic.fetchManifest(urlWrong);
+      L.URL.revokeObjectURL(urlWrong);
+      assertEq(lic.onlineDecision(extraCard).ok, false, '换私钥签出的清单不得被采纳（其卡密不得放行）');
+      assertEq(lic.getManifest() && lic.getManifest().verified, true, '验签失败不得覆盖原有的有效清单');
+      assertEq(lic.onlineDecision(card).ok, true, '一次失败的拉取不得让已生效的卡密失效');
+
+      // 3) 吊销：把本机卡密加入 revoked 后重新签，必须被拒
+      var objRev = signManifest(C, gen.localIso(new Date()), [], [card]);
+      var urlRev = blobUrl(L, objRev);
+      await lic.fetchManifest(urlRev);
+      L.URL.revokeObjectURL(urlRev);
+      assertMatch(lic.onlineDecision(card).msg, /已被吊销/, '已吊销卡密必须被拒绝');
     });
 
     test('全局：两个应用均无未捕获异常', async function () {

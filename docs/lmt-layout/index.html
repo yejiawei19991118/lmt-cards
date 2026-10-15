@@ -591,6 +591,9 @@
         .license-msg.ok { color: #1f8a4c; }
         .license-msg.info { color: var(--text-sub); }
         .license-net { margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
+        .license-hint { margin-top: 8px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
+        .license-exp { margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
+        .license-cred { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
 
         /* 导出失败的内联提示：移动端 WebView 里 alert() 可能被静默忽略，
            改用页内提示，保证用户一定看得到反馈。 */
@@ -674,6 +677,30 @@
             border: 1px solid #dbe1ea; border-radius: 9px; font-size: 14px; font-family: inherit;
             background: #fbfcfe; color: var(--text-main);
         }
+        /* 锁定字号开关（样式区，与安全区开关同款外观） */
+        .toggle-fit-lock {
+            display: flex; align-items: center; gap: 8px; box-sizing: border-box;
+            padding: 8px 12px; margin: 8px 0 10px; border: 1px solid #e8ecf3; border-radius: 9px;
+            font-size: 13px; font-weight: 400; color: var(--text-main); background: #f7f9fc; cursor: pointer;
+        }
+        .toggle-fit-lock input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+        /* 通用确认弹层里的正文说明 */
+        .lmt-modal-text { margin: 0 0 14px; font-size: 13px; line-height: 1.6; color: var(--text-sub); white-space: pre-line; }
+        /* 底部「可撤销」提示条（草稿删除的 toast undo） */
+        .lmt-undo-toast {
+            position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+            z-index: 100001; display: flex; align-items: center; gap: 14px;
+            max-width: calc(100% - 32px); box-sizing: border-box;
+            padding: 12px 16px; border-radius: 12px;
+            background: rgba(24, 33, 51, .92); color: #fff; font-size: 13px;
+            box-shadow: 0 12px 32px rgba(24, 33, 51, .3);
+        }
+        .lmt-undo-toast .lmt-undo-btn {
+            flex: none; margin: 0; padding: 6px 12px; border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, .5); background: transparent;
+            color: #fff; font-size: 13px; cursor: pointer;
+        }
+        .lmt-undo-toast .lmt-undo-btn:hover { background: rgba(255, 255, 255, .16); }
         /* 自绘「输入名称」浮层（不用 prompt/alert：安卓 WebView 可能不接管系统弹窗） */
         .lmt-modal-mask {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 100000;
@@ -788,6 +815,7 @@
                     <input type="text" id="license-mc" readonly="">
                     <button type="button" class="btn-ghost" id="license-copy">复制</button>
                 </div>
+                <p class="license-hint" id="license-mc-hint">机器码由本机环境推导（一卡一机）。清除浏览器数据或重装应用会更换机器码，届时需联系作者换卡。</p>
             </div>
 
             <div class="license-field">
@@ -797,6 +825,8 @@
 
             <button type="button" class="btn-primary" id="license-activate">激 活</button>
             <div class="license-msg" id="license-msg" role="status" aria-live="polite"></div>
+            <div class="license-exp" id="license-exp" role="status" aria-live="polite"></div>
+            <div class="license-cred" id="license-cred"></div>
             <div class="license-net" id="license-net">校验方式：正在同步在线清单…</div>
         </div>
     </div>
@@ -921,11 +951,14 @@
                         <label>标题字号<input type="range" id="style-size-title" min="16" max="40" step="1" value="24"></label>
                         <label>文案颜色<input type="color" id="style-color-summary" value="#39404f"></label>
                         <label>文案字号<input type="range" id="style-size-summary" min="9" max="22" step="1" value="13"></label>
-                        <label>关键词颜色<input type="color" id="style-color-copy" value="#4a5566"></label>
-                        <label>关键词字号<input type="range" id="style-size-copy" min="9" max="22" step="1" value="12"></label>
+                        <label>关键词颜色<input type="color" id="style-color-keywords" value="#4a5566"></label>
+                        <label>关键词字号<input type="range" id="style-size-keywords" min="9" max="22" step="1" value="12"></label>
                         <label>图片圆角<input type="range" id="style-radius" min="0" max="30" step="1" value="10"></label>
-                        <label>预览底色<input type="color" id="style-color-bg" value="#ffffff"></label>
+                        <label>画布底色·参与导出<input type="color" id="style-color-bg" value="#ffffff"></label>
                     </div>
+                    <label class="toggle-fit-lock">
+                        <input type="checkbox" id="fit-lock"> 锁定字号（不自动缩放）
+                    </label>
                     <input type="text" id="style-name-input" placeholder="我的模板名称（如：暖色调）">
                     <div class="lmt-btn-row">
                         <button type="button" class="btn-ghost" id="style-save-btn">存为我的模板</button>
@@ -960,10 +993,10 @@
                     <div class="lmt-tip" id="draft-msg" role="status" aria-live="polite"></div>
                 </div>
 
-                <!-- 批量出图：勾选若干草稿/常用文案，逐张渲染后打包成一个 ZIP -->
+                <!-- 批量出图：以草稿为最小单元，勾选若干草稿逐张渲染后打包成一个 ZIP -->
                 <div class="control-group">
-                    <label>批量出图任务</label>
-                    <div class="lmt-batch-list" id="batch-list"></div>
+                    <label>批量出图任务（以草稿为最小单元）</label>
+                    <div class="lmt-batch-list" id="batch-tasks"></div>
                     <div class="lmt-btn-row">
                         <button type="button" class="btn-ghost" id="batch-btn">批量出图</button>
                         <button type="button" class="btn-ghost" id="batch-cancel-btn" hidden>取消</button>
@@ -1000,9 +1033,17 @@
             </div>
         </details>
 
-        <!-- 区块五：输出（提示 + 唯一的实心主按钮） -->
+        <!-- 区块五：预览与输出（原「输出」与右侧「预览区」归并为同一区块） -->
         <section class="panel-block">
-            <h3 class="panel-block-title">输出</h3>
+            <h3 class="panel-block-title">预览与输出</h3>
+
+            <div class="control-group">
+                <label for="export-size">导出尺寸</label>
+                <select id="export-size">
+                    <option value="2.88">1080 × 1920（平台推荐）</option>
+                    <option value="4" selected>1500 × 2668（4× 高清）</option>
+                </select>
+            </div>
 
             <div class="fit-note" id="fit-note" role="status" aria-live="polite"></div>
             <div class="overflow-warn" id="overflow-warn" role="status" aria-live="polite">
@@ -1018,13 +1059,14 @@
     <div class="preview-container">
         <div class="preview-head">
             <span class="preview-head-title">实时预览</span>
-            <span class="preview-head-hint" id="preview-head-hint">画布 375 × 667（导出 4× 高清图，1500 × 2668）</span>
+            <span class="preview-head-hint" id="preview-head-hint">画布 375 × 667（按所选尺寸导出高清图）</span>
         </div>
         <div class="preview-stage">
         <div class="canvas-wrapper web-font" id="canvas-wrapper">
             
             <!-- 可编辑内容区：承载全部文案与图片，被限制在安全区像素内。
-                 导出截取的是整个画布（#canvas-wrapper），安全区参考线在导出前会被隐藏，不会进入成品。 -->
+                 导出截取的是整个画布（#canvas-wrapper）；安全区参考层（#safe-zone）在离屏渲染时
+                 由 ignoreElements 从结构上排除，不参与导出，不依赖临时隐藏。 -->
             <div class="safe-content-area" id="export-target">
                 <div class="header-summary handwriting-font" id="preview-summary">
                     总结一下：<br>
@@ -1099,26 +1141,37 @@
         </div><!-- /.preview-stage -->
     </div>
 
-    <!-- ===== 卡密授权模块（一卡一机 · 离线校验 · 零依赖） =====
-         原理：机器码 = SHA256(设备指纹 + 本机安装ID)；卡密 = HMAC-SHA256(密钥, 机器码)。
-         激活时用本机机器码重算卡密并与输入比对；同一张卡密换到别的机器（机器码不同）即失效。
-         注意：纯前端校验只能做到“防君子”，无法阻挡有能力修改代码/内存的人。
-         ★★★ 请务必把下面 LICENSE_SECRET 改成你自己的密钥，并与「卡密生成器.html」保持一致 ★★★ -->
+    <!-- ===== 卡密授权模块（一卡一机 · 清单验签 · 离线凭证 · 零依赖） =====
+         安全模型（v2 新制式，一刀切）：
+           · 客户端只嵌「公钥」LICENSE_PUBKEY，不持有任何可签发凭证的私钥。
+           · 清单 cards.json 由「卡密生成器」用私钥 Ed25519 签名（字段 sig2）；
+             客户端用公钥验签，验签失败一律不采纳（回退备用源，全失败则拒绝激活）。
+           · 机器码 = SHA256(原生稳定ID | 安装ID兜底 | platform | cores | language)；
+             卡密为随机 20 字符，「一卡一机」由已验签清单里的 cards[].mc 绑定实现。
+           · 离线凭证：把验签通过的清单 + 拉取时间戳缓存本地（lmt_manifest_cache），
+             断网时仍可校验（须在 TTL 内、且命中/未吊销/未过期/mc 匹配）。
+         注意：纯前端校验只能做到“防篡改”，无法阻挡有能力修改代码/内存的人。 -->
     <script>
     (function () {
         'use strict';
 
-        // ★★★ 请自行修改：授权密钥（生成器里必须填同一串）★★★
-        var LICENSE_SECRET = 'aca0d140848ed9718184e7341d3c6ed7ff68283b50574258';
+        // ★ 客户端公钥（由作者私钥派生，52 字符 base32）。私钥只存在于「卡密生成器」，绝不进产物。
+        var LICENSE_PUBKEY = 'M67HT17D19HYQS5CHWKRN05GVEFSTVVV01ADAXP579C66A09RFN0';
 
-        // ★★★ 请自行修改：静态卡密清单的网址（联网时拉取，用于白名单校验与在线吊销）。
-        //   留空 = 不启用在线清单，保持纯离线校验（默认，开箱即用）。
+        // 清单契约版本：只接受 ver === 2 的新制式清单（旧 sig 制式一律不采纳）
+        var MANIFEST_VER = 2;
+        // 离线凭证有效期（天）：超过则必须联网重新拉取清单
+        var CRED_TTL_DAYS = 14;
+
+        // ★★★ 静态卡密清单的网址（联网时拉取，用于白名单校验与在线吊销）。
         //   推荐免费托管：GitHub 仓库（必须 public）+ raw 地址。
         //   地址形如 'https://raw.githubusercontent.com/用户名/仓库名/refs/heads/main/cards.json'
         //   （若国内直连被重置，可改用 jsDelivr 镜像：
         //    'https://cdn.jsdelivr.net/gh/用户名/仓库名@main/cards.json'）
-        //   清单格式（由「卡密生成器.html」生成）：
-        //   { "updated": "2026-10-13", "cards": ["卡密1","卡密2"], "revoked": ["要吊销的卡密"] }
+        //   清单格式（由「卡密生成器」生成，ver 2）：
+        //   { "ver":2, "updated":"2026-10-15T12:34:56+08:00", "rev":"<sha256 前16 hex>",
+        //     "cards":[{"card":"…","mc":"XXXX-XXXX-XXXX-XXXX","note":"…","exp":"YYYY-MM-DD"}],
+        //     "revoked":["…"], "sig2":"<ed25519 签名，base32>" }
         //   注意：一旦启用清单，所有有效卡密都必须出现在 cards 里，否则会被判定为无效（空清单 = 所有人都激活不了）。
         var MANIFEST_URL = 'https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/refs/heads/main/cards.json';
 
@@ -1132,6 +1185,7 @@
         var ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // 32 字符，去掉易混淆的 I/L/O/U
         var STAT_KEY = 'lmt_license';
         var ID_KEY = 'lmt_install_id';
+        var MANIFEST_CACHE_KEY = 'lmt_manifest_cache'; // 离线凭证：验签通过的清单 + 拉取时间戳
 
         // ---------- 基础工具 ----------
         function utf8Bytes(str) {
@@ -1258,6 +1312,333 @@
         }
         function normalize(code) { return String(code == null ? '' : code).toUpperCase().replace(/[^0-9A-Z]/g, ''); }
 
+        // ================= 密码学层（零依赖纯 JS） =================
+        // Ed25519（RFC 8032）+ SHA-512 + base32 编解码，全部自研、无第三方依赖。
+        // ⚠️ 绝不使用 `1n` 这类 BigInt 字面量：它是语法错误，安卓 8 出厂 WebView（无 BigInt）
+        //    会因此让整段内联脚本解析失败、应用直接白屏。一律用 BigInt('..')，并做运行时能力检测。
+        function ed25519Supported() { return typeof BigInt === 'function'; }
+
+        /* ---------- 5 位字母表（与 base32Encode 完全一致，保证互为逆运算） ---------- */
+        var LMT_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+        var LMT_ALPHABET_INDEX = (function () {
+            var m = {}, i;
+            for (i = 0; i < LMT_ALPHABET.length; i++) m[LMT_ALPHABET.charAt(i)] = i;
+            return m;
+        })();
+
+        // base32 解码：忽略分隔符与空白、大小写不敏感，取 byteLen 个字节；非法/长度不足返回 null。
+        function base32Decode(str, byteLen) {
+            var s = String(str == null ? '' : str).toUpperCase().replace(/[^0-9A-Z]/g, '');
+            var out = new Uint8Array(byteLen);
+            var buffer = 0, bits = 0, oi = 0;
+            for (var i = 0; i < s.length && oi < byteLen; i++) {
+                var v = LMT_ALPHABET_INDEX[s.charAt(i)];
+                if (v === undefined) return null;
+                buffer = (buffer << 5) | v;
+                bits += 5;
+                if (bits >= 8) {
+                    bits -= 8;
+                    out[oi++] = (buffer >>> bits) & 0xff;
+                    buffer = buffer & ((1 << bits) - 1);
+                }
+            }
+            if (oi < byteLen) return null;
+            return out;
+        }
+
+        // base32 无损编码：末尾不足 5 位的组补零凑满一个字符。
+        // 原有 base32Encode(bytes, charCount) 是「按目标字符数截断」的接口，
+        // 32 字节 256 位只能凑出 51 个字符、无法与 base32Decode 构成往返；
+        // 这里补上末组零填充：32 字节 → 52 字符 → 解码回 32 字节，逐字节一致。
+        function base32EncodeFull(bytes) {
+            var s = '', buffer = 0, bits = 0;
+            for (var i = 0; i < bytes.length; i++) {
+                buffer = (buffer << 8) | bytes[i];
+                bits += 8;
+                while (bits >= 5) { bits -= 5; s += LMT_ALPHABET[(buffer >>> bits) & 31]; }
+                buffer = buffer & ((1 << bits) - 1);
+            }
+            if (bits > 0) s += LMT_ALPHABET[(buffer << (5 - bits)) & 31];
+            return s;
+        }
+
+        /* ---------- SHA-512（64 位用 hi/lo 32 位对表示） ---------- */
+        var LMT_K512 = [
+            [0x428a2f98, 0xd728ae22], [0x71374491, 0x23ef65cd], [0xb5c0fbcf, 0xec4d3b2f], [0xe9b5dba5, 0x8189dbbc],
+            [0x3956c25b, 0xf348b538], [0x59f111f1, 0xb605d019], [0x923f82a4, 0xaf194f9b], [0xab1c5ed5, 0xda6d8118],
+            [0xd807aa98, 0xa3030242], [0x12835b01, 0x45706fbe], [0x243185be, 0x4ee4b28c], [0x550c7dc3, 0xd5ffb4e2],
+            [0x72be5d74, 0xf27b896f], [0x80deb1fe, 0x3b1696b1], [0x9bdc06a7, 0x25c71235], [0xc19bf174, 0xcf692694],
+            [0xe49b69c1, 0x9ef14ad2], [0xefbe4786, 0x384f25e3], [0x0fc19dc6, 0x8b8cd5b5], [0x240ca1cc, 0x77ac9c65],
+            [0x2de92c6f, 0x592b0275], [0x4a7484aa, 0x6ea6e483], [0x5cb0a9dc, 0xbd41fbd4], [0x76f988da, 0x831153b5],
+            [0x983e5152, 0xee66dfab], [0xa831c66d, 0x2db43210], [0xb00327c8, 0x98fb213f], [0xbf597fc7, 0xbeef0ee4],
+            [0xc6e00bf3, 0x3da88fc2], [0xd5a79147, 0x930aa725], [0x06ca6351, 0xe003826f], [0x14292967, 0x0a0e6e70],
+            [0x27b70a85, 0x46d22ffc], [0x2e1b2138, 0x5c26c926], [0x4d2c6dfc, 0x5ac42aed], [0x53380d13, 0x9d95b3df],
+            [0x650a7354, 0x8baf63de], [0x766a0abb, 0x3c77b2a8], [0x81c2c92e, 0x47edaee6], [0x92722c85, 0x1482353b],
+            [0xa2bfe8a1, 0x4cf10364], [0xa81a664b, 0xbc423001], [0xc24b8b70, 0xd0f89791], [0xc76c51a3, 0x0654be30],
+            [0xd192e819, 0xd6ef5218], [0xd6990624, 0x5565a910], [0xf40e3585, 0x5771202a], [0x106aa070, 0x32bbd1b8],
+            [0x19a4c116, 0xb8d2d0c8], [0x1e376c08, 0x5141ab53], [0x2748774c, 0xdf8eeb99], [0x34b0bcb5, 0xe19b48a8],
+            [0x391c0cb3, 0xc5c95a63], [0x4ed8aa4a, 0xe3418acb], [0x5b9cca4f, 0x7763e373], [0x682e6ff3, 0xd6b2b8a3],
+            [0x748f82ee, 0x5defb2fc], [0x78a5636f, 0x43172f60], [0x84c87814, 0xa1f0ab72], [0x8cc70208, 0x1a6439ec],
+            [0x90befffa, 0x23631e28], [0xa4506ceb, 0xde82bde9], [0xbef9a3f7, 0xb2c67915], [0xc67178f2, 0xe372532b],
+            [0xca273ece, 0xea26619c], [0xd186b8c7, 0x21c0c207], [0xeada7dd6, 0xcde0eb1e], [0xf57d4f7f, 0xee6ed178],
+            [0x06f067aa, 0x72176fba], [0x0a637dc5, 0xa2c898a6], [0x113f9804, 0xbef90dae], [0x1b710b35, 0x131c471b],
+            [0x28db77f5, 0x23047d84], [0x32caab7b, 0x40c72493], [0x3c9ebe0a, 0x15c9bebc], [0x431d67c4, 0x9c100d4c],
+            [0x4cc5d4be, 0xcb3e42b6], [0x597f299c, 0xfc657e2a], [0x5fcb6fab, 0x3ad6faec], [0x6c44198c, 0x4a475817]
+        ];
+        var LMT_H512 = [
+            [0x6a09e667, 0xf3bcc908], [0xbb67ae85, 0x84caa73b], [0x3c6ef372, 0xfe94f82b], [0xa54ff53a, 0x5f1d36f1],
+            [0x510e527f, 0xade682d1], [0x9b05688c, 0x2b3e6c1f], [0x1f83d9ab, 0xfb41bd6b], [0x5be0cd19, 0x137e2179]
+        ];
+
+        function lmtAnd64(a, b) { return [(a[0] & b[0]) >>> 0, (a[1] & b[1]) >>> 0]; }
+        function lmtXor64(a, b) { return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0]; }
+        function lmtNot64(a) { return [(~a[0]) >>> 0, (~a[1]) >>> 0]; }
+        function lmtAdd64(a, b) {
+            var lo = a[1] + b[1];
+            var carry = lo >= 4294967296 ? 1 : 0;
+            var hi = a[0] + b[0] + carry;
+            return [hi >>> 0, lo >>> 0];
+        }
+        // 一次加多个 64 位数：分开累加 hi/lo，用 JS double（可精确表示 < 2^53）承载进位
+        function lmtAdd64N(list) {
+            var loSum = 0, hiSum = 0, i;
+            for (i = 0; i < list.length; i++) loSum += list[i][1];
+            hiSum = Math.floor(loSum / 4294967296);
+            var lo = loSum >>> 0;
+            for (i = 0; i < list.length; i++) hiSum += list[i][0];
+            return [hiSum >>> 0, lo];
+        }
+        function lmtShr64(x, n) {
+            var hi = x[0], lo = x[1];
+            if (n < 32) return [hi >>> n, ((lo >>> n) | (hi << (32 - n))) >>> 0];
+            return [0, (hi >>> (n - 32)) >>> 0];
+        }
+        function lmtRotr64(x, n) {
+            var hi = x[0], lo = x[1];
+            if (n < 32) return [((hi >>> n) | (lo << (32 - n))) >>> 0, ((lo >>> n) | (hi << (32 - n))) >>> 0];
+            if (n === 32) return [lo >>> 0, hi >>> 0];
+            var m = n - 32;
+            return [((lo >>> m) | (hi << (32 - m))) >>> 0, ((hi >>> m) | (lo << (32 - m))) >>> 0];
+        }
+        function lmtBigSigma0(x) { return lmtXor64(lmtXor64(lmtRotr64(x, 28), lmtRotr64(x, 34)), lmtRotr64(x, 39)); }
+        function lmtBigSigma1(x) { return lmtXor64(lmtXor64(lmtRotr64(x, 14), lmtRotr64(x, 18)), lmtRotr64(x, 41)); }
+        function lmtSmallSigma0(x) { return lmtXor64(lmtXor64(lmtRotr64(x, 1), lmtRotr64(x, 8)), lmtShr64(x, 7)); }
+        function lmtSmallSigma1(x) { return lmtXor64(lmtXor64(lmtRotr64(x, 19), lmtRotr64(x, 61)), lmtShr64(x, 6)); }
+
+        function sha512Bytes(bytes) {
+            var l = bytes.length;
+            var withOne = l + 1;
+            var padZeros = (112 - (withOne % 128) + 128) % 128;
+            var total = withOne + padZeros + 16; // 末尾 128 位（16 字节）大端位长度
+            var msg = new Uint8Array(total);
+            msg.set(bytes, 0);
+            msg[l] = 0x80;
+            // 末尾 128 位大端位长度：高 64 位恒为 0（消息远小于 2^61 字节），低 64 位 = l*8
+            var bits = l * 8;
+            var bhi = Math.floor(bits / 4294967296); // 低 64 位的高 32 位
+            var blo = bits >>> 0;                    // 低 64 位的低 32 位
+            for (var j = 0; j < 16; j++) msg[total - 16 + j] = 0;
+            for (j = 0; j < 4; j++) msg[total - 8 + j] = (bhi >>> (24 - j * 8)) & 0xff;
+            for (j = 0; j < 4; j++) msg[total - 4 + j] = (blo >>> (24 - j * 8)) & 0xff;
+
+            var H = [], i;
+            for (i = 0; i < 8; i++) H.push([LMT_H512[i][0], LMT_H512[i][1]]);
+            var w = new Array(80);
+            for (var off = 0; off < total; off += 128) {
+                for (i = 0; i < 16; i++) {
+                    w[i] = [
+                        ((msg[off + i * 8] << 24) | (msg[off + i * 8 + 1] << 16) | (msg[off + i * 8 + 2] << 8) | msg[off + i * 8 + 3]) >>> 0,
+                        ((msg[off + i * 8 + 4] << 24) | (msg[off + i * 8 + 5] << 16) | (msg[off + i * 8 + 6] << 8) | msg[off + i * 8 + 7]) >>> 0
+                    ];
+                }
+                for (i = 16; i < 80; i++) {
+                    w[i] = lmtAdd64N([w[i - 16], lmtSmallSigma0(w[i - 15]), w[i - 7], lmtSmallSigma1(w[i - 2])]);
+                }
+                var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+                for (i = 0; i < 80; i++) {
+                    var S1 = lmtBigSigma1(e);
+                    var ch = lmtXor64(lmtAnd64(e, f), lmtAnd64(lmtNot64(e), g));
+                    var t1 = lmtAdd64N([h, S1, ch, LMT_K512[i], w[i]]);
+                    var S0 = lmtBigSigma0(a);
+                    var maj = lmtXor64(lmtXor64(lmtAnd64(a, b), lmtAnd64(a, c)), lmtAnd64(b, c));
+                    var t2 = lmtAdd64(S0, maj);
+                    h = g; g = f; f = e; e = lmtAdd64(d, t1); d = c; c = b; b = a; a = lmtAdd64(t1, t2);
+                }
+                H[0] = lmtAdd64(H[0], a); H[1] = lmtAdd64(H[1], b); H[2] = lmtAdd64(H[2], c); H[3] = lmtAdd64(H[3], d);
+                H[4] = lmtAdd64(H[4], e); H[5] = lmtAdd64(H[5], f); H[6] = lmtAdd64(H[6], g); H[7] = lmtAdd64(H[7], h);
+            }
+            var out = new Uint8Array(64);
+            for (i = 0; i < 8; i++) {
+                out[i * 8] = (H[i][0] >>> 24) & 0xff;
+                out[i * 8 + 1] = (H[i][0] >>> 16) & 0xff;
+                out[i * 8 + 2] = (H[i][0] >>> 8) & 0xff;
+                out[i * 8 + 3] = H[i][0] & 0xff;
+                out[i * 8 + 4] = (H[i][1] >>> 24) & 0xff;
+                out[i * 8 + 5] = (H[i][1] >>> 16) & 0xff;
+                out[i * 8 + 6] = (H[i][1] >>> 8) & 0xff;
+                out[i * 8 + 7] = H[i][1] & 0xff;
+            }
+            return out;
+        }
+        function sha512Hex(str) { return bytesToHex(sha512Bytes(utf8Bytes(str))); }
+
+        /* ---------- Ed25519（RFC 8032） ---------- */
+        var ED_P = (BigInt(1) << BigInt(255)) - BigInt(19);
+        var ED_L = (BigInt(1) << BigInt(252)) + BigInt('27742317777372353535851937790883648493');
+
+        function edMod(a) { a = a % ED_P; return a < BigInt(0) ? a + ED_P : a; }
+        function edPowMod(a, e) {
+            a = edMod(a);
+            var r = BigInt(1);
+            while (e > BigInt(0)) {
+                if (e & BigInt(1)) r = edMod(r * a);
+                a = edMod(a * a);
+                e >>= BigInt(1);
+            }
+            return r;
+        }
+        function edInvMod(a) { return edPowMod(a, ED_P - BigInt(2)); }
+
+        var ED_D = edMod(BigInt(-121665) * edInvMod(BigInt(121666)));
+        var ED_SQRTM1 = edPowMod(BigInt(2), (ED_P - BigInt(1)) / BigInt(4));
+
+        function edLEToBig(bytes) {
+            var v = BigInt(0);
+            for (var i = bytes.length - 1; i >= 0; i--) v = (v << BigInt(8)) | BigInt(bytes[i]);
+            return v;
+        }
+        function edBigToLE(v, len) {
+            var out = new Uint8Array(len);
+            for (var i = 0; i < len; i++) { out[i] = Number(v & BigInt(255)); v >>= BigInt(8); }
+            return out;
+        }
+
+        // 由 y 恢复 x（曲线 x^2 = (y^2-1)/(d*y^2+1)）；sign 指定 x 的奇偶。失败返回 null。
+        function edRecoverX(y, sign) {
+            var y2 = edMod(y * y);
+            var u = edMod(y2 - BigInt(1));
+            var v = edMod(ED_D * y2 + BigInt(1));
+            var v3 = edMod(v * v * v);
+            var v7 = edMod(v3 * v3 * v);
+            var exp = (ED_P - BigInt(5)) / BigInt(8);
+            var cand = edMod(edMod(u * v3) * edPowMod(edMod(u * v7), exp));
+            var vc2 = edMod(v * cand * cand);
+            var x;
+            if (vc2 === edMod(u)) x = cand;
+            else if (vc2 === edMod(-u)) x = edMod(cand * ED_SQRTM1);
+            else return null;
+            if (x === BigInt(0) && sign === 1) return null;
+            if (Number(x & BigInt(1)) !== sign) x = edMod(-x);
+            return x;
+        }
+        // 32 字节小端点编码 → 扩展坐标点；任何非规范编码（含 y ≥ p）都返回 null
+        function edDecodePoint(bytes32) {
+            var sign = (bytes32[31] >> 7) & 1;
+            var yb = new Uint8Array(32);
+            for (var i = 0; i < 32; i++) yb[i] = bytes32[i];
+            yb[31] = yb[31] & 127;
+            var y = edLEToBig(yb);
+            if (y >= ED_P) return null;
+            var x = edRecoverX(y, sign);
+            if (x === null) return null;
+            return { X: x, Y: y, Z: BigInt(1), T: edMod(x * y) };
+        }
+        function edCompressPoint(P) {
+            var zinv = edInvMod(P.Z);
+            var x = edMod(P.X * zinv);
+            var y = edMod(P.Y * zinv);
+            var out = edBigToLE(y, 32);
+            out[31] = (out[31] & 127) | (Number(x & BigInt(1)) << 7);
+            return out;
+        }
+
+        var ED_BASE = (function () {
+            var y = edMod(BigInt(4) * edInvMod(BigInt(5))); // By = 4/5
+            var x = edRecoverX(y, 0);                        // Bx 取偶
+            return { X: x, Y: y, Z: BigInt(1), T: edMod(x * y) };
+        })();
+
+        function edAdd(P, Q) {
+            var A = edMod((P.Y - P.X) * (Q.Y - Q.X));
+            var B = edMod((P.Y + P.X) * (Q.Y + Q.X));
+            var C = edMod(edMod(BigInt(2) * P.T) * Q.T * ED_D);
+            var D = edMod(BigInt(2) * P.Z * Q.Z);
+            var E = edMod(B - A), F = edMod(D - C), G = edMod(D + C), H = edMod(B + A);
+            return { X: edMod(E * F), Y: edMod(G * H), T: edMod(E * H), Z: edMod(F * G) };
+        }
+        function edDouble(P) {
+            var A = edMod(P.X * P.X);
+            var B = edMod(P.Y * P.Y);
+            var C = edMod(BigInt(2) * P.Z * P.Z);
+            var D = edMod(-A);
+            var E = edMod(edMod((P.X + P.Y) * (P.X + P.Y)) - A - B);
+            var G = edMod(D + B);
+            var F = edMod(G - C);
+            var H = edMod(D - B);
+            return { X: edMod(E * F), Y: edMod(G * H), T: edMod(E * H), Z: edMod(F * G) };
+        }
+        function edScalarMult(P, k) {
+            var R = { X: BigInt(0), Y: BigInt(1), Z: BigInt(1), T: BigInt(0) };
+            for (var i = 255; i >= 0; i--) {
+                R = edDouble(R);
+                if ((k >> BigInt(i)) & BigInt(1)) R = edAdd(R, P);
+            }
+            return R;
+        }
+
+        function ed25519PublicKey(seed32) {
+            if (!seed32 || seed32.length !== 32) return null;
+            var h = sha512Bytes(seed32);
+            var a = new Uint8Array(h.subarray(0, 32));
+            a[0] = a[0] & 248; a[31] = a[31] & 127; a[31] = a[31] | 64;
+            return edCompressPoint(edScalarMult(ED_BASE, edLEToBig(a)));
+        }
+        function ed25519Sign(seed32, msgBytes) {
+            if (!seed32 || seed32.length !== 32) return null;
+            msgBytes = msgBytes || new Uint8Array(0);
+            var h = sha512Bytes(seed32);
+            var a = new Uint8Array(h.subarray(0, 32));
+            a[0] = a[0] & 248; a[31] = a[31] & 127; a[31] = a[31] | 64;
+            var prefix = new Uint8Array(h.subarray(32, 64));
+            var A = edCompressPoint(edScalarMult(ED_BASE, edLEToBig(a)));
+            var r = edLEToBig(sha512Bytes(concat(prefix, msgBytes))) % ED_L;
+            var R = edCompressPoint(edScalarMult(ED_BASE, r));
+            var k = edLEToBig(sha512Bytes(concat(concat(R, A), msgBytes))) % ED_L;
+            // RFC 8032：S = (r + k * s) mod L。必须直接对 L 取模，
+            // 不可先 edMod（对 P 取模）再对 L 取模——P 与 L 不同，二次取模结果是错的。
+            var S = (r + k * edLEToBig(a)) % ED_L;
+            return concat(R, edBigToLE(S, 32));
+        }
+        function ed25519Verify(pub32, msgBytes, sig64) {
+            try {
+                if (!pub32 || pub32.length !== 32 || !sig64 || sig64.length !== 64) return false;
+                msgBytes = msgBytes || new Uint8Array(0);
+                var A = edDecodePoint(pub32);
+                if (!A) return false;
+                var Rbytes = new Uint8Array(sig64.subarray(0, 32));
+                var R = edDecodePoint(Rbytes);
+                if (!R) return false;
+                var S = edLEToBig(sig64.subarray(32, 64));
+                if (S >= ED_L) return false; // 非规范 S 一律拒绝
+                var k = edLEToBig(sha512Bytes(concat(concat(Rbytes, pub32), msgBytes))) % ED_L;
+                var lhs = edScalarMult(ED_BASE, S);
+                var rhs = edAdd(R, edScalarMult(A, k));
+                var a = edCompressPoint(lhs), b = edCompressPoint(rhs);
+                var diff = 0;
+                for (var i = 0; i < 32; i++) diff |= (a[i] ^ b[i]);
+                return diff === 0;
+            } catch (e) { return false; }
+        }
+
+        // ---------- 客户端公钥（只验签，不持私钥） ----------
+        var pubKeyBytes = null;
+        function setPubKey(b32) {
+            LICENSE_PUBKEY = String(b32 == null ? '' : b32);
+            pubKeyBytes = LICENSE_PUBKEY ? base32Decode(LICENSE_PUBKEY, 32) : null;
+        }
+        function currentPubKey() { return pubKeyBytes; }
+        setPubKey(LICENSE_PUBKEY);
+
         // ---------- 本机机器码 ----------
         function storage() { try { return window.localStorage; } catch (e) { return null; } }
         var memId = null;
@@ -1280,52 +1661,76 @@
             if (!memId) memId = randomId();
             return memId;
         }
+        // 安卓壳专属：由原生桥返回稳定设备 ID（ANDROID_ID，重装/清数据不变）。
+        // PWA 侧没有原生稳定标识可用，置空后由 installId() 兜底。
+        // 该块由 tools/web-sync.ps1 在安卓副本里替换为原生实现，两侧位置必须对齐。
+        // @shell:device-id
+        var NATIVE_DEVICE_ID = null;
+        // @shell:end
+
         function machineCode() {
             var nav = (window.navigator || {});
             // 仅保留跨会话稳定的环境特征参与指纹：
             //   屏幕尺寸 / devicePixelRatio 会随调整分辨率、浏览器缩放、外接显示器而变；
             //   时区偏移会随夏令时、出差跨时区而变；userAgent 会随浏览器每月升级而变版本号。
             // 这些字段一旦参与指纹，同一台机器的机器码就会漂移，导致已激活的卡密被误判失效，
-            // 因此一律剔除。保留操作系统家族、CPU 核心数、语言，再叠加本地持久化的安装 ID。
+            // 因此一律剔除。优先用原生稳定 ID（安卓 ANDROID_ID），iOS/PWA 无稳定标识则回退本地安装 ID，
+            // 再叠加操作系统家族、CPU 核心数、语言。
+            var stable = '';
+            try { stable = NATIVE_DEVICE_ID ? String(NATIVE_DEVICE_ID) : ''; } catch (e) { stable = ''; }
             var fp = [
+                stable,
+                installId(),
                 nav.platform || '',
                 String(nav.hardwareConcurrency || 0),
                 nav.language || ''
             ].join('|');
-            var hex = sha256Hex(fp + '|' + installId());
+            var hex = sha256Hex(fp);
             return group(base32Encode(hexToBytes(hex), 16), 4); // XXXX-XXXX-XXXX-XXXX
         }
 
-        // ---------- 卡密 ----------
-        function makeCard(mc) {
-            var mac = hmacSha256Hex(LICENSE_SECRET, normalize(mc));
-            return group(base32Encode(hexToBytes(mac), 20), 4); // 5 组，共 20 位
+        // ---------- 清单规范化串与签名串（与「卡密生成器」逐字一致，改动务必两侧同步） ----------
+        // 规范化口径：
+        //   card / mc → 转大写并剔除 [^0-9A-Z]（即去掉分组横线）
+        //   note / exp → 去首尾空白、原样保留
+        //   revoked   → 归一化后去重
+        // revSource = ver "\n" updated "\n" cards 升序逐行 "{card}|{mc}|{note}|{exp}" 用 "\n" 连接 "\n" revoked 升序 join(",")
+        // rev       = sha256Hex(revSource) 前 16 hex（用于「内容是否变化、是否需要重传」的探测）
+        // canonical = ver "\n" updated "\n" rev "\n"（同样的 cards 行）"\n" revoked 升序 join(",")
+        // sig2      = base32( ed25519Sign(私钥, utf8Bytes(canonical)) )
+        function manifestCardsLines(cardsMap) {
+            var rows = [], k;
+            for (k in cardsMap) {
+                if (!Object.prototype.hasOwnProperty.call(cardsMap, k)) continue;
+                var e = cardsMap[k];
+                rows.push({ key: e.mc + '\u0000' + e.card, line: e.card + '|' + e.mc + '|' + e.note + '|' + e.exp });
+            }
+            rows.sort(function (a, b) { return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0); });
+            var out = [];
+            for (var i = 0; i < rows.length; i++) out.push(rows[i].line);
+            return out.join('\n');
         }
-        // 清单签名：与「卡密生成器」逐字一致的算法 ——
-        // HMAC-SHA256(LICENSE_SECRET, updated + '\n' + 归一化白名单(逗号连接) + '\n' + 归一化吊销名单(逗号连接))。
-        // 先归一化再做载荷，保证签名只绑定卡密内容、不受分组写法影响。
-        function manifestSignature(updated, cardsNorm, revokedNorm) {
-            var payload = String(updated == null ? '' : updated) + '\n' +
-                cardsNorm.join(',') + '\n' +
-                revokedNorm.join(',');
-            return hmacSha256Hex(LICENSE_SECRET, payload);
+        function manifestRevokedStr(revokedMap) {
+            var list = [], k;
+            for (k in revokedMap) { if (Object.prototype.hasOwnProperty.call(revokedMap, k)) list.push(k); }
+            list.sort();
+            return list.join(',');
         }
-        function constEq(a, b) {
-            if (a.length !== b.length) return false;
-            var r = 0;
-            for (var i = 0; i < a.length; i++) r |= (a.charCodeAt(i) ^ b.charCodeAt(i));
-            return r === 0;
+        // revSource：不含 rev 自身的规范化串，用于计算 rev
+        function manifestRevSource(ver, updated, cardsMap, revokedMap) {
+            return Number(ver) + '\n' + updated + '\n' + manifestCardsLines(cardsMap) + '\n' + manifestRevokedStr(revokedMap);
         }
-        // 本地校验（离线兜底）：卡密是否等于「本机机器码」应得的卡密 → 维持一卡一机
-        function hmacOk(card) {
-            var expect = normalize(makeCard(machineCode()));
-            return constEq(normalize(card), expect);
+        // canonical：参与签名 / 验签的最终规范化串（rev 由生成器给出，并被签名一并绑定）
+        function canonicalManifestString(ver, updated, rev, cardsMap, revokedMap) {
+            return Number(ver) + '\n' + updated + '\n' + rev + '\n' + manifestCardsLines(cardsMap) + '\n' + manifestRevokedStr(revokedMap);
         }
-        function verifyCard(card) { return hmacOk(card); }
+        // 卡密格式：随机 20 字符 base32（沿用 XXXX-XXXX-XXXX-XXXX 的分组展示形式）
+        function cardFormatOk(card) { return /^[0-9A-Z]{20}$/.test(normalize(card)); }
 
         // ---------- 在线清单（联网校验 + 在线吊销；已配置时断网将拒绝激活） ----------
-        var manifest = null; // { updated, cards:{卡密:true}, revoked:{卡密:true} }
-        var manifestSigInvalid = false; // 最近一次拉取是否遇到过「签名缺失/错误」的清单（用于给出更准确的错误提示）
+        var manifest = null; // 已验签清单：{ ver, updated, rev, cards:{归一化卡密:{card,mc,note,exp}}, revoked:{归一化:true}, verified, canonical }
+        var manifestSigInvalid = false; // 最近一次拉取是否遇到过「结构不符 / ver 不符 / 验签失败」的清单（用于给出更准确的错误提示）
+        var manifestFromNetwork = false; // 本次会话是否成功联网取得清单（用于区分「在线校验 / 离线凭证」提示）
         function setManifestUrl(u) { MANIFEST_URL = String(u == null ? '' : u); }
         // 参与拉取的地址列表：主源 + 备用镜像。
         // 仅当配置了主源时才启用镜像；主源留空 = 关闭在线清单，此时不应再尝试镜像。
@@ -1339,38 +1744,78 @@
         }
         function getManifest() { return manifest; }
 
+        // ---------- 离线凭证（验签通过的清单 + 拉取时间戳，无后端方案） ----------
+        function readCache() {
+            var ls = storage(); if (!ls) return null;
+            try { var raw = ls.getItem(MANIFEST_CACHE_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+        }
+        function writeCache(data) {
+            var ls = storage(); if (!ls) return;
+            try { ls.setItem(MANIFEST_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), data: data })); } catch (e) {}
+        }
+        function clearCache() { var ls = storage(); if (ls) { try { ls.removeItem(MANIFEST_CACHE_KEY); } catch (e) {} } }
+        // 距最后一次成功联网拉取清单的毫秒数（无缓存返回 Infinity）
+        function credAgeMs() {
+            var c = readCache();
+            if (!c || !c.fetchedAt || !c.data) return Infinity;
+            return Date.now() - Number(c.fetchedAt);
+        }
+        function credFresh() { return credAgeMs() <= CRED_TTL_DAYS * 86400000; }
+        function credLastOnlineText() {
+            var c = readCache();
+            if (!c || !c.fetchedAt) return '从未';
+            try { return new Date(Number(c.fetchedAt)).toLocaleString(); } catch (e) { return '未知'; }
+        }
+        // 从缓存载入「已验签」清单（离线可用）；验签失败的一律不采纳
+        function loadCachedManifest() {
+            var c = readCache();
+            if (!c || !c.data) return null;
+            var parsed = parseManifest(c.data);
+            if (!parsed || !parsed.verified) return null;
+            return parsed;
+        }
+
+        // 解析 + 公钥验签（新制式 ver 2）。返回 null = 结构完全不可用；否则返回
+        //   { ver, updated, rev, cards:{归一化卡密:{card,mc,note,exp}}, revoked:{归一化:true}, verified, canonical }
+        // verified 为 false（含 ver 不符 / sig2 缺失 / 无公钥 / 验签失败）时，调用方一律不得采纳该清单。
         function parseManifest(data) {
-            var cards = {}, revoked = {}, cardList = [], revokeList = [], i;
-            // 卡密 → 有效期（YYYY-MM-DD）。清单条目没写有效期 = 长期有效。
-            var expMap = {};
-            var list = (data && data.cards) || [];
+            if (!data || typeof data !== 'object') return null;
+            var ver = Number(data.ver);
+            var updated = String(data.updated == null ? '' : data.updated).trim();
+            var rev = String(data.rev == null ? '' : data.rev).trim();
+            var cardsMap = {}, i;
+            var list = Array.isArray(data.cards) ? data.cards : [];
             for (i = 0; i < list.length; i++) {
                 var ent = list[i];
-                var c = normalize(typeof ent === 'string' ? ent : (ent && ent.card));
-                if (c) { cards[c] = true; cardList.push(c); }
-                // 新版清单把有效期写在条目对象上：cards:[{card, mc, note, exp}]
-                if (c && ent && typeof ent === 'object' && ent.exp) expMap[c] = String(ent.exp);
+                if (!ent) continue;
+                if (typeof ent === 'string') ent = { card: ent };
+                var c = normalize(ent.card);
+                if (!c) continue;
+                cardsMap[c] = {
+                    card: c,
+                    mc: normalize(ent.mc),
+                    note: String(ent.note == null ? '' : ent.note).trim(),
+                    exp: String(ent.exp == null ? '' : ent.exp).trim()
+                };
             }
-            // 兼容旧版清单：有效期写在顶层 exp 映射（{卡密: 日期}）里
-            var topExp = (data && data.exp) || null;
-            if (topExp && typeof topExp === 'object') {
-                for (var k in topExp) {
-                    if (!Object.prototype.hasOwnProperty.call(topExp, k)) continue;
-                    var ck = normalize(k), cv = String(topExp[k] == null ? '' : topExp[k]).trim();
-                    if (ck && cv) expMap[ck] = cv;
-                }
+            var revokedMap = {};
+            var revList = Array.isArray(data.revoked) ? data.revoked : [];
+            for (i = 0; i < revList.length; i++) {
+                var r = normalize(typeof revList[i] === 'string' ? revList[i] : (revList[i] && revList[i].card));
+                if (r) revokedMap[r] = true;
             }
-            var rev = (data && data.revoked) || [];
-            for (i = 0; i < rev.length; i++) {
-                var r = normalize(typeof rev[i] === 'string' ? rev[i] : (rev[i] && rev[i].card));
-                if (r) { revoked[r] = true; revokeList.push(r); }
+            var canonical = canonicalManifestString(ver, updated, rev, cardsMap, revokedMap);
+            var sig = typeof data.sig2 === 'string' ? data.sig2 : '';
+            var verified = false;
+            if (ver === MANIFEST_VER && sig && pubKeyBytes && ed25519Supported()) {
+                var sigBytes = base32Decode(sig, 64);
+                verified = !!sigBytes && ed25519Verify(pubKeyBytes, utf8Bytes(canonical), sigBytes);
             }
-            var updated = (data && data.updated) || '';
-            // 验签：与「卡密生成器」的 manifestSignature 对同一串载荷比对，避免清单被篡改。
-            // 归一化后的有序数组参与载荷（卡密已去分隔符、转大写），故签名与分组写法无关。
-            var sig = (data && typeof data.sig === 'string') ? data.sig : '';
-            var verified = !!sig && constEq(sig.toLowerCase(), manifestSignature(updated, cardList, revokeList));
-            return { updated: updated, cards: cards, revoked: revoked, exp: expMap, verified: verified };
+            return {
+                ver: ver, updated: updated, rev: rev,
+                cards: cardsMap, revoked: revokedMap,
+                verified: verified, canonical: canonical
+            };
         }
 
         // 有效期判定（与「卡密生成器」同一口径）：只有 YYYY-MM-DD 且严格早于今天才算过期；
@@ -1427,11 +1872,13 @@
                     if (token !== manifestReqToken) return null;
                     if (data) {
                         var parsed = parseManifest(data);
-                        // 签名缺失或错误：不采用该源，继续回退下一个；
-                        // 全部源都失败则 manifest 保持 null，onlineDecision 会据此拒绝激活。
-                        if (!parsed.verified) { manifestSigInvalid = true; return next(); }
+                        // 结构不符 / ver 不符 / 验签失败：不采用该源，继续回退下一个；
+                        // 全部源都失败则 manifest 保持原值（或已载入的缓存清单），onlineDecision 据此判定。
+                        if (!parsed || !parsed.verified) { manifestSigInvalid = true; return next(); }
                         manifestSigInvalid = false;
                         manifest = parsed;
+                        manifestFromNetwork = true;
+                        writeCache(data); // 离线凭证：只缓存「验签通过」的原始清单 + 拉取时间戳
                         return manifest;
                     }
                     return next(); // 该源失败 → 回退下一个
@@ -1440,20 +1887,33 @@
             return next();
         }
 
-        // 在线判定：
-        //   · 未配置 MANIFEST_URL：不启用在线清单，纯本地校验（decided=false）
-        //   · 已配置但清单未加载成功（断网 / 拉取失败）：一律拒绝激活，
-        //     避免「断网即可绕过白名单」；已激活用户不受影响（isActivated 有 manifest 守卫）
-        //   · 清单已加载：按白名单 / 吊销名单 / 有效期 判定
+        // 授权判定（在线 / 离线同一套，全部可在本地完成）：
+        //   · 无「已验签清单」（未拉取到 / 缓存验签失败）→ 拒绝
+        //   · revoked 命中 → 拒绝（优先级最高）
+        //   · cards 未命中 → 拒绝
+        //   · cards[].mc 与本机机器码不符 → 拒绝（一卡一机）
+        //   · exp 已过期 → 拒绝
+        //   · 离线凭证超期（距最后一次成功联网 > TTL）→ 拒绝
+        // 返回 { decided, ok, msg, exp }；decided 恒为 true（新制式下清单是唯一授权依据）。
         function onlineDecision(card) {
-            if (!MANIFEST_URL) return { decided: false, ok: true, msg: '', exp: '' };
-            if (!manifest) return { decided: true, ok: false, msg: manifestSigInvalid ? '在线清单签名校验失败，请联系作者更新清单' : '无法连接校验服务器，请联网后重试', exp: '' };
             var c = normalize(card);
+            if (!c) return { decided: true, ok: false, msg: '请输入卡密', exp: '' };
+            if (!cardFormatOk(c)) return { decided: true, ok: false, msg: '卡密格式不正确（应为 20 位字母数字）', exp: '' };
+            if (!manifest || !manifest.verified) {
+                return {
+                    decided: true, ok: false, exp: '',
+                    msg: manifestSigInvalid ? '清单校验失败（结构不符或签名错误），请联系作者更新清单' : '尚未取得有效清单，请联网后重试'
+                };
+            }
             if (manifest.revoked[c]) return { decided: true, ok: false, msg: '该卡密已被吊销', exp: '' };
-            if (!manifest.cards[c]) return { decided: true, ok: false, msg: '卡密不在有效清单中', exp: '' };
-            var exp = (manifest.exp && manifest.exp[c]) || '';
-            if (isExpired(exp)) return { decided: true, ok: false, msg: '卡密已过期（有效期至 ' + exp + '）', exp: exp };
-            return { decided: true, ok: true, msg: '', exp: exp };
+            var ent = manifest.cards[c];
+            if (!ent) return { decided: true, ok: false, msg: '卡密不在有效清单中', exp: '' };
+            if (ent.mc && ent.mc !== normalize(machineCode())) {
+                return { decided: true, ok: false, msg: '卡密与本机不匹配（一卡一机），请使用本机机器码对应的卡密', exp: '' };
+            }
+            if (isExpired(ent.exp)) return { decided: true, ok: false, msg: '卡密已过期（有效期至 ' + ent.exp + '）', exp: ent.exp };
+            if (!credFresh()) return { decided: true, ok: false, msg: '离线凭证已超过 ' + CRED_TTL_DAYS + ' 天未联网刷新，请联网后重试', exp: ent.exp };
+            return { decided: true, ok: true, msg: '', exp: ent.exp };
         }
 
         // ---------- 授权状态（持久化到 localStorage） ----------
@@ -1464,26 +1924,27 @@
         function writeStat(o) { var ls = storage(); if (ls) { try { ls.setItem(STAT_KEY, JSON.stringify(o)); } catch (e) {} } }
         function clearStat() { var ls = storage(); if (ls) { try { ls.removeItem(STAT_KEY); } catch (e) {} } }
 
-        // 已激活 = 有记录 且 记录的机器码与当前机器一致 且 卡密校验通过 且 未过期 且（若已联网）未被名单吊销
+        // 已激活 = 有记录 且 记录机器码与当前机器一致 且 记录卡密仍通过清单判定
+        //   （命中 / 未吊销 / mc 匹配 / 未过期 / 离线凭证未超期）
         // 「记录里的机器码与当前机器不一致」正是“一卡一机”的核心：把存储拷到别的机器即失效
-        // 「有效期」写进记录：一卡一机的前提下，过期判定在断网时也能生效（不必每次联网才知道已过期）
+        // 记录里另存一份有效期：即便缓存丢失，过期判定也能在离线时生效（双保险）
         function isActivated() {
             var rec = readStat();
             if (!rec || !rec.mc || !rec.card) return false;
             if (rec.mc !== machineCode()) return false;
-            if (!hmacOk(rec.card)) return false;
-            if (isExpired(rec.exp)) return false;                     // 有效期已过（离线也拦）
-            if (manifest && !onlineDecision(rec.card).ok) return false; // 在线清单判定失效（如已吊销 / 已过期）
-            return true;
+            if (isExpired(rec.exp)) return false;
+            return !!onlineDecision(rec.card).ok;
         }
         function activate(card) {
             var c = normalize(card);
             if (!c) return { ok: false, msg: '请输入卡密' };
-            if (!hmacOk(c)) return { ok: false, msg: '卡密不正确，或与本机不匹配' };
-            var d = onlineDecision(c); // 若清单已加载，做白名单/吊销/有效期 判定
+            var d = onlineDecision(c); // 清单命中 / 未吊销 / mc 匹配 / 未过期 / 凭证未超期
             if (!d.ok) return { ok: false, msg: d.msg };
             writeStat({ mc: machineCode(), card: c, exp: d.exp || '' });
-            return { ok: true, msg: '激活成功' + (d.decided ? '（已联网校验）' : '（离线校验）'), online: d.decided, exp: d.exp || '' };
+            return {
+                ok: true, exp: d.exp || '', online: manifestFromNetwork,
+                msg: '激活成功' + (manifestFromNetwork ? '（在线校验）' : '（离线凭证）')
+            };
         }
         function deactivate() { clearStat(); }
 
@@ -1672,6 +2133,8 @@
             var actBtn = document.getElementById('license-activate');
             var msg = document.getElementById('license-msg');
             var netEl = document.getElementById('license-net');
+            var expEl = document.getElementById('license-exp');
+            var credEl = document.getElementById('license-cred');
             if (mcInput) {
                 mcInput.value = machineCode();
                 // 点一下自动全选：即便系统/WebView 拦掉了自动复制，
@@ -1684,32 +2147,57 @@
                 msg.textContent = text || '';
                 msg.className = 'license-msg' + (kind && kind !== 'error' ? ' ' + kind : '');
             }
+            // 离线凭证与到期日常驻显示：让用户随时知道「这张卡什么时候到期」「多久没联网了」
+            function updateCredStatus() {
+                var rec = readStat();
+                if (expEl) {
+                    expEl.textContent = (rec && rec.card)
+                        ? ('本机已激活卡密：' + group(rec.card, 4) + (rec.exp ? '，有效期至 ' + rec.exp : '，长期有效'))
+                        : '';
+                }
+                if (credEl) {
+                    var age = credAgeMs();
+                    var txt = '离线凭证：';
+                    if (age === Infinity) {
+                        txt += '尚无（需联网成功获取一次清单）';
+                    } else {
+                        var leftDays = Math.max(0, Math.ceil((CRED_TTL_DAYS * 86400000 - age) / 86400000));
+                        txt += '最近在线 ' + credLastOnlineText() + '，剩余 ' + leftDays + ' 天';
+                    }
+                    credEl.textContent = txt;
+                }
+            }
             // 在线清单正在拉取中：此时既不能报「已同步」，也不该报「连接失败」，
             // 否则联网正常的用户会在首屏几秒内看到「无法激活」而误以为卡密或网络有问题。
             var manifestSyncing = false;
             function updateNetStatus() {
-                if (!netEl) return;
-                if (!MANIFEST_URL) { netEl.textContent = '校验方式：离线（未配置在线清单）'; return; }
-                if (manifest) {
-                    netEl.textContent = '校验方式：在线清单已同步' + (manifest.updated ? '（更新于 ' + manifest.updated + '）' : '');
-                } else if (manifestSyncing) {
-                    netEl.textContent = '校验方式：正在同步在线清单…';
-                } else {
-                    netEl.textContent = '校验方式：在线清单连接失败（主源与备用镜像均不可达，无法激活）';
+                if (netEl) {
+                    if (!MANIFEST_URL) {
+                        netEl.textContent = '校验方式：未配置在线清单（无法激活）';
+                    } else if (manifest) {
+                        netEl.textContent = '校验方式：' + (manifestFromNetwork ? '在线清单已同步' : '离线凭证（本地缓存清单）') +
+                            (manifest.updated ? '（更新于 ' + manifest.updated + '）' : '');
+                    } else if (manifestSyncing) {
+                        netEl.textContent = '校验方式：正在同步在线清单…';
+                    } else {
+                        netEl.textContent = '校验方式：清单获取失败（主源与备用镜像均不可达）';
+                    }
                 }
+                updateCredStatus();
             }
 
             // 激活：先尽力同步在线清单，再做校验（成功解锁）
             function doActivate() {
                 if (actBtn) { actBtn.disabled = true; actBtn.classList.add('is-busy'); }
                 setMsg('正在校验…', 'info');
-                var needFetch = !!(MANIFEST_URL && !manifest);
+                // 已有清单但离线凭证已超期时，也必须联网刷新一次
+                var needFetch = !!(MANIFEST_URL && (!manifest || !credFresh()));
                 if (needFetch) manifestSyncing = true;
                 var p = needFetch ? fetchManifest() : Promise.resolve(manifest);
                 p.then(function () {
                     manifestSyncing = false;
-                    updateNetStatus();
                     var r = activate(cardInput ? cardInput.value : '');
+                    updateNetStatus();
                     // 清单里写了有效期的卡：把「有效期至 X」直接回显，让用户知道这张卡什么时候到期
                     setMsg(r.ok && r.exp ? (r.msg + '，有效期至 ' + r.exp) : r.msg, r.ok ? 'ok' : 'error');
                     if (actBtn) { actBtn.disabled = false; actBtn.classList.remove('is-busy'); }
@@ -1737,6 +2225,12 @@
                 });
             }
 
+            // 先载入本地缓存的「已验签清单」：断网时也能完成校验（离线凭证）
+            if (!manifest) {
+                var cached = loadCachedManifest();
+                if (cached) manifest = cached;
+            }
+
             if (MANIFEST_URL) manifestSyncing = true;
             updateNetStatus();
             if (isActivated()) unlock();
@@ -1760,12 +2254,20 @@
         // 暴露给主程序启动与单元测试页
         window.__license = {
             sha256Hex: sha256Hex, hmacSha256Hex: hmacSha256Hex, base32Encode: base32Encode,
-            normalize: normalize, machineCode: machineCode, makeCard: makeCard,
-            verifyCard: verifyCard, isActivated: isActivated, activate: activate,
+            base32EncodeFull: base32EncodeFull, base32Decode: base32Decode, normalize: normalize,
+            sha512Hex: sha512Hex, ed25519Supported: ed25519Supported,
+            ed25519PublicKey: ed25519PublicKey, ed25519Sign: ed25519Sign, ed25519Verify: ed25519Verify,
+            setPubKey: setPubKey, getPubKey: function () { return LICENSE_PUBKEY; },
+            machineCode: machineCode, cardFormatOk: cardFormatOk,
+            manifestRevSource: manifestRevSource, canonicalManifestString: canonicalManifestString,
+            isActivated: isActivated, activate: activate,
             deactivate: deactivate, boot: boot,
             setManifestUrl: setManifestUrl, getManifest: getManifest,
             fetchManifest: fetchManifest, onlineDecision: onlineDecision, isExpired: isExpired,
             parseManifest: parseManifest,
+            readCache: readCache, writeCache: writeCache, clearCache: clearCache,
+            credAgeMs: credAgeMs, credFresh: credFresh, loadCachedManifest: loadCachedManifest,
+            CRED_TTL_DAYS: CRED_TTL_DAYS, MANIFEST_VER: MANIFEST_VER,
             copyText: copyText, showManualCopy: showManualCopy,
             copyWithFeedback: copyWithFeedback, flashButton: flashButton, isIOSLike: isIOSLike,
             lockScroll: lockScroll, unlockScroll: unlockScroll, onEsc: onEsc
@@ -1814,8 +2316,10 @@
         const previewCap3 = document.getElementById('preview-cap-3');
         
         const toggleSafe = document.getElementById('toggle-safe');
+        const fitLock = document.getElementById('fit-lock');
         const safeZone = document.getElementById('safe-zone');
         const exportBtn = document.getElementById('export-btn');
+        const exportSize = document.getElementById('export-size');
         const fontSelect = document.getElementById('font-select');
         
         // 导出目标是整个 canvas-wrapper，而不是只截取内部
@@ -1857,6 +2361,9 @@
         ];
         const fontStatus = document.getElementById('font-status');
         const webFontCache = {};
+        // 字体是否就绪（P-20）：正在加载时为 false（此间禁用导出），加载完成或明确回退系统字体后置 true。
+        // 说明：加载失败时仍允许导出（回退到系统字体，避免断网时整个工具不可用），但会明示 error 状态。
+        let fontReady = false;
 
         // 单个字体源的最长等待时间：国内直连 fonts.googleapis.com 时常出现
         // 「TCP 连得上但迟迟不返回」的情况，link.onerror 可能几十秒都不触发，
@@ -1904,8 +2411,10 @@
             canvasWrapper.classList.add('web-font');
             checkContentFit();
 
+            fontReady = false;
             fontStatus.textContent = '正在加载在线字体…';
             fontStatus.classList.remove('error');
+            checkContentFit(); // 加载期间禁用导出（P-20）
             const ok = await loadWebFont(web);
             if (token !== fontReqToken) return; // 已被更新的选择取代
             if (ok) {
@@ -1917,6 +2426,7 @@
                 fontStatus.textContent = '在线字体加载失败，已回退到系统字体';
                 fontStatus.classList.add('error');
             }
+            fontReady = true; // 加载成功或已回退系统字体：均视为「已就绪」，可导出
             await document.fonts.ready;
             if (token !== fontReqToken) return;
             checkContentFit();
@@ -1945,25 +2455,37 @@
             return exportTarget.scrollHeight <= exportTarget.clientHeight + 1;
         }
         function checkContentFit() {
-            // fitsAt 会读取 scrollHeight，每次都触发一次同步布局/回流。字号越小越容易放下，
-            // 该判定随字号单调，故用二分查找取代原先最多 15 次的线性扫描：结果无损，重排次数降到 ~4 次。
             let fit = 1;
-            let ok = fitsAt(1);
-            if (!ok) {
-                let lo = 0, hi = FIT_GRID.length - 1, best = -1;
-                while (lo <= hi) {
-                    const mid = (lo + hi) >> 1;
-                    if (fitsAt(FIT_GRID[mid])) { best = mid; hi = mid - 1; } // 能放下 → 再试更大的档位
-                    else { lo = mid + 1; }                                   // 放不下 → 只能继续缩小
+            let ok;
+            if (fitLock && fitLock.checked) {
+                // 锁定字号：手动字号即最终值，不做任何自动缩放（--fit 恒为 1）；仍溢出时只报警并禁用导出。
+                ok = fitsAt(1);
+            } else {
+                // fitsAt 会读取 scrollHeight，每次都触发一次同步布局/回流。字号越小越容易放下，
+                // 该判定随字号单调，故用二分查找取代原先最多 15 次的线性扫描：结果无损，重排次数降到 ~4 次。
+                ok = fitsAt(1);
+                if (!ok) {
+                    let lo = 0, hi = FIT_GRID.length - 1, best = -1;
+                    while (lo <= hi) {
+                        const mid = (lo + hi) >> 1;
+                        if (fitsAt(FIT_GRID[mid])) { best = mid; hi = mid - 1; } // 能放下 → 再试更大的档位
+                        else { lo = mid + 1; }                                   // 放不下 → 只能继续缩小
+                    }
+                    fit = best >= 0 ? FIT_GRID[best] : FIT_MIN;
+                    ok = fitsAt(fit);
                 }
-                fit = best >= 0 ? FIT_GRID[best] : FIT_MIN;
-                ok = fitsAt(fit);
             }
 
             overflowWarn.classList.toggle('show', !ok);
-            fitNote.classList.toggle('show', ok && fit < 1);
-            if (ok && fit < 1) fitNote.textContent = '已自动缩小字号至 ' + Math.round(fit * 100) + '% 以适配安全区。';
-            exportBtn.disabled = !ok; // 超出安全区时置灰，避免导出被裁的图
+            // 明示「当前按 X% 缩放」（P-17）：仅在确实发生自动缩放时提示；锁定字号时不提示
+            const scaled = ((!fitLock || !fitLock.checked) && ok && fit < 1);
+            fitNote.classList.toggle('show', scaled);
+            if (scaled) fitNote.textContent = '已自动适配安全区：当前按 ' + Math.round(fit * 100) + '% 缩放。';
+            updateExportEnabled(ok);
+        }
+        // 导出按钮可用性 = 内容已适配安全区 且 手写字体已就绪（P-20）
+        function updateExportEnabled(fitOk) {
+            exportBtn.disabled = !(fitOk && fontReady);
         }
         // 输入框每敲一个字都会触发 input 事件；checkContentFit 会读取 scrollHeight 强制回流，
         // 用 requestAnimationFrame 合并同一帧内的多次调用，避免连续输入时反复重排。
@@ -1986,6 +2508,12 @@
             // 模板二缺角图：包围盒 1440×600，按“安全区整宽”预留分辨率，显示更小时自动降采样
             notch: [275 * EXPORT_SCALE, Math.round(275 * 600 / 1440 * EXPORT_SCALE)]
         };
+        // 导出倍率：由 #export-size 决定（375×667 × scale）。默认 4× → 1500×2668（P-33）。
+        // 仅影响最终导出分辨率，不影响图片框位图（那由 BOX_SIZE 固定按 EXPORT_SCALE 生成）。
+        function currentExportScale() {
+            const s = exportSize ? parseFloat(exportSize.value) : EXPORT_SCALE;
+            return (isFinite(s) && s > 0) ? s : EXPORT_SCALE;
+        }
 
         // 纯函数：计算照片在给定框内的等比绘制矩形（绝不拉伸变形）。
         //   mode='cover'   等比放大到铺满框，居中裁剪（超出部分由 clip 裁掉）
@@ -2114,10 +2642,34 @@
         handleImageUpload(uploadWide3, previewWide3, 'notch');
 
         // 模板切换：只显示当前模板的预览元素与控制面板分组（其余置 hidden）
+        // P-30：专属字段「隐藏但保留值」——只切 hidden，不清空 input.value，
+        //       导出时截取整个画布，隐藏元素（display:none）不参与渲染，故导出仅取当前模板字段。
         function applyTemplate(name) {
             document.querySelectorAll('[data-tpl]').forEach((el) => { el.hidden = el.dataset.tpl !== name; });
             exportTarget.dataset.activeTpl = name; // 供 CSS 区分模板（如三图竖排的加粗总结文案）
+            refreshSnippetFieldOptions(name);      // 常用文案库的目标字段随模板动态过滤（P-36）
             checkContentFit();
+        }
+        // 「常用文案库 → 目标字段」按当前模板过滤（P-36）：
+        //   橱窗排版：顶部文案 / 主标题 / 关键词 / 副标题
+        //   三图竖排：主标题 / 小标题一 / 小标题二 / 小标题三
+        const TEMPLATE_FIELDS = {
+            window: ['summary', 'title', 'keywords', 'subtitle'],
+            three: ['title', 'cap1', 'cap2', 'cap3']
+        };
+        function refreshSnippetFieldOptions(tplName) {
+            const sel = document.getElementById('snippet-field-select');
+            if (!sel) return;
+            const keys = TEMPLATE_FIELDS[tplName === 'three' ? 'three' : 'window'];
+            const prev = sel.value;
+            sel.textContent = '';
+            keys.forEach((k) => {
+                const o = document.createElement('option');
+                o.value = k;
+                o.textContent = FIELD_LABELS[k] || k;
+                sel.appendChild(o);
+            });
+            if (keys.indexOf(prev) >= 0) sel.value = prev;
         }
         // 「我的模板」也是模板下拉里的一项（optgroup）；选中时由 onTemplateSelectChange 解析出
         // 底层模板与样式（该函数是声明式的，会被提升，故此处先引用、后定义没问题）。
@@ -2246,13 +2798,12 @@
         };
 
         exportBtn.addEventListener('click', async () => {
-            // 导出时始终隐藏安全区辅助线（避免被截进图片）；
-            // 恢复时以复选框“当前”状态为准，避免导出过程中用户切换勾选导致遮罩与勾选状态不一致。
+            // 导出经离屏渲染：安全区参考层由 ignoreElements 从结构上排除，不再临时隐藏/恢复，
+            // 因此导出过程中用户切换勾选也不会造成「遮罩与勾选状态不一致」。
             const restore = () => {
-                safeZone.classList.toggle('active', toggleSafe.checked);
                 exportBtn.textContent = '导出为图片';
                 exportBtn.classList.remove('is-busy'); // 导出结束：光标从「忙」恢复为普通不可用态
-                checkContentFit(); // 由适配结果决定是否可用：内容超出安全区时保持置灰
+                checkContentFit(); // 由适配结果决定是否可用：内容超出安全区或字体未就绪时保持置灰
             };
 
             setExportMsg('');
@@ -2265,15 +2816,18 @@
                 setExportMsg('导出组件未加载成功（需要联网加载），请连网后刷新页面重试。');
                 return;
             }
+            // 字体未就绪时禁止导出：否则导出图会回退成系统字体（P-20）
+            if (!fontReady) {
+                setExportMsg('手写字体尚未就绪，请稍候重试，或连网后刷新页面。');
+                return;
+            }
 
-            safeZone.classList.remove('active');
             exportBtn.disabled = true;
             exportBtn.classList.add('is-busy'); // 与「内容超出安全区而不可用」区分：这里是真的在忙
             exportBtn.textContent = '导出中…';
 
-            // 截取整个画布容器。scale 决定导出分辨率：
-            // 375×667 × scale 4 = 1500×2668，图片区域约 528px，
-            // 才能保住上传照片的细节（scale 2 时只有 264px，会明显发糊）。
+            // 截取整个画布容器。scale 由 #export-size 决定（默认 4×：375×667 × 4 = 1500×2668），
+            // 图片区域约 528px，才能保住上传照片的细节（scale 2 时只有 264px，会明显发糊）。
             try {
                 // 关键：等在线手写字体的字形真正下载完成再截图，
                 // 否则 html2canvas 拿到尚未就绪的 Web Font，导出图会回退成系统字体。
@@ -2282,11 +2836,12 @@
                 }
 
                 const canvas = await html2canvas(canvasWrapper, {
-                    scale: EXPORT_SCALE,
-                    backgroundColor: '#ffffff', // 导出背景：纯白色
+                    scale: currentExportScale(),              // 取 #export-size 所选倍率（P-33）
+                    backgroundColor: readCurrentStyle().bg,   // 导出背景取「画布底色」，参与导出（P-18）
                     logging: false,
                     width: 375, // 强制截取完整宽度
                     height: 667, // 强制截取完整高度
+                    ignoreElements: (el) => el === safeZone,  // 结构上排除安全区参考层（P-31）
                 });
 
                 const shot = await canvasToUrl(canvas);
@@ -2331,7 +2886,7 @@
         const draftExportBtn = document.getElementById('draft-export-btn');
         const draftImportFile = document.getElementById('draft-import-file');
         const draftMsg = document.getElementById('draft-msg');
-        const batchList = document.getElementById('batch-list');
+        const batchTasks = document.getElementById('batch-tasks');
         const batchBtn = document.getElementById('batch-btn');
         const batchCancelBtn = document.getElementById('batch-cancel-btn');
         const batchTip = document.getElementById('batch-tip');
@@ -2339,8 +2894,8 @@
         const styleSizeTitle = document.getElementById('style-size-title');
         const styleColorSummary = document.getElementById('style-color-summary');
         const styleSizeSummary = document.getElementById('style-size-summary');
-        const styleColorCopy = document.getElementById('style-color-copy');
-        const styleSizeCopy = document.getElementById('style-size-copy');
+        const styleColorKeywords = document.getElementById('style-color-keywords');
+        const styleSizeKeywords = document.getElementById('style-size-keywords');
         const styleRadius = document.getElementById('style-radius');
         const styleColorBg = document.getElementById('style-color-bg');
         const styleNameInput = document.getElementById('style-name-input');
@@ -2389,10 +2944,12 @@
         // 数值型样式需要带单位写进变量
         const STYLE_UNITS = { titleSize: 'px', summarySize: 'px', copySize: 'px', radius: 'px' };
         // 样式键 → 对应的控件元素（折叠区里的输入）
+        // 说明：样式键沿用 copyColor / copySize 命名（对应 CSS 变量 --tpl-copy-*），
+        // 仅控件 ID 按修订版语义对齐为 keywords；键名不改以保留既有草稿/模板里已存的样式。
         const STYLE_INPUTS = {
             titleColor: styleColorTitle, titleSize: styleSizeTitle,
             summaryColor: styleColorSummary, summarySize: styleSizeSummary,
-            copyColor: styleColorCopy, copySize: styleSizeCopy,
+            copyColor: styleColorKeywords, copySize: styleSizeKeywords,
             radius: styleRadius, bg: styleColorBg
         };
         // 默认样式：必须与 :root 里今天的实际取值逐字一致，否则「首次无自定义」会看出差异
@@ -2879,7 +3436,10 @@
             items.forEach((it) => {
                 const o = document.createElement('option');
                 o.value = it.id;
-                o.textContent = it.name;
+                // P-27：草稿记录并显示所用样式模板名（tpl 指向「我的模板」id 或内置模板名）
+                const my = myTemplateById(it.tpl);
+                const styleName = my ? my.name : (it.tpl === 'three' ? '三图竖排' : (it.tpl === 'window' ? '橱窗排版' : ''));
+                o.textContent = styleName ? (it.name + '（' + styleName + '）') : it.name;
                 draftSelect.appendChild(o);
             });
             if (Array.prototype.some.call(draftSelect.options, (o) => o.value === prev)) draftSelect.value = prev;
@@ -2956,6 +3516,8 @@
                     fields: captureFields(),
                     style: collectStyleFromControls(),
                     safe: toggleSafe.checked,
+                    fitLock: !!(fitLock && fitLock.checked),
+                    exportScale: currentExportScale(),
                     savedAt: Date.now()
                 }));
             } catch (e) { /* 记忆属于「有则更好」：写不进去也不影响主流程 */ }
@@ -2989,12 +3551,44 @@
                 toggleSafe.checked = p.safe;
                 safeZone.classList.toggle('active', p.safe);
             }
+            if (fitLock) fitLock.checked = !!p.fitLock;
+            if (exportSize && isFinite(parseFloat(p.exportScale))) {
+                const v = String(p.exportScale);
+                if (Array.prototype.some.call(exportSize.options, (o) => o.value === v)) exportSize.value = v;
+            }
             checkContentFit();
             return true;
         }
-        function resetPrefs() {
+        // 分层重置（P-29）：
+        //   scope='style'  仅重置样式（颜色/字号/圆角/底色/锁定字号），不动内容/图片/草稿
+        //   scope='drafts' 重置草稿与偏好（草稿箱 / 我的模板 / 文案片段 / 记忆），不动当前内容与图片
+        //   scope='all'    重置全部（含当前内容、图片、模板、字体、安全区）
+        function resetPrefs(scope) {
+            scope = scope || 'all';
             if (prefsTimer) { clearTimeout(prefsTimer); prefsTimer = 0; }
+
+            if (scope === 'style') {
+                resetCustomStyle();
+                syncStyleControls();
+                if (fitLock) fitLock.checked = false;
+                savePrefs();
+                setMsg(toolMsg, '已重置样式（内容与图片保持不变）');
+                return true;
+            }
+
+            // 草稿与偏好重置：清空四类本地数据
             try { localStorage.removeItem(PREFS_KEY); } catch (e) {}
+            try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+            try { localStorage.removeItem(TPL_KEY); } catch (e) {}
+            try { localStorage.removeItem(SNIPPET_KEY); } catch (e) {}
+            refreshMyTemplateOptions();
+            refreshDraftOptions();
+            refreshSnippetOptions();
+            if (scope === 'drafts') {
+                setMsg(toolMsg, '已重置草稿与偏好（内容与图片保持不变）');
+                return true;
+            }
+
             Object.keys(FIELD_INPUTS).forEach((k) => { FIELD_INPUTS[k].value = ''; });
             Object.keys(IMG_TARGETS).forEach((k) => clearPhoto(k));
             resetCustomStyle();
@@ -3005,84 +3599,73 @@
             applyHandwritingFont(fontSelect.selectedOptions[0]);
             toggleSafe.checked = true;
             safeZone.classList.add('active');
+            if (fitLock) fitLock.checked = false;
+            if (exportSize) exportSize.value = '4';
             syncFieldPreview();
             syncStyleControls();
             checkContentFit();
-            setMsg(toolMsg, '已恢复默认设置');
+            setMsg(toolMsg, '已恢复默认设置（全部）');
             return true;
         }
 
         // ---- 批量出图（②） ----
         let batchRunning = false; // 批量期间禁用导出，避免并发导出互相抢画布
         let batchCancel = false;
-        // 任务清单 = 全部草稿 + 全部文案片段
+        // 任务清单：批量出图以「草稿」为最小单元（每份勾选的草稿产出 1 张图，P-19）。
+        // 常用文案库不再作为独立出图任务，而是用于给草稿套用指定字段。
         function buildBatchTasks() {
-            const tasks = [];
-            listDrafts().forEach((d) => tasks.push({ kind: 'draft', id: d.id, name: d.name }));
-            listSnippets().forEach((s) => tasks.push({
-                kind: 'snippet', id: s.id,
-                name: (FIELD_LABELS[s.field] || s.field) + '-' + s.text.replace(/\s+/g, ' ').slice(0, 8)
-            }));
-            return tasks;
+            return listDrafts().map((d) => ({ kind: 'draft', id: d.id, name: d.name }));
         }
         function refreshBatchList() {
             const tasks = buildBatchTasks();
             const prevChecked = {};
-            batchList.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
+            batchTasks.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
                 prevChecked[cb.dataset.kind + ':' + cb.dataset.id] = true;
             });
-            batchList.textContent = '';
+            batchTasks.textContent = '';
             if (!tasks.length) {
                 const empty = document.createElement('div');
                 empty.className = 'lmt-group-title';
-                empty.textContent = '暂无可出图任务：请先保存草稿，或把常写文案存为片段。';
-                batchList.appendChild(empty);
-                return;
-            }
-            // 大列表用 DocumentFragment 一次性挂载，避免逐条 append 触发多次重排
-            const frag = document.createDocumentFragment();
-            tasks.forEach((t) => {
-                const label = document.createElement('label');
-                const cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.dataset.kind = t.kind;
-                cb.dataset.id = t.id;
-                cb.dataset.name = t.name;
-                if (prevChecked[t.kind + ':' + t.id]) cb.checked = true;
-                const span = document.createElement('span');
-                span.textContent = (t.kind === 'draft' ? '草稿：' : '片段：') + t.name;
-                label.appendChild(cb);
-                label.appendChild(span);
-                frag.appendChild(label);
-            });
-            batchList.appendChild(frag);
-        }
-        // 渲染单个任务：先把界面切到该任务的状态，再截图取字节
-        async function renderBatchTask(task, baseSnap) {
-            if (task.kind === 'draft') {
-                const d = listDrafts().filter((x) => x.id === task.id)[0];
-                if (!d) return null;
-                if (d.tpl) { selectTemplateValue(d.tpl); onTemplateSelectChange(templateSelect.value); }
-                applySnapshot(d);
+                empty.textContent = '暂无可出图任务：请先保存草稿（草稿是批量的最小单元）。';
+                batchTasks.appendChild(empty);
             } else {
-                const s = listSnippets().filter((x) => x.id === task.id)[0];
-                if (!s) return null;
-                applySnapshot(baseSnap); // 片段任务：以批量开始前的界面为底，只叠加这一段文本
-                if (THREE_ONLY_FIELDS[s.field] && (exportTarget.dataset.activeTpl !== 'three')) {
-                    selectTemplateValue('three');
-                    templateSelect.value = 'three';
-                    onTemplateSelectChange('three');
-                }
-                const input = FIELD_INPUTS[s.field];
-                if (input) input.value = s.text;
-                syncFieldPreview();
+                // 大列表用 DocumentFragment 一次性挂载，避免逐条 append 触发多次重排
+                const frag = document.createDocumentFragment();
+                tasks.forEach((t) => {
+                    const label = document.createElement('label');
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.dataset.kind = t.kind;
+                    cb.dataset.id = t.id;
+                    cb.dataset.name = t.name;
+                    if (prevChecked[t.kind + ':' + t.id]) cb.checked = true;
+                    const span = document.createElement('span');
+                    span.textContent = '草稿：' + t.name;
+                    label.appendChild(cb);
+                    label.appendChild(span);
+                    frag.appendChild(label);
+                });
+                batchTasks.appendChild(frag);
             }
+            updateBatchCount();
+        }
+        // 按钮旁实时显示「预计生成张数」= 已勾选的草稿数（P-19）
+        function updateBatchCount() {
+            const n = batchTasks.querySelectorAll('input[type="checkbox"]:checked').length;
+            batchBtn.textContent = n ? ('批量出图（将生成 ' + n + ' 张）') : '批量出图';
+        }
+        // 渲染单个草稿任务：先把界面切到该草稿的状态，再截图取字节
+        async function renderBatchTask(task) {
+            const d = listDrafts().filter((x) => x.id === task.id)[0];
+            if (!d) return null;
+            if (d.tpl) { selectTemplateValue(d.tpl); onTemplateSelectChange(templateSelect.value); }
+            applySnapshot(d);
             exportBtn.disabled = true; // applySnapshot 会重算可用性，这里再压一次，防止批量途中被点
             // 等字体就绪，否则导出图会回退成系统字体
             if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
             const canvas = await html2canvas(canvasWrapper, {
-                scale: EXPORT_SCALE,
-                backgroundColor: '#ffffff',
+                scale: currentExportScale(),
+                backgroundColor: readCurrentStyle().bg,
                 logging: false,
                 width: 375,
                 height: 667
@@ -3092,8 +3675,8 @@
         }
         batchBtn.addEventListener('click', async () => {
             if (batchRunning) return;
-            const checked = Array.prototype.slice.call(batchList.querySelectorAll('input[type="checkbox"]:checked'));
-            if (!checked.length) { setMsg(batchTip, '请先勾选要出图的任务'); return; }
+            const checked = Array.prototype.slice.call(batchTasks.querySelectorAll('input[type="checkbox"]:checked'));
+            if (!checked.length) { setMsg(batchTip, '请先勾选要出图的草稿'); return; }
             const tasks = checked.map((cb) => ({ kind: cb.dataset.kind, id: cb.dataset.id, name: cb.dataset.name }));
             // 记录批量前的完整界面状态：无论成功、失败还是取消，结束时都必须逐字还原
             const beforeSnap = {
@@ -3115,7 +3698,7 @@
                     if (batchCancel) break;
                     setMsg(batchTip, '正在出图 ' + (i + 1) + '/' + tasks.length + '：' + tasks[i].name);
                     // 逐个 await：每张都让出主线程一拍，避免长任务把界面卡死
-                    const r = await renderBatchTask(tasks[i], { fields: beforeSnap.fields, imgs: beforeSnap.imgs, style: beforeSnap.style });
+                    const r = await renderBatchTask(tasks[i]);
                     if (r) files.push({ name: '排版图_' + sanitizeName(r.name, 24) + '_' + (i + 1) + '.png', bytes: r.bytes });
                     await new Promise((res) => setTimeout(res, 0));
                 }
@@ -3143,10 +3726,12 @@
                 batchRunning = false;
                 batchBtn.disabled = false;
                 batchCancelBtn.hidden = true;
+                updateBatchCount(); // 恢复按钮文案（含预计张数）
                 checkContentFit(); // 由适配结果决定导出按钮是否可用
             }
         });
         batchCancelBtn.addEventListener('click', () => { batchCancel = true; setMsg(batchTip, '正在取消…'); });
+        batchTasks.addEventListener('change', updateBatchCount); // 勾选变化即刻刷新「将生成 N 张」
 
         // ---- 自绘名称浮层（不用 prompt/alert：安卓 WebView 常不接管系统弹窗） ----
         function promptName(title, defaultValue) {
@@ -3200,16 +3785,125 @@
             });
         }
 
+        // 通用确认弹层（不用 confirm/prompt：安卓 WebView 常不接管系统弹窗，P-28 / P-29）
+        // opts: { title, message, okText, cancelText, danger, choices }
+        //   · 无 choices → resolve(true|false)
+        //   · 有 choices（数组 [{value,label,danger}]）→ resolve(所选 value | null)
+        function confirmDialog(opts) {
+            opts = opts || {};
+            const hasChoices = !!(opts.choices && opts.choices.length);
+            return new Promise((resolve) => {
+                const mask = document.createElement('div');
+                mask.className = 'lmt-modal-mask';
+                mask.setAttribute('role', 'dialog');
+                mask.setAttribute('aria-modal', 'true');
+                const card = document.createElement('div');
+                card.className = 'lmt-modal-card';
+                const h = document.createElement('h3');
+                h.textContent = opts.title || '请确认';
+                card.appendChild(h);
+                if (opts.message) {
+                    const p = document.createElement('p');
+                    p.className = 'lmt-modal-text';
+                    p.textContent = opts.message;
+                    card.appendChild(p);
+                }
+                const row = document.createElement('div');
+                row.className = 'lmt-btn-row';
+                let done = false, offEsc = null;
+                const finish = (val) => {
+                    if (done) return;
+                    done = true;
+                    if (offEsc) offEsc();
+                    window.__license.unlockScroll();
+                    mask.remove();
+                    resolve(val);
+                };
+                const cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.className = 'btn-ghost';
+                cancel.textContent = opts.cancelText || '取消';
+                cancel.addEventListener('click', () => finish(hasChoices ? null : false));
+                if (hasChoices) {
+                    opts.choices.forEach((c) => {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = c.danger ? 'btn-danger' : 'btn-ghost';
+                        b.textContent = c.label;
+                        b.addEventListener('click', () => finish(c.value));
+                        row.appendChild(b);
+                    });
+                } else {
+                    const ok = document.createElement('button');
+                    ok.type = 'button';
+                    ok.className = opts.danger ? 'btn-danger' : 'btn-primary';
+                    ok.textContent = opts.okText || '确定';
+                    ok.addEventListener('click', () => finish(true));
+                    row.appendChild(ok);
+                }
+                row.appendChild(cancel);
+                card.appendChild(row);
+                mask.appendChild(card);
+                mask.addEventListener('click', (e) => { if (e.target === mask) finish(hasChoices ? null : false); });
+                document.body.appendChild(mask);
+                window.__license.lockScroll();
+                offEsc = window.__license.onEsc(() => finish(hasChoices ? null : false));
+            });
+        }
+
+        // 底部「可撤销」提示条（P-28：草稿删除支持 toast undo）
+        // 浮出提示 +「撤销」按钮，超时或点击后销毁；同屏只保留一条。
+        function showUndoToast(message, onUndo, ttlMs) {
+            document.querySelectorAll('.lmt-undo-toast').forEach((el) => { if (el.__dispose) el.__dispose(); });
+            const bar = document.createElement('div');
+            bar.className = 'lmt-undo-toast';
+            bar.setAttribute('role', 'status');
+            bar.setAttribute('aria-live', 'polite');
+            const span = document.createElement('span');
+            span.textContent = message;
+            const undo = document.createElement('button');
+            undo.type = 'button';
+            undo.className = 'lmt-undo-btn';
+            undo.textContent = '撤销';
+            bar.appendChild(span);
+            bar.appendChild(undo);
+            let done = false, timer = 0;
+            const dispose = () => {
+                if (done) return;
+                done = true;
+                if (timer) clearTimeout(timer);
+                bar.remove();
+            };
+            bar.__dispose = dispose;
+            undo.addEventListener('click', () => { if (done) return; dispose(); if (typeof onUndo === 'function') onUndo(); });
+            document.body.appendChild(bar);
+            timer = setTimeout(dispose, ttlMs || 8000);
+        }
+
         // ---- 新增控件的监听 ----
         draftSaveBtn.addEventListener('click', async () => {
             const name = await promptName('保存草稿', defaultName('草稿'));
             if (name == null) return;
             saveDraft(name);
         });
-        draftDeleteBtn.addEventListener('click', () => {
+        draftDeleteBtn.addEventListener('click', async () => {
             if (!draftSelect.value) { setMsg(draftMsg, '请先在下拉框选择要删除的草稿'); return; }
-            deleteDraft(draftSelect.value);
+            const id = draftSelect.value;
+            const item = listDrafts().filter((x) => x.id === id)[0];
+            if (!item) { setMsg(draftMsg, '该草稿已不存在'); return; }
+            const ok = await confirmDialog({
+                title: '删除草稿',
+                message: '确定删除草稿「' + item.name + '」吗？删除后仍可在底部提示条上撤销。',
+                okText: '删除', danger: true
+            });
+            if (!ok) return;
+            deleteDraft(id);
             setMsg(draftMsg, '已删除草稿');
+            showUndoToast('已删除草稿「' + item.name + '」', () => {
+                persistDrafts(listDrafts().concat([item]));
+                refreshDraftOptions();
+                setMsg(draftMsg, '已撤销删除：' + item.name);
+            });
         });
         draftExportBtn.addEventListener('click', () => exportDrafts());
         draftSelect.addEventListener('change', () => {
@@ -3237,23 +3931,30 @@
             const myNow = myTemplateById(templateSelect.value);
             // 当前底层是哪个内置模板：优先取「我的模板」的 base，否则按下拉值判断
             const base = myNow ? myNow.base : (templateSelect.value === 'three' ? 'three' : 'window');
+            // P-27：「我的模板」仅存样式（不含内容与图片）
             const t = saveMyTemplate((styleNameInput.value || '').trim(), base, collectStyleFromControls());
             if (!t) return;
             selectTemplateValue(t.id);
             onTemplateSelectChange(t.id);
             styleNameInput.value = '';
             savePrefs();
-            setMsg(toolMsg, '已存为「我的模板」：' + t.name);
+            setMsg(toolMsg, '已存为「我的模板」（仅样式）：' + t.name);
         });
         styleResetBtn.addEventListener('click', () => {
             resetCustomStyle();
             syncStyleControls();
             savePrefs();
-            setMsg(toolMsg, '已恢复默认样式');
+            setMsg(toolMsg, '已恢复默认样式（仅样式，不影响内容/图片/草稿）');
         });
-        styleDeleteBtn.addEventListener('click', () => {
+        styleDeleteBtn.addEventListener('click', async () => {
             const myNow = myTemplateById(templateSelect.value);
             if (!myNow) { setMsg(toolMsg, '当前未选中「我的模板」，无需删除'); return; }
+            const ok = await confirmDialog({
+                title: '删除我的模板',
+                message: '确定删除我的模板「' + myNow.name + '」吗？此操作不可撤销。',
+                okText: '删除', danger: true
+            });
+            if (!ok) return;
             deleteMyTemplate(myNow.id);
             savePrefs();
             setMsg(toolMsg, '已删除我的模板');
@@ -3272,12 +3973,42 @@
             if (!snippetSelect.value) { setMsg(toolMsg, '请先选择文案片段'); return; }
             setMsg(toolMsg, insertSnippet(snippetSelect.value) ? '已插入片段' : '插入失败：该片段已不存在');
         });
-        snippetDeleteBtn.addEventListener('click', () => {
+        snippetDeleteBtn.addEventListener('click', async () => {
             if (!snippetSelect.value) { setMsg(toolMsg, '请先选择要删除的片段'); return; }
-            deleteSnippet(snippetSelect.value);
+            const id = snippetSelect.value;
+            const item = listSnippets().filter((x) => x.id === id)[0];
+            if (!item) { setMsg(toolMsg, '该片段已不存在'); return; }
+            const label = (FIELD_LABELS[item.field] || item.field) + '：' + item.text.replace(/\s+/g, ' ').slice(0, 12);
+            const ok = await confirmDialog({
+                title: '删除片段',
+                message: '确定删除片段「' + label + '」吗？删除后仍可在底部提示条上撤销。',
+                okText: '删除', danger: true
+            });
+            if (!ok) return;
+            deleteSnippet(id);
             setMsg(toolMsg, '已删除片段');
+            showUndoToast('已删除片段「' + label + '」', () => {
+                persistSnippets(listSnippets().concat([item]));
+                refreshSnippetOptions();
+                setMsg(toolMsg, '已撤销删除：' + label);
+            });
         });
-        prefsResetBtn.addEventListener('click', () => resetPrefs());
+        // P-29：偏好重置改为分层（仅样式 / 草稿与偏好 / 全部），不再一键抹掉所有本地记录
+        prefsResetBtn.addEventListener('click', async () => {
+            const scope = await confirmDialog({
+                title: '重置本地记录',
+                message: '请选择要重置的范围：重置样式只清掉样式自定义，草稿与偏好会保留；重置全部会连同草稿、模板、片段一起清空。',
+                choices: [
+                    { label: '仅重置样式', value: 'style' },
+                    { label: '重置草稿与偏好', value: 'drafts' },
+                    { label: '重置全部', value: 'all', danger: true }
+                ],
+                cancelText: '取消'
+            });
+            if (!scope) return;
+            resetPrefs(scope);
+            setMsg(toolMsg, scope === 'style' ? '已重置样式自定义' : (scope === 'drafts' ? '已重置草稿与偏好' : '已重置全部本地记录'));
+        });
 
         // 5. 内容变化后重新检查是否超出安全区
         const panel = document.querySelector('.control-panel');
@@ -3316,7 +4047,10 @@
             applyCustomStyle: applyCustomStyle, resetCustomStyle: resetCustomStyle,
             saveMyTemplate: saveMyTemplate, listMyTemplates: listMyTemplates, deleteMyTemplate: deleteMyTemplate,
             savePrefs: savePrefs, loadPrefs: loadPrefs, resetPrefs: resetPrefs,
-            saveSnippet: saveSnippet, listSnippets: listSnippets, insertSnippet: insertSnippet, deleteSnippet: deleteSnippet
+            saveSnippet: saveSnippet, listSnippets: listSnippets, insertSnippet: insertSnippet, deleteSnippet: deleteSnippet,
+            // 新增：确认弹层 / 撤销提示 / 目标计数 / 模板字段过滤 / 导出倍率（供用例直接复用）
+            confirmDialog: confirmDialog, showUndoToast: showUndoToast, updateBatchCount: updateBatchCount,
+            refreshSnippetFieldOptions: refreshSnippetFieldOptions, currentExportScale: currentExportScale
         };
     }
 

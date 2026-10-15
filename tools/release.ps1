@@ -43,10 +43,13 @@ $PagesBase = 'https://yejiawei19991118.github.io/lmt-cards'
 $JdkHome = 'C:\Users\Administrator\jdk\jdk-17.0.20.1+1'
 $GitDir = 'C:\Users\Administrator\tools\git\cmd'
 $GhDir = 'C:\Users\Administrator\tools\gh'
-# cards.json 的签名密钥（须与 index.html / 卡密生成器里的 LICENSE_SECRET 一致），仅用于发版后校验签名未被 rebase 破坏。
-# 注意：这不是「服务端密钥」——客户端 index.html 里内置同一份，签名只是让清单难以被随手改的威慑，
-# 不是可保密的能力（任何人查看静态页源码即可拿到）。此处保留明文只为发版校验，不改变这一设计。
-$LicenseSecret = 'aca0d140848ed9718184e7341d3c6ed7ff68283b50574258'
+# cards.json 是卡密清单（新契约 ver=2，见 README.md 的「清单契约」）：由卡密生成器用「Ed25519 私钥」签发 sig2，
+# 客户端只内置「公钥」LICENSE_PUBKEY 做验签——私钥不再下发到任何产物，发版脚本也不持有私钥，
+# 因此这里无法（也无需）重算 sig2，只做结构性守卫：
+#   · ver 必须为 2 —— 防 rebase 把旧契约清单无声合进来
+#   · rev 必须等于规范化串的 sha256 前 16 hex —— 防 rebase 把清单内容改坏却不报冲突
+#   · sig2 必须是合法形状（base32 字母表、103 字符）—— 防手工粘贴截断
+# 真正的验签由客户端按内嵌公钥完成：签名对不上时客户端直接拒绝该清单。
 
 $AllApps = @('lmt-layout', 'lmt-cardgen')
 foreach ($a in $App) {
@@ -135,16 +138,41 @@ function Get-Normalized([string]$code) {
     return (([string]$code) -replace '[^0-9A-Za-z]', '').ToUpper()
 }
 
-# 按 index.html / 卡密生成器里的同一算法重算 cards.json 的签名
-function Get-CardsSignature([string]$cardsJsonPath) {
+# 重算 cards.json 的内容指纹 rev，口径与卡密生成器 / 客户端（lmt-layout 的 manifestRevSource）逐字一致：
+#   revSource = ver "\n" updated "\n" cards 按 (mc,card) 升序逐行 "{card}|{mc}|{note}|{exp}" 用 "\n" 连接 "\n" revoked 升序 join(",")
+#   rev       = sha256Hex(revSource) 的前 16 位 hex
+# card / mc 归一化（转大写剔除 [^0-9A-Z]），note / exp 去首尾空白后原样参与。
+function Get-CardsRev([string]$cardsJsonPath) {
     $j = [System.IO.File]::ReadAllText($cardsJsonPath) | ConvertFrom-Json
-    $cards = (($j.cards | ForEach-Object { Get-Normalized $_ }) -join ',')
-    $revoked = (($j.revoked | ForEach-Object { Get-Normalized $_ }) -join ',')
-    $payload = "$($j.updated)`n$cards`n$revoked"
-    $hmac = New-Object System.Security.Cryptography.HMACSHA256
-    $hmac.Key = [System.Text.Encoding]::UTF8.GetBytes($LicenseSecret)
-    $hash = $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($payload))
-    return (-join ($hash | ForEach-Object { $_.ToString('x2') }))
+    $nul = [char]0
+    $soh = [char]1
+    # 排序键必须与 JS 的 mc + "\u0000" + card 一致，且比较必须走序号（Ordinal）而非区域性规则，否则与 JS 的 < 比较结果不同。
+    # 键与行用 \u0001 拼在一起排序，排序后再截出行，避免用两个平行数组。
+    $combined = @($j.cards | ForEach-Object {
+        $mc = Get-Normalized $_.mc
+        $card = Get-Normalized $_.card
+        $note = ([string]$_.note).Trim()
+        $exp = ([string]$_.exp).Trim()
+        "$mc$nul$card$soh$card|$mc|$note|$exp"
+    })
+    $arr = [string[]]$combined
+    [System.Array]::Sort($arr, [System.StringComparer]::Ordinal)
+    $cards = (($arr | ForEach-Object { $_.Substring($_.IndexOf($soh) + 1) }) -join "`n")
+    $revokedArr = @($j.revoked | ForEach-Object { Get-Normalized $_ } | Select-Object -Unique)
+    if ($revokedArr.Count -gt 0) {
+        $revokedArr = [string[]]$revokedArr
+        [System.Array]::Sort($revokedArr, [System.StringComparer]::Ordinal)
+    }
+    $revoked = ($revokedArr -join ',')
+    $revSource = "$([int]$j.ver)`n$($j.updated)`n$cards`n$revoked"
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $hash = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($revSource))
+    return (-join ($hash | ForEach-Object { $_.ToString('x2') })).Substring(0, 16)
+}
+
+# sig2 形状校验：base32 编码 64 字节签名 → 103 字符；字母表 0123456789ABCDEFGHJKMNPQRSTVWXYZ（不含 I/L/O/U）
+function Test-Sig2Shape([string]$sig) {
+    return ($sig -match '^[0-9A-HJKMNP-TV-Z]{103}$')
 }
 
 function Get-ApkPath([string]$app) {
@@ -454,16 +482,22 @@ try {
         Invoke-Native { & git commit -m "chore(release): APK v$Version（update.json + SW 版本号）" } "git commit 失败"
     }
 
-    # 先 rebase 再推送；rebase 可能把远端 cards.json 改动与本地的签名改动无声合并，故推送前必须重算签名
+    # 先 rebase 再推送；rebase 可能把远端 cards.json 改动与本地改动无声合并成「内容变了但没重签」的坏清单，故推送前必须核对。
     Invoke-Native { & git pull --rebase --autostash } "git pull --rebase 失败，请手动处理后重试"
 
     $cardsPath = Join-Path $repoDir 'cards.json'
-    $calc = Get-CardsSignature $cardsPath
-    $fileSig = ([System.IO.File]::ReadAllText($cardsPath) | ConvertFrom-Json).sig
-    if ($calc -ne $fileSig) {
-        throw "cards.json 签名校验失败：文件 sig=$fileSig，重算=$calc。rebase 可能引入了未经重签的改动，请用卡密生成器重新生成清单后重试。"
+    $cardsObj = [System.IO.File]::ReadAllText($cardsPath) | ConvertFrom-Json
+    if ([int]$cardsObj.ver -ne 2) {
+        throw "cards.json 不是 ver=2 的新契约清单（实际 ver=$($cardsObj.ver)）：rebase 可能把旧契约清单合了进来，请用卡密生成器导入私钥后重新「生成清单」。"
     }
-    Write-Info "cards.json 签名校验通过（$fileSig）"
+    $calcRev = Get-CardsRev $cardsPath
+    if ($calcRev -ne [string]$cardsObj.rev) {
+        throw "cards.json 内容指纹不符：文件 rev=$($cardsObj.rev)，重算=$calcRev。rebase 可能引入了未经重签的改动，请用卡密生成器重新生成清单后重试。"
+    }
+    if (-not (Test-Sig2Shape ([string]$cardsObj.sig2))) {
+        throw "cards.json 的 sig2 形状非法（应为 103 字符 base32）：rebase 可能截断了签名，请用卡密生成器重新生成清单后重试。"
+    }
+    Write-Info "cards.json 结构校验通过（ver=2，rev=$calcRev，sig2 形状合法）"
 
     Invoke-Native { & git push origin main } "git push 失败"
     Write-Info "已推送"
