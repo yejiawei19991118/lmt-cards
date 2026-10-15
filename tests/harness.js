@@ -323,11 +323,18 @@
     test('layout/导出按钮：忙碌反馈 + 正常收尾', async function () {
       var btn = q(doc, '#export-btn');
       var msg = q(doc, '#export-msg');
+      var beforeCall = saverCalls.layout.length;
       await until(function () { return !btn.disabled; }, 3000, '导出按钮可用');
       btn.click();
       assertEq(text(btn), '导出中…', '点击导出应立刻变为「导出中…」');
       assert(btn.disabled, '导出过程中按钮应禁用，避免重入');
-      await until(function () { return text(btn) === '导出为图片' && !btn.disabled; }, 30000, '导出收尾');
+      // 「导出收尾」不能只看按钮恢复：安卓外壳在 restore() 之后还要异步做 base64 编码 + 原生落盘，
+      // 此时若就返回，仍在后台落盘的这次导出会串进下一条用例（把按钮留成禁用态）。
+      // 故源码含原生桥时，必须等到桥被调用才算真的收尾。
+      await until(function () {
+        return text(btn) === '导出为图片' && !btn.disabled
+            && (!hasSaverRef(L) || saverCalls.layout.length > beforeCall);
+      }, 30000, '导出收尾');
       // 两端的成功反馈本就不同（PWA 走 <a download> 后不留提示；安卓走原生落盘会写「已保存到相册：…」），
       // 这层差异由下一条「外壳」用例负责断言，这里只保证「没有报错」。
       assert(!/失败/.test(text(msg)), '导出不应报错，实际：' + text(msg));
