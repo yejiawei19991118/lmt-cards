@@ -349,9 +349,12 @@ foreach ($a in $App) {
         versionName = $Version
         url         = "https://github.com/$GitHubRepo/releases/download/$tag/$a-release.apk"
         # 主链（GitHub release）在国内网络常不可达，App 会按顺序探测这些镜像并回退。
-        # 镜像文件名固定、每版原地覆盖，CDN 缓存可能拿着旧字节；带 ?v=<versionCode> 后每次发版都是新 URL，
-        # 从根上避免「新 versionCode 配旧字节」导致 App 侧 sha256 校验失败、报「下载失败」。
+        # 镜像文件名固定、每版原地覆盖，CDN 缓存可能拿着旧字节；带 ?v=<versionCode> 对浏览器与 Pages 有效，
+        # 但 jsDelivr 的查询串不参与它的缓存键，只能靠发版后的 purge 刷新（见 7/7 步）。
+        # 因此 jsDelivr 刻意给两种写法（带 ref 与不带 ref），它们落在两个互不相同的缓存键上，
+        # 单条被旧字节卡住时另一条仍是新的；即使都命中旧字节，App 下载后校验 sha256 不一致也会继续回退。
         mirrors     = @(
+            "https://cdn.jsdelivr.net/gh/$GitHubRepo/$ApkMirrorDir/$a-release.apk?v=$($newCodes[$a])"
             "https://cdn.jsdelivr.net/gh/$GitHubRepo@main/$ApkMirrorDir/$a-release.apk?v=$($newCodes[$a])"
             "$PagesBase/apk/$a-release.apk?v=$($newCodes[$a])"
         )
@@ -542,21 +545,27 @@ try {
 
 # ===== 刷新 jsDelivr 缓存并校验各来源清单新鲜度 =====
 Write-Step "刷新 jsDelivr 并校验各来源清单"
-# jsDelivr 对 @main 这类分支引用有约 12 小时缓存；不主动清理，备源会长时间停在旧清单/旧安装包上，
-# 表现为「弹窗提示有新版本，却下载不到新包」。必须在 push 之后刷新——purge 会让 jsDelivr 重新回源。
-# cards.json 是卡密清单的 jsDelivr 备源，改动后同样是同款 12 小时缓存问题，一并刷新。
+# jsDelivr 对 @main 这类分支引用有约 12 小时缓存，且查询串不参与它的缓存键（?v= / ?r= 都绕不过去）；
+# 不主动清理，备源会长时间停在旧清单/旧安装包上，表现为「弹窗提示有新版本，却下载不到新包」。
+# 必须在 push 之后刷新——purge 会让 jsDelivr 重新回源。cards.json 是卡密清单的 jsDelivr 备源，改动后
+# 同样是同款缓存问题，一并刷新。
+# 客户端如今对每一处 jsDelivr 资源都用到「带 ref」与「不带 ref」两种写法（两个互不相同的缓存键），
+# 所以两种写法的 URL 都要 purge，否则只刷了一半、另一半仍然是旧内容。
 # 只 purge 不校验会出现「以为刷新了、源上其实还是旧清单」：raw 的边缘缓存与 jsDelivr 的回源时机都可能错位，
-# 之前就出现过 purge 反而把旧内容固化进 12 小时缓存的情况。故这里逐轮重试，直到各来源都能读到本次的 versionCode。
-$purgeTargets = @(
-    "https://purge.jsdelivr.net/gh/$GitHubRepo@main/update.json"
-    "https://purge.jsdelivr.net/gh/$GitHubRepo@main/cards.json"
-)
+# 而且 purge 对个别文件会静默失效（实测过 @main/update.json 报 finished 却仍返回旧版本）。故这里逐轮重试。
+$purgeTargets = @()
+foreach ($rel in @('update.json', 'cards.json')) {
+    $purgeTargets += "https://purge.jsdelivr.net/gh/$GitHubRepo@main/$rel"
+    $purgeTargets += "https://purge.jsdelivr.net/gh/$GitHubRepo/$rel"
+}
 foreach ($a in $App) {
+    $purgeTargets += "https://purge.jsdelivr.net/gh/$GitHubRepo/$ApkMirrorDir/$a-release.apk"
     $purgeTargets += "https://purge.jsdelivr.net/gh/$GitHubRepo@main/$ApkMirrorDir/$a-release.apk"
 }
 $manifestSources = @(
     "https://raw.githubusercontent.com/$GitHubRepo/refs/heads/main/update.json"
     "$PagesBase/update.json"
+    "https://cdn.jsdelivr.net/gh/$GitHubRepo/update.json"
     "https://cdn.jsdelivr.net/gh/$GitHubRepo@main/update.json"
 )
 
@@ -597,10 +606,18 @@ for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
     if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds 45 }
 }
 if ($missing.Count -gt 0) {
-    Write-Info "警告：以下来源在 $maxAttempts 轮后仍未读到 code$newCode，用户可能短时间内提示不到本版本：$($missing -join '，')"
+    # 这里刻意只说清事实、不喊「用户提示不到新版本」：更新检查是逐个来源请求后取 versionCode 最大的一条，
+    # 只要 raw 或 Pages 有一条已生效，用户就能拿到新版本；jsDelivr 停在旧清单只是备源尾延迟。
+    $okSources = @($manifestSources | Where-Object { $_ -notmatch 'jsdelivr' -and (Get-ManifestVersionCode $_) -eq [string]$newCode })
+    Write-Info "提示：以下来源在 $maxAttempts 轮后仍停在旧清单：$($missing -join '，')"
+    if ($okSources.Count -gt 0) {
+        Write-Info "     不阻塞更新：更新检查会取各来源中 versionCode 最大的一条，$($okSources -join '、') 已读到 code$newCode。"
+    }
+    Write-Info "     jsDelivr 的分支引用自带最长 12 小时缓存，purge 偶尔对个别文件静默失效，属可自愈的尾延迟；下次发版会重新刷一遍。"
 }
 
 Write-Host "`n发版完成：APK v$Version" -ForegroundColor Green
 Write-Info "Release：https://github.com/$GitHubRepo/releases/tag/$tag"
 Write-Info "清单（主源）：https://raw.githubusercontent.com/$GitHubRepo/refs/heads/main/update.json"
-Write-Info "清单（备源）：https://cdn.jsdelivr.net/gh/$GitHubRepo@main/update.json"
+Write-Info "清单（备源）：https://cdn.jsdelivr.net/gh/$GitHubRepo/update.json"
+Write-Info "              https://cdn.jsdelivr.net/gh/$GitHubRepo@main/update.json"
