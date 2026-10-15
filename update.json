@@ -2,22 +2,22 @@
   "updated": "2026-10-15",
   "apps": {
     "lmt-layout": {
-      "versionCode": 19,
-      "versionName": "1.18",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.18/lmt-layout-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=19", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=19"],
-      "sha256": "d6c49cb8ae81d9df5121c9f73234ddf89a227be7c96e4c4cc9bb000e872282e8",
-      "size": 126058,
-      "notes": "自动发版：共享核心随 lmt-cards b682d8cb 更新"
+      "versionCode": 20,
+      "versionName": "1.19",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.19/lmt-layout-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=20", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=20"],
+      "sha256": "9f865cbee74762a5d54ec140dab9ba68246f3c4ef0d8e2b4adb2c25925b2899a",
+      "size": 137554,
+      "notes": "自动发版：共享核心随 lmt-cards 54a0cb68 更新"
     },
     "lmt-cardgen": {
-      "versionCode": 19,
-      "versionName": "1.18",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.18/lmt-cardgen-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=19", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=19"],
-      "sha256": "052cc66b79aac3bfb78e5e19837f17e5c0ec31a23c10ff2f8b0e812f73a64049",
-      "size": 76671,
-      "notes": "自动发版：共享核心随 lmt-cards b682d8cb 更新"
+      "versionCode": 20,
+      "versionName": "1.19",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.19/lmt-cardgen-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=20", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=20"],
+      "sha256": "d1e6140e7e664c9e264262ed0fdda6283d11f8dc5e6f3f50f5bc8e2321b54e2e",
+      "size": 93943,
+      "notes": "自动发版：共享核心随 lmt-cards 54a0cb68 更新"
     }
   }
 }
