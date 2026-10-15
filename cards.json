@@ -1,21 +1,17 @@
 {
   "ver": 2,
-  "updated": "2026-10-16T06:24:26+08:00",
-  "rev": "b9a9643fd44e5a66",
+  "updated": "2026-10-16T06:25:34+08:00",
+  "rev": "c041557565f4c6d8",
   "cards": [
     {
       "card": "DFV7-54ZB-25TD-HCY4-R1QH",
       "mc": "S972-TX23-FBCM-6KNS",
       "note": "电脑",
-      "exp": "2026-09-16"
-    },
-    {
-      "card": "GYKB-HT8J-8M4X-EJCV-3V7Q",
-      "mc": "S972-TX23-FBCM-6KNS",
-      "note": "电脑",
-      "exp": "2026-10-17"
+      "exp": "2027-01-16"
     }
   ],
-  "revoked": [],
-  "sig2": "T2FSFR7KQV729M2HK5TCYQYY0QVHF2066MFN02QKDWRGCNJ4K3BKBRQ7NCCE787QTVH1RG9AEA5QB517HG4VNHT6CQY4KH8SS5YHC2R"
+  "revoked": [
+    "GQB1-FCMH-R2Y7-FSME-R901"
+  ],
+  "sig2": "NK89AKNCYF4XC6SG74DXX8HP4NJ5ZJF4MMD4CHCC2ZE1M7XR200TRE1KN9YYNW4CT7QCW2HPCP6SBSA0BZ7KRGFGTGJEM5WCF6GT82R"
 }
