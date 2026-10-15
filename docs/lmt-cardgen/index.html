@@ -216,6 +216,12 @@
         flex: 0 0 auto; white-space: nowrap; color: #0b5cad; background: #e8f1fe;
     }
     .lmt-exp-badge.is-expired { color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger-line); }
+    /* 来源徽标：该行只存在于线上清单、本机台账未录入（输入框永远只保留作者自己录的内容） */
+    .lmt-online-badge {
+        font-size: var(--fs-xs); font-weight: 700; padding: 2px 8px; border-radius: 999px;
+        flex: 0 0 auto; white-space: nowrap; color: var(--text-sub); background: var(--surface-2);
+        border: 1px solid var(--line);
+    }
     .lmt-check { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; cursor: pointer; }
     .diff-report {
         margin-top: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px var(--sp-3);
@@ -270,7 +276,7 @@
     /* 辅助区块：色条调灰，与主流程区块拉开主次 */
     .panel-block.is-aux .panel-block-title::before { background: #cbd4e2; }
 
-    /* 「在线清单」整块折叠：标题即 summary，展开后才是具体控件。
+    /* 「线上清单」整块折叠：标题即 summary，展开后才是具体控件。
        这里显式用 display:block，避免 flex 容器影响 <details> 的原生开合行为 */
     details.panel-block { display: block; padding: 0; gap: 0; }
     details.panel-block > summary.panel-block-title {
@@ -308,7 +314,7 @@
     .lmt-chip.is-ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
     /* 初始为空时不渲染空胶囊 */
     .lmt-chip:empty { display: none; }
-    /* 线上清单状态条：结论胶囊 + 条件出现的「重试 / 撤销」挤在一行，结论过长时允许换行 */
+    /* 线上清单状态条：结论胶囊 + 条件出现的「重试」挤在一行，结论过长时允许换行 */
     .sync-bar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
     .sync-bar .lmt-chip { align-self: center; }
     /* 折叠说明块：把长格式说明从 label 里挪出来，标签只留一句人话 */
@@ -431,21 +437,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             </div>
         </section>
 
-        <!-- 区块二：生成结果（筛选结果区：展示全量清单 + 筛选 + 批量动作 + 交付出口） -->
+        <!-- 区块二：卡密清单（逐条展示本机台账 ∪ 线上清单 + 筛选 + 批量动作 + 交付出口） -->
         <section class="panel-block">
-            <h2 class="panel-block-title" id="out-title">生成结果</h2>
+            <h2 class="panel-block-title" id="out-title">卡密清单</h2>
 
-            <!-- 线上清单状态条：自动同步的结论常驻此处。
-                 「重试」仅在同步失败时出现，「撤销」仅在本次自动并入台账后可用（均默认隐藏）。 -->
+            <!-- 线上清单状态条：自动同步的结论常驻此处。「重试」仅在同步失败时出现（默认隐藏）。 -->
             <div class="sync-bar">
                 <span class="lmt-chip" id="online-tip" role="status" aria-live="polite"></span>
                 <button type="button" class="btn btn-link" id="refresh-btn" hidden>重试</button>
-                <button type="button" class="btn btn-link" id="undo-btn" hidden>撤销</button>
             </div>
             <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
 
             <div class="control-group">
-                <label for="filter-input">筛选结果（按 备注 / 机器码 / 卡密 / 有效期 匹配，留空显示全部）</label>
+                <label for="filter-input">筛选（按 备注 / 机器码 / 卡密 / 有效期 匹配；留空显示全部）</label>
                 <div class="row">
                     <input type="text" id="filter-input" placeholder="筛选：备注 / 机器码 / 卡密 / 有效期" spellcheck="false" style="flex:1 1 200px;">
                     <button type="button" class="btn btn-ghost" id="select-all-btn" aria-pressed="false" title="全选当前筛选出的行；全部已勾选时再点一次取消">全选</button>
@@ -453,15 +457,20 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             </div>
 
             <details class="lmt-details">
-                <summary>批量操作的作用范围</summary>
-                <div>批量动作（续期 / 吊销）与交付动作（复制交付文案 / 导出交付图）共用同一作用范围：优先作用于「已勾选的行」；没有勾选时按当前筛选结果；二者皆空时需要二次确认并回显将影响的条数。</div>
+                <summary>列表来源与批量操作的作用范围</summary>
+                <div>
+                    列表 = 你在「机器码台账」里录入的条目 ∪ 线上清单里本机没有的条目；后者带「线上」标记，
+                    只参与展示与发布，不会被写回台账输入框。<br>
+                    批量动作（续期 / 吊销）与交付动作（复制交付文案 / 导出交付图）共用同一作用范围：
+                    优先作用于「已勾选的行」；没有勾选时按当前筛选结果；二者皆空时需要二次确认并回显将影响的条数。
+                </div>
             </details>
             <!-- 目标计数从长句里摘出来做成状态胶囊：一眼看到「将影响 N 条」 -->
             <div class="lmt-chip" id="scope-count" role="status" aria-live="polite"></div>
 
             <div class="row is-split">
-                <button type="button" class="btn btn-ghost" id="renew-btn" title="给目标卡密延长有效期">续期目标卡密</button>
-                <button type="button" class="btn btn-danger" id="revoke-filtered-btn" title="作废目标卡密：写入「已吊销卡密」并刷新清单">吊销目标卡密</button>
+                <button type="button" class="btn btn-ghost" id="renew-btn" title="给目标卡密延长有效期">续期</button>
+                <button type="button" class="btn btn-danger" id="revoke-filtered-btn" title="作废目标卡密：写入「已吊销卡密」并刷新清单">吊销</button>
             </div>
             <div class="row">
                 <button type="button" class="btn btn-ghost" id="deliver-btn" title="把目标卡密的交付文案复制到剪贴板（机器码 / 卡密 / 有效期 / 激活指引），复制前重算卡密">复制交付文案</button>
@@ -506,7 +515,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
                 <div class="control-group">
                     <label for="revoke-list">已吊销卡密（可选，每行一个；吊销优先于白名单，命中即拒绝激活）</label>
-                    <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并发布，即可在线吊销" spellcheck="false"></textarea>
+                    <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并发布，即可在线上吊销" spellcheck="false"></textarea>
                 </div>
 
                 <div class="control-group">
@@ -575,7 +584,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 清单契约版本：客户端只认 ver === 2 的清单（见 lmt-layout 的 MANIFEST_VER），两侧必须一致。
     var MANIFEST_VER = 2;
 
-    // ★★★ 请自行修改：在线清单的托管地址，必须与「图文排版生成器.html」里的 MANIFEST_URL 完全一致 ★★★
+    // ★★★ 请自行修改：线上清单的托管地址，必须与「图文排版生成器.html」里的 MANIFEST_URL 完全一致 ★★★
     //   生成器不会联网，这里只用于界面展示 / 复制，方便你知道清单该覆盖上传到哪里。
     var MANIFEST_URL = 'https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/refs/heads/main/cards.json';
 
@@ -1431,7 +1440,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return out;
     }
 
-    // 台账单次解析缓存：同一份文本只解析一遍，供「台账统计」与「生成在线清单 / 结果列表」共用。
+    // 台账单次解析缓存：同一份文本只解析一遍，供「台账统计」与「卡密清单 / 结果列表」共用。
     // 此前统计（splitRows）与清单（uniqueEntries）各解析一次，长台账下这是主要的 CPU 开销，现已合并为一次。
     var ledgerCache = { text: null, data: null };
     function analyzeLedger(text) {
@@ -1495,7 +1504,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function saveLedger() {
         try { localStorage.setItem(LEDGER_KEY, mcList.value); } catch (e) {}
         updateLedgerTip();
-        buildManifest(); // 台账变化后同步刷新在线清单 JSON，避免用户复制到过期清单
+        buildManifest(); // 台账变化后同步刷新线上清单 JSON，避免用户复制到过期清单
         scheduleAutoUpload(); // 开了「自动上传」时，台账变化后防抖提交
         scheduleSnapshot(); // 台账变化后防抖生成一份本机快照（见功能①）
         updateReceiptTip(); // 台账变化可能造成「待重传」，同步刷新回执提示
@@ -1573,24 +1582,24 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     });
     updateSecretUi();
 
-    var pairs = []; // 最近一次生成结果 [{ mc, card }]
+    var pairs = []; // 最近一次生成的卡密清单 [{ mc, display, card, note, exp, online }]
     // 线上同步结果缓存：key = 归一化机器码 → 'up'（已上传）/ 'notup'（未上传）/ 'revoked'（已吊销）。
     // 为 null 表示本次会话尚未同步成功，此时一律不显示状态徽标（不给出未经核实的结论，FR-04）。
     var onlineStatus = null;
     var syncBusy = false;        // 同步进行中：避免回到前台 / 网络恢复 / 手动重试叠成并发请求
-    var syncMerged = null;       // 本次自动并入的机器码列表，供「撤销」一次性还原
-    var lastRemote = null;       // 上次成功同步的线上映射 { byMc, revoked }，撤销后用它重算徽标
-    // 作者自上次同步后是否人工改过台账：编辑中不自动写入，只提示「线上新增 N 条未并入」（FR-03 第 4 条）
-    var ledgerTouched = false;
+    // 上次成功同步的线上清单：{ byMc（机器码→卡密）, revoked（已吊销卡密）, entries（归一化卡密→{mc,note,exp}） }。
+    // entries 既供「线上条目」在卡密清单里只读展示，也作为发布时字段级三方合并的基准（base）。
+    var lastRemote = null;
 
-    // 依据「当前台账 + 吊销名单」组装在线清单对象（契约 ver 2：ver / updated / rev / cards / revoked / sig2）。
+    // 依据「台账有效条目 + 吊销名单」组装线上清单对象（契约 ver 2：ver / updated / rev / cards / revoked / sig2）。
     // 与 buildManifest 拆开的原因：上传前需要先拿到本地对象、与远端合并后再重新签名。
     // 白名单条目写成对象 {card, mc, note, exp}：作者看清单 JSON 就能把卡密对应到具体用户的名称与机器码。
+    // 条目来源统一走 effectiveEntries（台账 ∪ 线上条目），因此界面上看到的清单就是发布出去的那一份。
     // 签名口径见 canonicalManifestString 上方注释（与主程序逐字一致，改动务必两侧同步）。
     function buildManifestObj() {
         // 归一化卡密 → {card, mc, note, exp}；签名与 rev 都基于归一化值，分组只影响 JSON 的可读性
         var cardsMap = {};
-        uniqueEntries(mcList.value).forEach(function (e) {
+        effectiveEntries().forEach(function (e) {
             var ncard = normalize(makeCard(e.key));
             if (!ncard) return;
             cardsMap[ncard] = {
@@ -1632,7 +1641,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         };
     }
 
-    // 生成在线清单 JSON 文本（含白名单 + 吊销名单），供上传到静态空间；返回该文本。
+    // 生成线上清单 JSON 文本（含白名单 + 吊销名单），供上传到静态空间；返回该文本。
     // 同时刷新「发布前自检」（#publish-check），使界面上的自检结论与当前清单始终一致。
     function buildManifest() {
         var obj = buildManifestObj();
@@ -1892,7 +1901,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     function updateLedgerTip() {
         if (!ledgerTip) return;
-        // 复用 analyzeLedger 的解析结果：与「生成在线清单」共用同一份缓存，
+        // 复用 analyzeLedger 的解析结果：与「卡密清单」共用同一份缓存，
         // 整份台账每次变化只解析一次（用 splitRows 而非按 \n 切：备注里含换行的行要算作同一行，
         // 否则统计会虚高并误报「无法识别」）。
         var s = analyzeLedger(mcList.value);
@@ -3162,10 +3171,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             // 只改目标卡密那一行的有效期，其余行原样保留（按机器码定位，避免误改同名或同备注的其它行）。
             var inScope = {};
             targets.forEach(function (t) { inScope[normalize(t.card)] = true; });
+            function renewed(e) { return fromToday ? addMonths('', months) : addMonths(e.exp, months); }
             var lines = uniqueEntries(mcList.value).map(function (e) {
                 if (!inScope[normalize(makeCard(e.key))]) return entryLine(e);
-                var exp = fromToday ? addMonths('', months) : addMonths(e.exp, months);
-                return entryLine({ mc: e.mc, note: e.note, exp: exp });
+                return entryLine({ mc: e.mc, note: e.note, exp: renewed(e) });
+            });
+            // 目标若是「线上」条目（台账输入框里没有），同时把它认领进台账：
+            // 否则这次续期只改在展示上，发布时仍会被线上的旧有效期覆盖（作者看到「续期了却没生效」）。
+            targets.forEach(function (t) {
+                if (!t.online) return;
+                lines.push(entryLine({ mc: t.display, note: t.note || '', exp: renewed(t) }));
             });
             mcList.value = lines.join('\n');
             dispose();
@@ -3190,7 +3205,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         try { monthInput.focus(); } catch (e) {}
     }
 
-    // 拉取在线清单（主源 + 备用源依次尝试），返回 { data, source }；全部失败返回 null。
+    // 拉取线上清单（主源 + 备用源依次尝试），返回 { data, source }；全部失败返回 null。
     function fetchOnlineManifest() {
         var sources = [MANIFEST_URL].concat(MANIFEST_MIRRORS);
         var i = 0;
@@ -3264,7 +3279,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         el.className = 'lmt-chip' + (cls ? ' ' + cls : '');
     }
     function showSyncRetry(on) { var b = document.getElementById('refresh-btn'); if (b) b.hidden = !on; }
-    function showSyncUndo(on) { var b = document.getElementById('undo-btn'); if (b) b.hidden = !on; }
     // 状态条文案用的本机时钟与来源名：让「上次同步时间 / 清单来源」成为可读信息而不是内部常量
     function nowClock() {
         var d = new Date();
@@ -3339,7 +3353,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         })['then'](function (r) { syncBusy = false; return r; });
     }
 
-    // 用「上次成功同步的线上映射」重算状态徽标：撤销并入后不重新拉取，避免刚撤销又被自动并回来。
+    // 用「上次成功同步的线上映射」重算状态徽标：不重新发请求，避免离线 / 断网时反复打网络。
     function recomputeOnlineStatus() {
         if (!lastRemote) { onlineStatus = null; return; }
         var status = {};
@@ -3352,7 +3366,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         onlineStatus = status;
     }
 
-    // 把线上清单并入本机：回灌绑定 → 合并台账 → 计算徽标 → 渲染状态条与差异报告。
+    // 同步结果 → 本机：回灌绑定 → 计算徽标 → 渲染状态条与差异报告。
+    // 线上独有的条目只进入「线上条目」模型（lastRemote.entries），绝不写回台账输入框：
+    // 输入框始终只保留作者自己录的内容，线上内容在卡密清单里以「线上」标记展示（FR-02 / §5.9）。
     function applyRemote(remote, srcLabel) {
         var bind = remoteBindings(remote.cards);
         var revokedCards = remote.revoked;
@@ -3368,12 +3384,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         Object.keys(bind.byMc).forEach(function (mc) {
             var card = bind.byMc[mc];
             var entry = remote.cards[card];
-            if (revokedCards[card]) return; // 线上已吊销：不进台账，只参与状态标记（FR-03 第 5 条）
-            if (!localKeys[mc]) {
-                added.push({ mc: mc, note: entry.note || '', exp: entry.exp || '' });
-                return;
-            }
-            // 两端都有：本机字段优先（§3.3）。仅在两侧都写了值且不同才算「两端不一致」，避免空值噪声。
+            if (revokedCards[card]) return; // 线上已吊销：不进清单条目，只参与状态标记（FR-03 第 5 条）
+            if (!localKeys[mc]) { added.push(mc); return; }
+            // 两端都有：仅在两侧都写了值且不同时才提示「两端不一致」（发布时按本机优先合并）。
             var cur = null;
             local.forEach(function (e) { if (e.key === mc) cur = e; });
             if (!cur) return;
@@ -3382,27 +3395,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if ((noteA && noteB && noteA !== noteB) || (expA && expB && expA !== expB)) mismatched++;
         });
 
-        // 2) 并入台账：作者正在编辑（输入区有未落盘改动）时不写入，只提示未并入（FR-03 第 4 条）。
-        var written = 0;
-        if (added.length && !ledgerTouched) {
-            var base = String(mcList.value || '').replace(/\s+$/, '');
-            mcList.value = (base ? base + '\n' : '') + added.map(function (a) {
-                return group(a.mc, 4) + (a.note ? (',' + a.note) : '') + (a.exp ? (',' + a.exp) : '');
-            }).join('\n');
-            saveLedger();
-            written = added.length;
-            syncMerged = added.map(function (a) { return a.mc; });
-        } else {
-            syncMerged = null;
-        }
-        showSyncUndo(!!syncMerged);
-
-        // 3) 状态徽标：只有同步成功过才显示（未同步前不给出未经核实的结论，FR-04）
-        lastRemote = { byMc: bind.byMc, revoked: revokedCards };
+        // 2) 状态徽标：只有同步成功过才显示（未同步前不给出未经核实的结论，FR-04）
+        lastRemote = { byMc: bind.byMc, revoked: revokedCards, entries: remote.cards };
         recomputeOnlineStatus();
         render();
 
-        // 4) 状态条 + 差异报告
+        // 3) 状态条 + 差异报告
         var up = 0, notup = 0, rev = 0;
         Object.keys(onlineStatus).forEach(function (mc) {
             if (onlineStatus[mc] === 'up') up++; else if (onlineStatus[mc] === 'revoked') rev++; else notup++;
@@ -3410,37 +3408,17 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var bits = [];
         bits.push('线上清单更新于 ' + (remote.updated || '未知') + '（' + srcLabel + (remote.verified ? ' · 验签通过' : ' · 未验签') + '）');
         bits.push('已上传 ' + up + ' · 未上传 ' + notup + (rev ? (' · 已吊销 ' + rev) : ''));
-        if (written) bits.push('线上新增 ' + written + ' 条已并入');
-        else if (added.length) bits.push('线上新增 ' + added.length + ' 条未并入（台账正在编辑）');
-        if (mismatched) bits.push('两端不一致 ' + mismatched + ' 条（以本机为准）');
+        if (added.length) bits.push('线上新增 ' + added.length + ' 条（在卡密清单中标记为「线上」，不写入台账输入框）');
+        if (mismatched) bits.push('两端不一致 ' + mismatched + ' 条（发布时本机优先）');
         if (bind.dupMc) bits.push('已合并重复机器码 ' + bind.dupMc + ' 条');
         if (conflicts.dupCard) bits.push('一卡多用 ' + conflicts.dupCard + ' 条（发布前自检会拦下）');
         bits.push('本机同步于 ' + nowClock());
-        setOnlineTip(bits.join(' · '), (written || added.length || mismatched || bind.dupMc || conflicts.dupCard) ? 'is-warn' : 'is-ok');
+        setOnlineTip(bits.join(' · '), (added.length || mismatched || bind.dupMc || conflicts.dupCard) ? 'is-warn' : 'is-ok');
         showSyncRetry(false);
         try { renderDiffReport(buildDiffReport(buildManifestObj(), remote)); } catch (e) {}
         return true;
     }
 
-    // 一次性撤销：把本次自动并入的那几行从台账里删掉，回到并之前的状态（FR-03 / §5.6）。
-    // 只删本次并入的机器码，不整份回滚——作者在并入之后自己录的内容不受影响。
-    // 刻意不重新拉取：否则刚撤掉的条目会被下一次同步原样并回来，撤销就等于没做。
-    function undoAutoMerge() {
-        var b = document.getElementById('undo-btn');
-        if (!syncMerged || !syncMerged.length) { showSyncUndo(false); return; }
-        var drop = {}, n = syncMerged.length;
-        syncMerged.forEach(function (mc) { drop[mc] = true; });
-        mcList.value = uniqueEntries(mcList.value).filter(function (e) { return !drop[e.key]; })
-            .map(function (e) { return e.mc + (e.note ? (',' + e.note) : '') + (e.exp ? (',' + e.exp) : ''); })
-            .join('\n');
-        syncMerged = null;
-        saveLedger();
-        showSyncUndo(false);
-        if (b) flashButton(b, '已撤销');
-        recomputeOnlineStatus();
-        render();
-        setOnlineTip('已撤销本次自动并入的 ' + n + ' 条；它们仍在线上，需要时重新同步即可。', 'is-warn');
-    }
 
     // 网络恢复后自动补一次同步，并在存在「待重传」且已保存令牌时自动补传（§5.8 自动化优先）。
     window.addEventListener('online', function () {
@@ -3547,39 +3525,67 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(String(str)))); }
     function base64ToUtf8(b64) { return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, '')))); }
 
-    // 上传前与远端清单合并：白名单取并集（归一化去重后重新分组 + 重新签名），
+    // 上传前与远端清单合并：白名单取并集并按 §3.5 权威顺序定归属，重新签名后上传。
     // 目的：本机没记录的卡密（例如另一台机器加的）不会被覆盖删除，避免误锁用户。
     // 吊销名单则以「本机吊销框」为准，不与远端取并集：否则把某项从吊销框删掉再上传，
     // 会被远端的旧记录并回来，用户无法用本工具解除吊销（撤销只能通过重新生成清单来完成）。
     // 合并结果按 ver 2 契约重算 rev 并用私钥重新签名；旧格式清单（字符串条目 + 顶层 exp 映射）
     // 也一并读入后归一化，保证合并结果里每张卡密都尽量带上能对应用户的信息。
-    // 去重主键 = 归一化机器码（§3.3 / FR-11）：同一机器码在两端各有一张卡密时只保留一张，
-    // 远端先入 → 保留线上那张（§3.5 权威顺序「已发布的线上绑定 > 本机缓存绑定」）；
+    // 归属与内容分两条规则：
+    //   · 卡密绑定（哪台机器用哪张卡）→ 远端先入、保留线上那张（§3.5 权威顺序「已发布的线上绑定 > 本机缓存绑定」）；
+    //   · 备注 / 有效期 → 逐字段三方合并（base = 上次成功同步的线上值，见 lastRemote）。
+    // 旧实现把整条「远端先入」套到字段上，于是本机刚改的有效期会被线上旧值整条覆盖，
+    // 发布出去的清单还是旧 exp（作者看到「改了有效期却发不出去」）。
+    // 三方合并规则：线上没动过 → 用本机改动；本机没动过 → 用线上新值；
+    // 两边都动过 → 本机优先（Q1），且空值不覆盖线上非空（避免抹掉另一台机器补的信息）。
+    // 没有基准（本次会话尚未同步过线上清单）时退化为「本机非空优先」。
+    function baseFieldFor(base, mc, card, field) {
+        if (!base) return null;
+        var cardKey = (base.byMc && base.byMc[mc]) || card;
+        var ent = base.entries ? base.entries[cardKey] : null;
+        if (!ent) return null;
+        return String(ent[field] == null ? '' : ent[field]);
+    }
+    // 去重主键 = 归一化机器码（§3.3 / FR-11）：同一机器码在两端各有一张卡密时只保留一张；
     // 同一张卡密被两个机器码引用属「一卡多用」，只保留先绑定者，另一条丢弃（自检复核）。
-    function mergeWithRemote(local, remote) {
+    function mergeWithRemote(local, remote, base) {
         local = local || {};
         remote = remote || {};
         var byKey = {}, byCard = {};
-        function addCard(c, expMap) {
+        function pick(mc, card, field, remoteVal, localVal) {
+            if (remoteVal === localVal) return localVal;
+            var b = baseFieldFor(base, mc, card, field);
+            if (b !== null) {
+                if (remoteVal === b) return localVal;  // 线上没动过 → 采用本机的改动
+                if (localVal === b) return remoteVal;  // 本机没动过 → 采用线上的新值
+            }
+            return localVal !== '' ? localVal : remoteVal;
+        }
+        function addCard(c, expMap, side) {
             var n = cardOf(c);
             if (!n) return;
             var src = (c && typeof c === 'object') ? c : null;
             var mc = normalize(src && src.mc);
+            var note = (src && src.note) ? String(src.note) : '';
+            var raw = (src && src.exp) || (expMap && expMap[n]) || '';
+            var exp = raw ? String(raw) : '';
             // 旧格式条目没有 mc：以卡密占位作主键，保证各条互相独立、不被错误合并。
             var key = mc || ('~' + n);
-            if (byKey[key]) return;
+            var cur = byKey[key];
+            if (cur) {
+                // 两端都有这台机器：卡密保留先入侧（线上），备注 / 有效期逐字段合并。
+                if (side === 'local') {
+                    cur.note = pick(mc, n, 'note', cur.note, note);
+                    cur.exp = pick(mc, n, 'exp', cur.exp, exp);
+                }
+                return;
+            }
             if (byCard[n] && byCard[n] !== key) return;
             byCard[n] = key;
-            var exp = (src && src.exp) || (expMap && expMap[n]) || '';
-            byKey[key] = {
-                card: group(n, 4),
-                mc: mc ? group(mc, 4) : '',
-                note: (src && src.note) ? String(src.note) : '',
-                exp: exp ? String(exp) : ''
-            };
+            byKey[key] = { card: group(n, 4), mc: mc ? group(mc, 4) : '', note: note, exp: exp };
         }
-        (remote.cards || []).forEach(function (c) { addCard(c, remote.exp); }); // 远端先入，本机再补（本机信息更全不覆盖远端补充）
-        (local.cards || []).forEach(function (c) { addCard(c, local.exp); });
+        (remote.cards || []).forEach(function (c) { addCard(c, remote.exp, 'remote'); }); // 远端先入定归属
+        (local.cards || []).forEach(function (c) { addCard(c, local.exp, 'local'); });     // 本机再逐字段补内容
         var revokedMap = {};
         subRev(local.revoked, revokedMap); // 只取本机吊销框（见上方注释：允许解除吊销）
         // 吊销按卡密命中：主键已是机器码，不能直接 delete，需经 byCard 反查（一卡一机，故一一对应）
@@ -3724,8 +3730,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var local = buildManifestObj();
         var pending = null;
         var message = '';
+        // base 传「上次成功同步的线上清单」：本机相对它改过的备注 / 有效期不会被线上旧值覆盖（见 mergeWithRemote）。
         return ghGetFile(target).then(function (remote) {
-            pending = mergeWithRemote(local, remote);
+            pending = mergeWithRemote(local, remote, lastRemote);
             var text = JSON.stringify(pending, null, 2);
             if (!manual && text === lastUploadedJson) {
                 setUploadTip('清单无变化，跳过自动上传。');
@@ -3738,7 +3745,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 if (!res.conflict) throw new Error('提交失败（HTTP ' + res.status + '）');
                 // sha 过期（远端刚被改动）：重新读取并合并后重试一次
                 return ghGetFile(target).then(function (again) {
-                    pending = mergeWithRemote(local, again);
+                    pending = mergeWithRemote(local, again, lastRemote);
                     var text2 = JSON.stringify(pending, null, 2);
                     return ghPutFile(target, text2, again.sha, message).then(function (r2) {
                         if (!r2.ok) throw new Error('提交失败（HTTP ' + r2.status + '）');
@@ -3761,13 +3768,35 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         })['then'](function (r) { uploadBusy = false; return r; });
     }
 
-    // 台账 → 卡密对的纯计算（不触碰 DOM）：结果列表渲染、导出 CSV、交付文案三处共用。
+    // 台账的「有效条目」= 作者在输入框里录入的条目 ∪ 线上清单里本机没有的条目（去重键 = 归一化机器码）。
+    // 线上独有的条目来自上次同步的模型（lastRemote.entries），带 online 标记，只参与清单构建与展示，
+    // 绝不被写回输入框——输入框始终只保留作者自己录的内容（FR-02 / §5.9）。
+    // 清单构建（buildManifestObj）与卡密清单（computePairs）都走这里，保证「所见即所发」。
+    function effectiveEntries() {
+        var list = uniqueEntries(mcList.value), seen = {};
+        list.forEach(function (e) { seen[e.key] = true; });
+        var entries = (lastRemote && lastRemote.entries) || null;
+        if (!entries) return list;
+        Object.keys(entries).forEach(function (ncard) {
+            if (lastRemote.revoked[ncard]) return; // 线上已吊销：不进清单条目（吊销优先于白名单）
+            var e = entries[ncard], key = normalize(e && e.mc);
+            if (!key || seen[key]) return;
+            seen[key] = true;
+            list.push({ key: key, mc: group(key, 4), note: e.note || '', exp: e.exp || '', online: true });
+        });
+        return list;
+    }
+
+    // 有效条目 → 卡密清单行的纯计算（不触碰 DOM）：列表渲染、导出 CSV、交付文案三处共用。
     // 旧实现里导出 CSV / 生成交付文案都要调用 render() 重排整个结果列表，只为拿一份卡密，
     // 长台账下既浪费又会产生看不见的 DOM 副作用；这里拆出无副作用的计算函数。
     function computePairs() {
-        // 只处理有效机器码（4 组共 16 位）；无法识别的行被忽略，也不会进入在线清单
-        return uniqueEntries(mcList.value).map(function (e) {
-            return { mc: e.key, display: e.mc, card: makeCard(e.key), note: e.note, exp: e.exp || '' };
+        // 只处理有效机器码（4 组共 16 位）；无法识别的行被忽略，也不会进入线上清单
+        return effectiveEntries().map(function (e) {
+            return {
+                mc: e.key, display: e.mc, card: makeCard(e.key), note: e.note,
+                exp: e.exp || '', online: !!e.online
+            };
         });
     }
 
@@ -3809,7 +3838,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function render() {
         out.textContent = '';
         pairs = computePairs();
-        // 有筛选时只渲染匹配项；无筛选时行为与原先完全一致（标题仍是「生成结果（N 条）」）。
+        // 有筛选时只渲染匹配项；无筛选时行为与原先完全一致（标题仍是「卡密清单（N 条）」）。
         var visible = filterEntries(pairs);
         // 用 DocumentFragment 一次性插入：逐行 appendChild 到已挂载的 out 会触发多次重排，
         // 台账上千条时首屏渲染明显阻塞，且监听器与节点逐次挂载更慢。
@@ -3867,6 +3896,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 expEl.textContent = expired ? '已过期' : ('有效期至 ' + p.exp);
                 item.appendChild(expEl);
             }
+            // 来源徽标：这一行只存在于线上清单、台账输入框里没有（发布时会保留，续期时会自动认领进台账）。
+            if (p.online) {
+                var srcEl = document.createElement('span');
+                srcEl.className = 'lmt-online-badge';
+                srcEl.textContent = '线上';
+                srcEl.title = '来自线上清单（台账输入框未录入）；发布时会一并保留';
+                item.appendChild(srcEl);
+            }
             if (onlineStatus) {
                 var st = onlineStatus[p.mc] || 'notup';
                 var badge = document.createElement('span');
@@ -3881,13 +3918,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (visible.length === 0) {
             var empty = document.createElement('div');
             empty.className = 'empty';
-            empty.textContent = pairs.length === 0 ? '暂无结果，请先粘贴机器码。' : '没有匹配当前筛选的结果。';
+            empty.textContent = pairs.length === 0 ? '暂无条目：请在「机器码台账」里录入机器码（线上清单同步后也会出现在这里）。' : '没有匹配当前筛选的结果。';
             frag.appendChild(empty);
-            outTitle.textContent = pairs.length === 0 ? '生成结果' : ('生成结果（0/' + pairs.length + ' 条）');
+            outTitle.textContent = pairs.length === 0 ? '卡密清单' : ('卡密清单（0/' + pairs.length + ' 条）');
         } else if (filterText) {
-            outTitle.textContent = '生成结果（' + visible.length + '/' + pairs.length + ' 条）';
+            outTitle.textContent = '卡密清单（' + visible.length + '/' + pairs.length + ' 条）';
         } else {
-            outTitle.textContent = '生成结果（' + pairs.length + ' 条）';
+            outTitle.textContent = '卡密清单（' + pairs.length + ' 条）';
         }
         out.appendChild(frag);
         buildManifest();
@@ -3900,8 +3937,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) render();
     });
     mcList.addEventListener('input', function () {
-        // 作者已人工改动台账：此后的自动同步不写入台账，只提示「线上新增 N 条未并入」（FR-03 第 4 条）
-        ledgerTouched = true;
+        // 台账输入按 300ms 防抖落盘并刷新清单；线上同步不改写输入框，故无需「编辑中不并入」这类状态
         scheduleSave();
     });
     // 吊销框与台账框一致加 300ms 防抖：否则每敲一个字符都要全量重建清单并重算签名，长名单下输入明显卡顿。
@@ -4096,8 +4132,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     });
     // 同步失败时的唯一兜底入口（同步正常时该按钮不渲染）。
     document.getElementById('refresh-btn').addEventListener('click', function () { syncOnlineManifest(); });
-    // 自动并入属于改数据，必须可逆：仅在本次真的并入过条目时出现，撤销后即消失（一次性）。
-    document.getElementById('undo-btn').addEventListener('click', undoAutoMerge);
     // 台账快照：只保留「恢复所选时间点」；留存与下载已按 §5.9 删除（整份数据要带走请用「导出台账」）。
     document.getElementById('snapshot-restore-btn').addEventListener('click', function () {
         var b = document.getElementById('snapshot-restore-btn');
@@ -4259,13 +4293,17 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         ed25519Sign: ed25519Sign, ed25519Verify: ed25519Verify,
         MANIFEST_VER: MANIFEST_VER, EXPECTED_PUBKEY: EXPECTED_PUBKEY, CARD_MAP_KEY: CARD_MAP_KEY,
         buildDeliverText: buildDeliverText,
-        // FR-03 线上清单自动同步：拉取（主源 → 备用源）/ 解析与验签 / 按机器码合并 / 回灌绑定 / 撤销
+        // FR-03 线上清单自动同步：拉取（主源 → 备用源）/ 解析与验签 / 按机器码合并 / 回灌绑定
         fetchOnlineManifest: fetchOnlineManifest, parseRemoteManifest: parseRemoteManifest,
-        syncOnlineManifest: syncOnlineManifest, applyRemote: applyRemote, undoAutoMerge: undoAutoMerge,
+        syncOnlineManifest: syncOnlineManifest, applyRemote: applyRemote,
         recomputeOnlineStatus: recomputeOnlineStatus, rehydrateCardMap: rehydrateCardMap,
+        effectiveEntries: effectiveEntries,
         MANIFEST_MIRRORS: MANIFEST_MIRRORS,
         getOnlineStatus: function () { return onlineStatus; },
-        getSyncMerged: function () { return syncMerged; },
+        getLastRemote: function () { return lastRemote; },
+        // 用例隔离：把「已同步的线上清单」清空，回到「本次会话尚未同步过」的初始状态。
+        // 否则上一用例的线上条目会作为「线上条目」继续出现在下一条用例的有效条目里。
+        resetLastRemote: function () { lastRemote = null; onlineStatus = {}; },
         setRevoke: function (t) { revokeList.value = t; },
         LEDGER_KEY: LEDGER_KEY, loadLedger: loadLedger, saveLedger: saveLedger, exportLedger: exportLedger,
         REVOKE_KEY: REVOKE_KEY, loadRevoke: loadRevoke, saveRevoke: saveRevoke, buildManifest: buildManifest,
@@ -4279,10 +4317,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         buildLedgerCsv: buildLedgerCsv, ledgerFileName: ledgerFileName,
         copyText: copyText, copyWithFeedback: copyWithFeedback, showManualCopy: showManualCopy,
         flashButton: flashButton, isIOSLike: isIOSLike, isMobileUA: isMobileUA,
-        // setLedger 是「程序化载入台账」的测试钩子：等同于换设备后读回来的台账，
-        // 因此一并复位「人工改过台账」标记，否则此后的自动同步会被上一个用例的输入事件挡住。
+        // setLedger 是「程序化载入台账」的测试钩子：等同于换设备后读回来的台账。
         getPairs: function () { return pairs; },
-        setLedger: function (t) { mcList.value = t; ledgerTouched = false; }, render: render,
+        setLedger: function (t) { mcList.value = t; }, render: render,
         // 仅供测试：清掉内存缓存，强制下次 loadCardMap 从 localStorage 重读
         //（回归守「落盘的机器码→卡密绑定必须能读回」，否则同一机器码重载后会重新发卡）
         resetCardMapCache: function () { cardMap = null; },

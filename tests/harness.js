@@ -1312,10 +1312,8 @@
       g().setPrivateKey(TEST_PRIV);
       var tip = q(doc, '#online-tip');
       var retry = q(doc, '#refresh-btn');
-      var undo = q(doc, '#undo-btn');
-      // 两个一次性入口在「未同步 / 同步正常」时都不渲染，只有失败或真的并入过才出现（§2.4 / §4.1）
+      // 「重试」是一次性入口：未同步 / 同步正常时都不渲染，只有失败才出现（§2.4）
       assert(retry.hidden, '尚未同步时「重试」不应出现');
-      assert(undo.hidden, '尚未并入任何条目时「撤销」不应出现');
 
       // 无头环境断网（--host-resolver-rules），同步必然失败。自动触发点（online / visibilitychange /
       // 登录成功）在无头 harness 里无法模拟，这里直接调用同一个入口函数，覆盖的仍是同一条链路。
@@ -1324,7 +1322,6 @@
       assert(/无法同步线上清单/.test(text(tip)), '同步失败必须给出原因，实际：' + text(tip));
       assert(/本机数据不受影响/.test(text(tip)), '失败提示应说明本机数据不受影响，实际：' + text(tip));
       assert(!retry.hidden, '同步失败时「重试」必须出现');
-      assert(undo.hidden, '没有并入任何条目时「撤销」不应出现');
 
       // 手动重试：点击后重新进入同步中，并再次收敛到失败结论（仍失败则「重试」保持可用）
       retry.click();
@@ -1463,9 +1460,47 @@
         });
       assertEq(merged3.cards.length, 1, '同一机器码两端各一张卡密时只能留一张（一机一卡）');
       assertEq(merged3.cards[0].card, 'BBBB-BBBB-BBBB-BBBB-BBBB', '应保留线上那张（已发布的线上绑定优先于本机缓存）');
-      assertEq(merged3.cards[0].note, '线上卡', '保留的条目应带线上那侧的字段');
+      // 没有基准（base）时逐字段取「非空优先」：备注本机非空 → 用本机的；有效期本机为空 → 用线上的。
+      assertEq(merged3.cards[0].note, '本机旧卡', '无基准时备注取本机非空值');
+      assertEq(merged3.cards[0].exp, '2027-01-01', '无基准时有效期本机为空，应沿用线上值');
       var dup3 = t.manifestUniqueness(merged3);
       assertEq(dup3.dupMc + dup3.dupCard, 0, '合并结果必须同时满足一机一卡与一卡一机（否则自检会拦下自己发的清单）');
+
+      // 回归（作者改完有效期却发不出去）：带基准的三方合并必须以「本机相对基准的改动」为准。
+      // base = 上次成功同步的线上清单（有效期 2027-01-01），本机把它改成 2028-12-31，
+      // 线上仍是旧值 → 线上没动过、本机动过 → 采用本机的 2028-12-31。
+      var baseExp = { byMc: { ABCDEFGHJKMNPQRS: 'BBBBBBBBBBBBBBBBBBBB' }, entries: { 'BBBBBBBBBBBBBBBBBBBB': { mc: 'ABCDEFGHJKMNPQRS', note: '线上卡', exp: '2027-01-01' } }, revoked: {} };
+      var merged4 = t.mergeWithRemote(
+        {
+          updated: '2026-10-14',
+          cards: [{ card: 'BBBB-BBBB-BBBB-BBBB-BBBB', mc: 'ABCD-EFGH-JKMN-PQRS', note: '线上卡', exp: '2028-12-31' }],
+          revoked: []
+        },
+        {
+          updated: '2026-10-15',
+          cards: [{ card: 'BBBB-BBBB-BBBB-BBBB-BBBB', mc: 'ABCD-EFGH-JKMN-PQRS', note: '线上卡', exp: '2027-01-01' }],
+          revoked: []
+        },
+        baseExp
+      );
+      assertEq(merged4.cards.length, 1, '三方合并后仍应只有一条');
+      assertEq(merged4.cards[0].exp, '2028-12-31', '本机改过的有效期不得被线上旧值覆盖（1.卡密有效期更改后线上清单没更新）');
+      assertEq(merged4.cards[0].note, '线上卡', '两端一致时备注原样保留');
+      // 反向：线上动了、本机没动 → 采用线上的新值，本机不得把线上更新挡回去。
+      var merged5 = t.mergeWithRemote(
+        {
+          updated: '2026-10-14',
+          cards: [{ card: 'BBBB-BBBB-BBBB-BBBB-BBBB', mc: 'ABCD-EFGH-JKMN-PQRS', note: '线上卡', exp: '2027-01-01' }],
+          revoked: []
+        },
+        {
+          updated: '2026-10-15',
+          cards: [{ card: 'BBBB-BBBB-BBBB-BBBB-BBBB', mc: 'ABCD-EFGH-JKMN-PQRS', note: '线上卡', exp: '2029-06-30' }],
+          revoked: []
+        },
+        { byMc: { ABCDEFGHJKMNPQRS: 'BBBBBBBBBBBBBBBBBBBB' }, entries: { 'BBBBBBBBBBBBBBBBBBBB': { mc: 'ABCDEFGHJKMNPQRS', note: '线上卡', exp: '2027-01-01' } }, revoked: {} }
+      );
+      assertEq(merged5.cards[0].exp, '2029-06-30', '本机未改动时应接受线上的新有效期');
     });
 
     test('cardgen/发布前自检：重复机器码与重复卡密都必须被拦下（FR-08 / FR-11）', async function () {
@@ -1503,7 +1538,7 @@
       assert(/违反一卡一机/.test(r2.msg), '自检结论应指明违反一卡一机，实际：' + r2.msg);
     });
 
-    test('cardgen/线上清单并入：新增条目写进台账 + 状态徽标 + 一次性撤销（FR-03）', async function () {
+    test('cardgen/线上清单同步：条目只进清单不进台账输入框 + 「线上」来源徽标 + 状态徽标（FR-03）', async function () {
       var t = g();
       t.setPrivateKey(TEST_PRIV);
       t.setFilterText('');
@@ -1535,17 +1570,31 @@
       assertEq(t.makeCard('ABCDEFGHJKMNPQRS'), onlineCard, '同步后本机对同一机器码应复用线上那张卡密');
 
       var lines = q(doc, '#mc-list').value;
-      assert(/STVW-XYZ0-1234-5678/.test(lines), '线上新增的机器码应并入台账');
-      assert(/WXYZ-0123-4567-89AB/.test(lines), '线上新增的机器码应全部并入');
-      assert(/李四/.test(lines), '并入时应带上线上备注');
-      assert(/2027-01-01/.test(lines), '并入时应带上线上有效期');
+      // 诉求 2：线上清单的条目不再写进「机器码台账」输入框——输入框永远只保留作者自己录的内容。
+      assertEq(lines, 'ABCD-EFGH-JKMN-PQRS,张三',
+        '线上新增条目不得写进台账输入框（输入框只保留作者录入的内容）');
+
+      // 但仍要看得见、管得着：有效条目 = 台账 ∪ 线上条目，线上那两条带 online 标记。
+      var eff = t.effectiveEntries();
+      assertEq(eff.length, 3, '有效条目应为「台账 1 条 + 线上 2 条」，实际：' + eff.length);
+      var onlineKeys = eff.filter(function (e) { return e.online; }).map(function (e) { return e.key; }).sort();
+      assertEq(onlineKeys.length, 2, '应恰好有 2 条标记为「线上」');
+      assertEq(onlineKeys.join(','), 'STVWXYZ012345678,WXYZ0123456789AB', '标记为「线上」的应是台账里没有的那两条');
+      var li = null;
+      eff.forEach(function (e) { if (e.key === 'STVWXYZ012345678') li = e; });
+      assert(li, '线上条目应出现在有效条目里');
+      assertEq(li.note, '李四', '线上条目应带上线上备注');
+      assertEq(li.exp, '2027-01-01', '线上条目应带上线上有效期');
+
+      // 结果列表：每行一个来源徽标，其中两条为「线上」
+      assertEq(qa(doc, '#out .lmt-online-badge').length, 2, '列表里应有 2 行带「线上」来源徽标');
+      assertEq(qa(doc, '#out .lmt-online-badge')[0].textContent, '线上', '来源徽标文案应为「线上」');
 
       var tip = text(q(doc, '#online-tip'));
-      assert(/线上新增 2 条已并入/.test(tip), '状态条应报告并入条数，实际：' + tip);
+      assert(/线上新增 2 条/.test(tip), '状态条应报告线上新增条数，实际：' + tip);
+      assert(!/已并入/.test(tip), '状态条不应再说「已并入」（线上条目不再写进台账输入框），实际：' + tip);
       assert(/已上传 3/.test(tip), '三条都在线上 → 状态条应显示已上传 3，实际：' + tip);
 
-      var undo = q(doc, '#undo-btn');
-      assert(!undo.hidden, '发生过自动并入后「撤销」应出现');
       var badges = qa(doc, '#out .status-badge');
       assertEq(badges.length, 3, '同步成功过之后每行都应带在线状态徽标');
       badges.forEach(function (b) {
@@ -1553,13 +1602,8 @@
         assertEq(text(b), '已上传', '徽标文案应为「已上传」');
       });
 
-      // 一次性撤销：本次并入的两条被移除，本机原有那条保留，撤销入口随之消失
-      undo.click();
-      var after = q(doc, '#mc-list').value;
-      assert(/ABCD-EFGH-JKMN-PQRS/.test(after), '撤销只该移除本次自动并入的条目，本机原有台账不得被删');
-      assert(!/STVW-XYZ0-1234-5678/.test(after) && !/WXYZ-0123-4567-89AB/.test(after), '撤销后本次并入的条目应被移除');
-      assert(undo.hidden, '撤销是一次性入口，用过即消失');
-      assert(/已撤销本次自动并入的 2 条/.test(text(q(doc, '#online-tip'))), '撤销应有明确反馈，实际：' + text(q(doc, '#online-tip')));
+      // 「撤销」已按 §5.9 删除：线上条目不再改动台账，故不再有需要撤销的写入动作。
+      assertEq(doc.querySelector('#undo-btn'), null, '「撤销」入口应已删除（线上条目不再写进台账，无可撤销的动作）');
     });
 
     // ============================================================
@@ -2045,6 +2089,11 @@
 
     for (var i = 0; i < CASES.length; i++) {
       var c = CASES[i];
+      // 用例隔离：卡密生成器把「最近一次同步成功的线上清单」作为会话级状态保留
+      // （线上条目 = 台账 ∪ 线上清单，见 effectiveEntries）。不逐条清空的话，
+      // 上一条用例同步来的线上条目会以「线上条目」身份继续出现在下一条用例的有效条目里，
+      // 让「本地清单应有 N 张卡密」这类断言凭空多出几条。
+      if (C.__cardGen && C.__cardGen.resetLastRemote) C.__cardGen.resetLastRemote();
       try {
         await c.fn();
         results.push({ name: c.name, ok: true });
