@@ -1,23 +1,23 @@
 {
-  "updated": "2026-10-14",
+  "updated": "2026-10-15",
   "apps": {
     "lmt-layout": {
-      "versionCode": 10,
-      "versionName": "1.9",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.9/lmt-layout-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk"],
-      "sha256": "b6df644bbbd2471857758ac863a1fed4ed3d0d890e73d74cb87947da32699a02",
-      "size": 105354,
-      "notes": "自动发版：共享核心随 lmt-cards 01015cb6 更新"
+      "versionCode": 11,
+      "versionName": "1.10",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.10/lmt-layout-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=11", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=11"],
+      "sha256": "c8150c0cbdb050ad6220722442941016402919522e8844c7fc51ddf1c048d592",
+      "size": 106462,
+      "notes": "自动发版：共享核心随 lmt-cards d10e603d 更新"
     },
     "lmt-cardgen": {
-      "versionCode": 10,
-      "versionName": "1.9",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.9/lmt-cardgen-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk"],
-      "sha256": "599f8f1a016fe8b790da88d6723e0d0dc0360c1b359e2014078fdacd85098a00",
-      "size": 50543,
-      "notes": "自动发版：共享核心随 lmt-cards 01015cb6 更新"
+      "versionCode": 11,
+      "versionName": "1.10",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.10/lmt-cardgen-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=11", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=11"],
+      "sha256": "07c95b663104e370b8cbb41a846868356b7360447395432c6b3100739817d475",
+      "size": 52719,
+      "notes": "自动发版：共享核心随 lmt-cards d10e603d 更新"
     }
   }
 }
