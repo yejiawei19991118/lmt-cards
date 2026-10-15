@@ -42,6 +42,10 @@
     if (a !== b) fail((msg || '结构不相等') + '：期望 ' + b + '，实际 ' + a);
   }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // 文件读取类用例（FileReader 读文件 / Image 解码）的等待上限。无头运行开了
+  // --virtual-time-budget 快进定时器，虚拟时钟推进远快于真实时间，4000ms 的窗口在 CI 上
+  // 折算成的真实时间很短，负载抖动时偶发「等待超时」误报（本机几乎不复现，故这类等待统一放宽）。
+  var FILE_WAIT_MS = 15000;
   async function until(fn, timeoutMs, label) {
     var deadline = Date.now() + (timeoutMs || 3000);
     for (;;) {
@@ -299,7 +303,7 @@
         var input = q(doc, jobs[i][0]);
         var label = q(doc, 'label[for="' + jobs[i][0].slice(1) + '"]');
         attachFile(L, input, 'pic' + i + '.png', 'image/png', pngBytes(L, 120, 90));
-        await until(function () { return /^已上传：/.test(text(label)); }, 4000, jobs[i][0] + ' 上传反馈');
+        await until(function () { return /^已上传：/.test(text(label)); }, FILE_WAIT_MS, jobs[i][0] + ' 上传反馈');
         var box = q(doc, jobs[i][1]);
         var cv = box.querySelector('canvas.preview-photo');
         assert(cv, jobs[i][0] + ' 应把照片绘制进预览框');
@@ -312,7 +316,7 @@
       var input = q(doc, '#upload-right');
       var label = q(doc, 'label[for="upload-right"]');
       attachFile(L, input, 'broken.png', 'image/png', new Uint8Array([1, 2, 3, 4, 5]));
-      await until(function () { return /失败|异常/.test(text(label)); }, 4000, '损坏文件反馈');
+      await until(function () { return /失败|异常/.test(text(label)); }, FILE_WAIT_MS, '损坏文件反馈');
       assert(/读取失败|尺寸异常/.test(text(label)), '损坏文件应提示失败，实际：' + text(label));
     });
 
@@ -524,7 +528,7 @@
       var input = q(doc, '#import-file');
       attachFile(C, input, 'ledger.csv', 'text/csv', new TextEncoder().encode(csv));
       var btn = q(doc, '#import-btn');
-      await until(function () { return /已导入|无新机器码|读取失败/.test(text(btn)); }, 4000, '导入反馈');
+      await until(function () { return /已导入|无新机器码|读取失败/.test(text(btn)); }, FILE_WAIT_MS, '导入反馈');
       assertEq(text(btn), '已导入 +2', '应反馈导入条数');
       assert(/ABCD-EFGH-JKMN-PQRS/.test(q(doc, '#mc-list').value), '台账应写入机器码');
       assertEq(input.value, '', '导入后应清空 input，允许重复导入同一文件');
@@ -541,7 +545,7 @@
       var restoreInput = q(doc, '#restore-file');
       var rbtn = q(doc, '#restore-btn');
       attachFile(C, restoreInput, 'bad.json', 'application/json', new TextEncoder().encode('这不是备份'));
-      await until(function () { return text(rbtn) !== '恢复备份'; }, 4000, '格式错误反馈');
+      await until(function () { return text(rbtn) !== '恢复备份'; }, FILE_WAIT_MS, '格式错误反馈');
       assertEq(text(rbtn), '文件格式不对', '非本工具备份应提示格式不对');
       closeLayers(doc);
 
@@ -550,7 +554,7 @@
         ledger: 'WXYZ-0123-4567-89AB,王五', revoke: 'H7S0-6M3M-GMA1-Y7T2-VNRM'
       });
       attachFile(C, restoreInput, 'ok.json', 'application/json', new TextEncoder().encode(backup));
-      await until(function () { return /已恢复|已合并/.test(text(rbtn)); }, 4000, '恢复反馈');
+      await until(function () { return /已恢复|已合并/.test(text(rbtn)); }, FILE_WAIT_MS, '恢复反馈');
       assert(/已恢复|已合并/.test(text(rbtn)), '恢复应给出反馈，实际：' + text(rbtn));
       assert(/WXYZ-0123-4567-89AB/.test(q(doc, '#mc-list').value), '恢复后台账应包含备份里的机器码');
       assert(/H7S0-6M3M-GMA1-Y7T2-VNRM/.test(q(doc, '#revoke-list').value), '恢复后吊销名单应取并集');
