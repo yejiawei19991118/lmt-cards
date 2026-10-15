@@ -936,7 +936,7 @@
             </div>
 
             <label class="toggle-safe-zone">
-                <input type="checkbox" id="toggle-safe" checked=""> 显示字幕安全区辅助线
+                <input type="checkbox" id="toggle-safe" checked=""> 显示安全区辅助线
             </label>
         </section>
 
@@ -1076,10 +1076,10 @@
                     <div class="main-area-label">主体位置</div>
                 </div>
 
-                <div class="zone-text text-top-safe">字幕安全区</div>
-                <div class="zone-text text-bottom-safe">字幕安全区</div>
-                <div class="zone-text text-left-safe">字幕安全区</div>
-                <div class="zone-text text-right-safe">字幕安全区</div>
+                <div class="zone-text text-top-safe">安全区内</div>
+                <div class="zone-text text-bottom-safe">安全区内</div>
+                <div class="zone-text text-left-safe">安全区内</div>
+                <div class="zone-text text-right-safe">安全区内</div>
 
                 <div class="zone-text text-outside-top">超出安全区域</div>
                 <div class="zone-text text-outside-bottom">超出安全区域</div>
@@ -1340,10 +1340,24 @@
 
         function parseManifest(data) {
             var cards = {}, revoked = {}, cardList = [], revokeList = [], i;
+            // 卡密 → 有效期（YYYY-MM-DD）。清单条目没写有效期 = 长期有效。
+            var expMap = {};
             var list = (data && data.cards) || [];
             for (i = 0; i < list.length; i++) {
-                var c = normalize(typeof list[i] === 'string' ? list[i] : (list[i] && list[i].card));
+                var ent = list[i];
+                var c = normalize(typeof ent === 'string' ? ent : (ent && ent.card));
                 if (c) { cards[c] = true; cardList.push(c); }
+                // 新版清单把有效期写在条目对象上：cards:[{card, mc, note, exp}]
+                if (c && ent && typeof ent === 'object' && ent.exp) expMap[c] = String(ent.exp);
+            }
+            // 兼容旧版清单：有效期写在顶层 exp 映射（{卡密: 日期}）里
+            var topExp = (data && data.exp) || null;
+            if (topExp && typeof topExp === 'object') {
+                for (var k in topExp) {
+                    if (!Object.prototype.hasOwnProperty.call(topExp, k)) continue;
+                    var ck = normalize(k), cv = String(topExp[k] == null ? '' : topExp[k]).trim();
+                    if (ck && cv) expMap[ck] = cv;
+                }
             }
             var rev = (data && data.revoked) || [];
             for (i = 0; i < rev.length; i++) {
@@ -1355,7 +1369,18 @@
             // 归一化后的有序数组参与载荷（卡密已去分隔符、转大写），故签名与分组写法无关。
             var sig = (data && typeof data.sig === 'string') ? data.sig : '';
             var verified = !!sig && constEq(sig.toLowerCase(), manifestSignature(updated, cardList, revokeList));
-            return { updated: updated, cards: cards, revoked: revoked, verified: verified };
+            return { updated: updated, cards: cards, revoked: revoked, exp: expMap, verified: verified };
+        }
+
+        // 有效期判定（与「卡密生成器」同一口径）：只有 YYYY-MM-DD 且严格早于今天才算过期；
+        // 空值 / 无法解析的值一律视为长期有效，避免清单里写错格式反而把用户锁死。
+        function isExpired(exp) {
+            var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(exp == null ? '' : exp).trim());
+            if (!m) return false;
+            var d = new Date();
+            var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+            var today = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+            return m[1] + '-' + m[2] + '-' + m[3] < today;
         }
 
         // 拉取清单；url 传 '' 则清空（回到纯离线）。任何失败都返回 null（是否放行交由 onlineDecision 判定）。
@@ -1418,14 +1443,16 @@
         //   · 未配置 MANIFEST_URL：不启用在线清单，纯本地校验（decided=false）
         //   · 已配置但清单未加载成功（断网 / 拉取失败）：一律拒绝激活，
         //     避免「断网即可绕过白名单」；已激活用户不受影响（isActivated 有 manifest 守卫）
-        //   · 清单已加载：按白名单 / 吊销名单判定
+        //   · 清单已加载：按白名单 / 吊销名单 / 有效期 判定
         function onlineDecision(card) {
-            if (!MANIFEST_URL) return { decided: false, ok: true, msg: '' };
-            if (!manifest) return { decided: true, ok: false, msg: manifestSigInvalid ? '在线清单签名校验失败，请联系作者更新清单' : '无法连接校验服务器，请联网后重试' };
+            if (!MANIFEST_URL) return { decided: false, ok: true, msg: '', exp: '' };
+            if (!manifest) return { decided: true, ok: false, msg: manifestSigInvalid ? '在线清单签名校验失败，请联系作者更新清单' : '无法连接校验服务器，请联网后重试', exp: '' };
             var c = normalize(card);
-            if (manifest.revoked[c]) return { decided: true, ok: false, msg: '该卡密已被吊销' };
-            if (manifest.cards[c]) return { decided: true, ok: true, msg: '' };
-            return { decided: true, ok: false, msg: '卡密不在有效清单中' };
+            if (manifest.revoked[c]) return { decided: true, ok: false, msg: '该卡密已被吊销', exp: '' };
+            if (!manifest.cards[c]) return { decided: true, ok: false, msg: '卡密不在有效清单中', exp: '' };
+            var exp = (manifest.exp && manifest.exp[c]) || '';
+            if (isExpired(exp)) return { decided: true, ok: false, msg: '卡密已过期（有效期至 ' + exp + '）', exp: exp };
+            return { decided: true, ok: true, msg: '', exp: exp };
         }
 
         // ---------- 授权状态（持久化到 localStorage） ----------
@@ -1436,24 +1463,26 @@
         function writeStat(o) { var ls = storage(); if (ls) { try { ls.setItem(STAT_KEY, JSON.stringify(o)); } catch (e) {} } }
         function clearStat() { var ls = storage(); if (ls) { try { ls.removeItem(STAT_KEY); } catch (e) {} } }
 
-        // 已激活 = 有记录 且 记录的机器码与当前机器一致 且 卡密校验通过 且（若已联网）未被名单吊销
+        // 已激活 = 有记录 且 记录的机器码与当前机器一致 且 卡密校验通过 且 未过期 且（若已联网）未被名单吊销
         // 「记录里的机器码与当前机器不一致」正是“一卡一机”的核心：把存储拷到别的机器即失效
+        // 「有效期」写进记录：一卡一机的前提下，过期判定在断网时也能生效（不必每次联网才知道已过期）
         function isActivated() {
             var rec = readStat();
             if (!rec || !rec.mc || !rec.card) return false;
             if (rec.mc !== machineCode()) return false;
             if (!hmacOk(rec.card)) return false;
-            if (manifest && !onlineDecision(rec.card).ok) return false; // 在线清单判定失效（如已吊销）
+            if (isExpired(rec.exp)) return false;                     // 有效期已过（离线也拦）
+            if (manifest && !onlineDecision(rec.card).ok) return false; // 在线清单判定失效（如已吊销 / 已过期）
             return true;
         }
         function activate(card) {
             var c = normalize(card);
             if (!c) return { ok: false, msg: '请输入卡密' };
             if (!hmacOk(c)) return { ok: false, msg: '卡密不正确，或与本机不匹配' };
-            var d = onlineDecision(c); // 若清单已加载，做白名单/吊销判定
+            var d = onlineDecision(c); // 若清单已加载，做白名单/吊销/有效期 判定
             if (!d.ok) return { ok: false, msg: d.msg };
-            writeStat({ mc: machineCode(), card: c });
-            return { ok: true, msg: '激活成功' + (d.decided ? '（已联网校验）' : '（离线校验）'), online: d.decided };
+            writeStat({ mc: machineCode(), card: c, exp: d.exp || '' });
+            return { ok: true, msg: '激活成功' + (d.decided ? '（已联网校验）' : '（离线校验）'), online: d.decided, exp: d.exp || '' };
         }
         function deactivate() { clearStat(); }
 
@@ -1680,7 +1709,8 @@
                     manifestSyncing = false;
                     updateNetStatus();
                     var r = activate(cardInput ? cardInput.value : '');
-                    setMsg(r.msg, r.ok ? 'ok' : 'error');
+                    // 清单里写了有效期的卡：把「有效期至 X」直接回显，让用户知道这张卡什么时候到期
+                    setMsg(r.ok && r.exp ? (r.msg + '，有效期至 ' + r.exp) : r.msg, r.ok ? 'ok' : 'error');
                     if (actBtn) { actBtn.disabled = false; actBtn.classList.remove('is-busy'); }
                     if (r.ok) unlock();
                 }, function () {
@@ -1733,7 +1763,8 @@
             verifyCard: verifyCard, isActivated: isActivated, activate: activate,
             deactivate: deactivate, boot: boot,
             setManifestUrl: setManifestUrl, getManifest: getManifest,
-            fetchManifest: fetchManifest, onlineDecision: onlineDecision,
+            fetchManifest: fetchManifest, onlineDecision: onlineDecision, isExpired: isExpired,
+            parseManifest: parseManifest,
             copyText: copyText, showManualCopy: showManualCopy,
             copyWithFeedback: copyWithFeedback, flashButton: flashButton, isIOSLike: isIOSLike,
             lockScroll: lockScroll, unlockScroll: unlockScroll, onEsc: onEsc

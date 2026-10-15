@@ -488,6 +488,80 @@
       assertEq(lic.getManifest(), null, '收尾后应清空清单，回到纯离线校验');
     });
 
+    test('layout/在线清单：有效期真的生效（过期拒绝激活、旧格式兼容、离线也拦）', async function () {
+      var lic = L.__license;
+      var gen = C.__cardGen;
+      // 用本机真实机器码对应的卡密：这样 activate() 才既有白名单通过、又有一卡一机的本地校验通过
+      var mc = lic.machineCode();
+      var card = lic.makeCard(mc);
+      var cardNorm = lic.normalize(card);
+      var updated = '2026-10-14';
+      lic.setManifestUrl('https://example.invalid/cards.json');
+
+      // 1) 新版清单：条目带上名称 / 机器码 / 有效期；未过期 → 通过验签并通过判定
+      var cards1 = [{ card: cardNorm, mc: mc, note: '张三', exp: '2099-12-31' }];
+      var u1 = blobUrl(L, {
+        updated: updated, cards: cards1, revoked: [],
+        sig: gen.manifestSignature(updated, cards1, [])
+      });
+      await lic.fetchManifest(u1);
+      L.URL.revokeObjectURL(u1);
+      var m1 = lic.getManifest();
+      assert(m1 && m1.verified === true, '带名称/有效期的清单条目仍应能通过验签（有效期不参与签名载荷）');
+      assertEq(m1.exp[cardNorm], '2099-12-31', '清单条目里的有效期应被主程序解析出来');
+      assertEq(lic.onlineDecision(card).ok, true, '未过期的卡密应通过在线判定');
+
+      // 2) 有效期已过 → 拒绝激活，且提示必须写明有效期
+      var cards2 = [{ card: cardNorm, mc: mc, note: '张三', exp: '2000-01-01' }];
+      var u2 = blobUrl(L, {
+        updated: updated, cards: cards2, revoked: [],
+        sig: gen.manifestSignature(updated, cards2, [])
+      });
+      await lic.fetchManifest(u2);
+      L.URL.revokeObjectURL(u2);
+      var d2 = lic.onlineDecision(card);
+      assertEq(d2.ok, false, '已过期的卡密应被拒绝');
+      assert(/有效期/.test(d2.msg) && /2000-01-01/.test(d2.msg), '过期提示应写明有效期，实际：' + d2.msg);
+      assertEq(lic.activate(card).ok, false, 'activate 也必须拒绝已过期的卡密');
+
+      // 3) 旧版清单：有效期写在顶层 exp 映射里，同样生效（向下兼容已发布的清单格式）
+      var legacyExp = {}; legacyExp[cardNorm] = '2000-01-01';
+      var u3 = blobUrl(L, {
+        updated: updated, cards: [cardNorm], revoked: [],
+        exp: legacyExp,
+        sig: gen.manifestSignature(updated, [cardNorm], [])
+      });
+      await lic.fetchManifest(u3);
+      L.URL.revokeObjectURL(u3);
+      var m3 = lic.getManifest();
+      assertEq(m3.exp[cardNorm], '2000-01-01', '旧版顶层 exp 映射应被解析（实际 exp=' + JSON.stringify(m3.exp) + '）');
+      assertEq(lic.onlineDecision(card).ok, false, '旧版顶层 exp 映射同样应判为过期');
+
+      // 4) 有效期写进激活记录：清空清单（模拟断网）后，过期判定依然生效
+      var u4 = blobUrl(L, {
+        updated: updated, cards: cards1, revoked: [],
+        sig: gen.manifestSignature(updated, cards1, [])
+      });
+      await lic.fetchManifest(u4);
+      L.URL.revokeObjectURL(u4);
+      var act = lic.activate(card);
+      assertEq(act.ok, true, '未过期的卡密应能激活');
+      assertEq(act.exp, '2099-12-31', '激活结果应回带有效期（界面据此提示到期时间）');
+      assertEq(lic.isActivated(), true, '前置：激活记录应生效');
+      lic.setManifestUrl('');
+      await lic.fetchManifest('');
+      assertEq(lic.getManifest(), null, '前置：应回到纯离线');
+      assertEq(lic.isActivated(), true, '离线且未过期时仍应保持激活');
+
+      // 5) 改成「已过期」的记录：离线也应立刻失效，不能靠断网绕过有效期
+      var rec = JSON.parse(L.localStorage.getItem('lmt_license'));
+      rec.exp = '2000-01-01';
+      L.localStorage.setItem('lmt_license', JSON.stringify(rec));
+      assertEq(lic.isActivated(), false, '记录里的有效期已过，离线也必须判定为未激活');
+
+      lic.deactivate(); // 收尾：清掉激活记录，不影响后续用例（后续用例会重新激活）
+    });
+
     // ============================================================
     // 新增功能：草稿箱 / 批量出图（自研 ZIP） / 自定义模板 / 记忆 + 文案库
     // ============================================================
@@ -806,7 +880,9 @@
       var obj = JSON.parse(out.value);
       assertMatch(obj.updated, /^\d{4}-\d{2}-\d{2}$/, 'updated 应为本地日期');
       assertEq(obj.cards.length, 1, '白名单应有 1 张卡密');
-      assertEq(obj.cards[0], g().makeCard('ABCDEFGHJKMNPQRS'), '白名单应是台账对应的卡密');
+      assertEq(obj.cards[0].card, g().makeCard('ABCDEFGHJKMNPQRS'), '白名单应是台账对应的卡密');
+      assertEq(obj.cards[0].mc, 'ABCD-EFGH-JKMN-PQRS', '白名单条目应带分组机器码，便于按机器码排查');
+      assertEq(obj.cards[0].note, '张三', '白名单条目应带名称（备注），清单里能看到是谁');
       assertEq(obj.revoked.length, 1, '吊销名单应有 1 张卡密');
       assertEq(obj.revoked[0], 'H7S0-6M3M-GMA1-Y7T2-VNRM', '吊销名单应保留分组写法');
       assertEq(obj.sig, g().manifestSignature(obj.updated, obj.cards, obj.revoked), 'sig 必须与算法一致（主程序据此验签）');
@@ -1035,26 +1111,52 @@
         '激活页地址应与仓库里的 docs/activate.html 对应');
     });
 
-    test('cardgen/交付图：条数决定尺寸、二维码真的画在图上、文件名与按钮反馈', async function () {
+    test('cardgen/交付图：一卡一图（720×360）、二维码真的画在图上、多张打包 ZIP', async function () {
       var t = g();
-      assertEq(t.buildDeliverImage([]), null, '空列表不应出图');
       assertEq(t.buildDeliverImage(null), null, '无参数不应出图');
+      assertEq(t.buildDeliverImage({}), null, '缺卡密不应出图');
 
-      var one = t.buildDeliverImage([{ mc: 'ABCD-EFGH-JKMN-PQRS', card: t.makeCard('ABCDEFGHJKMNPQRS'), note: '张三', exp: '' }]);
+      var p1 = { mc: 'ABCD-EFGH-JKMN-PQRS', card: t.makeCard('ABCDEFGHJKMNPQRS'), note: '张三', exp: '' };
+      var one = t.buildDeliverImage(p1);
       assert(one, '单条应出图');
       assertEq(one.width, 720, '交付图宽度固定 720');
-      var two = t.buildDeliverImage([
-        { mc: 'ABCD-EFGH-JKMN-PQRS', card: 'XXXX-XXXX-XXXX-XXXX-XXXX', note: '张三', exp: '2027-01-01' },
-        { mc: 'STVW-XYZ0-1234-5678', card: 'YYYY-YYYY-YYYY-YYYY-YYYY', note: '', exp: '' }
-      ]);
-      assertEq(two.width, 720, '两条交付图宽度仍是 720');
-      assertEq(two.height - one.height, 236, '每多一条，交付图高度应增加一个信息块');
+      assertEq(one.height, 360, '单张交付图高度固定 360（一卡一图，尺寸不随条数变化）');
+
+      var two = t.buildDeliverImage({ mc: 'STVW-XYZ0-1234-5678', card: 'YYYY-YYYY-YYYY-YYYY-YYYY', note: '李四', exp: '2027-01-01' });
+      assertEq(two.width, 720, '第二条仍是同一尺寸 720');
+      assertEq(two.height, 360, '第二条高度同样是 360，不再把多条挤进一张长图');
+
       // 左上角是二维码：必须真的画出深色模块，否则「出图成功」只是画了一张白板
       var px = one.getContext('2d').getImageData(40, 40, 184, 184).data;
       var dark = 0;
       for (var i = 0; i < px.length; i += 4) if (px[i] < 128) dark++;
       assert(dark > 50, '交付图应把二维码画进左上角（深色像素数 ' + dark + '）');
-      assertMatch(t.deliverImageName(), /^lmt-deliver-\d{8}-\d{6}\.png$/, '交付图文件名应带时间戳');
+
+      assertMatch(t.deliverImageName(), /^lmt-deliver-\d{8}-\d{6}\.png$/, '单张交付图文件名应带时间戳');
+      assertMatch(t.deliverImageName('zip'), /^lmt-deliver-\d{8}-\d{6}\.zip$/, '批量打包文件名应为 .zip');
+      assertEq(t.deliverSingleName({ mc: 'ABCD-EFGH-JKMN-PQRS', note: '张三' }),
+        'ABCD-EFGH-JKMN-PQRS-张三', '单张文件名应为「机器码-名称」，客户一眼能对上人');
+      var used = {};
+      assertEq(t.deliverSingleName({ mc: 'ABCD-EFGH-JKMN-PQRS', note: '张三' }, used),
+        'ABCD-EFGH-JKMN-PQRS-张三', '首个重名不追加序号');
+      assertEq(t.deliverSingleName({ mc: 'ABCD-EFGH-JKMN-PQRS', note: '张三' }, used),
+        'ABCD-EFGH-JKMN-PQRS-张三(2)', '重名应自动加序号，避免 ZIP 内互相覆盖');
+
+      // 多张 → 一个 ZIP（零第三方依赖的 store 模式打包）
+      var zip = await t.buildDeliverZip([p1, { mc: 'STVW-XYZ0-1234-5678', card: 'YYYY-YYYY-YYYY-YYYY-YYYY', note: '李四', exp: '2027-01-01' }]);
+      assert(zip && zip.count === 2, '两条应打包成含 2 个文件的 ZIP，实际 ' + JSON.stringify(zip && zip.count));
+      assert(zip.bytes instanceof C.Uint8Array, 'ZIP 内容应为 Uint8Array');
+      assertEq(zip.bytes[0] | (zip.bytes[1] << 8) | (zip.bytes[2] << 16) | (zip.bytes[3] << 24),
+        0x04034b50, 'ZIP 应以本地文件头签名 0x04034b50 开头');
+      // 文件名以 UTF-8 写进 ZIP（含中文名称，各平台解压都不乱码）
+      var want = new C.TextEncoder().encode('ABCD-EFGH-JKMN-PQRS-张三.png');
+      var hit = false;
+      for (var j = 0; j + want.length <= zip.bytes.length && !hit; j++) {
+        var same = true;
+        for (var k = 0; k < want.length; k++) if (zip.bytes[j + k] !== want[k]) { same = false; break; }
+        if (same) hit = true;
+      }
+      assert(hit, 'ZIP 内应包含「机器码-名称.png」文件名');
 
       // 目标选择：没有勾选就按当前筛选结果出图
       g().setLedger('ABCD-EFGH-JKMN-PQRS,张三');
@@ -1066,11 +1168,17 @@
       t.setFilterText('');
       t.render();
 
-      // 按钮：点击后必须立刻给出可见反馈（安卓壳写相册 / PWA 走下载）
+      // 按钮：1 条直出 PNG；多条打包 ZIP。两条路径都必须立刻给出可见反馈。
       var btn = q(doc, '#deliver-img-btn');
       btn.click();
-      assertMatch(text(btn), /^(已保存到相册|已导出|已存前 20 条|已导出前 20 条)$/,
-        '交付图按钮点击后应有反馈，实际：' + text(btn));
+      assertMatch(text(btn), /^(已保存到相册|已导出)$/, '单条交付图点击后应有反馈，实际：' + text(btn));
+
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三\nSTVW-XYZ0-1234-5678,李四');
+      q(doc, '#gen-btn').click();
+      btn.click();
+      assertMatch(text(btn), /^打包 \d+ 张…$/, '多条交付图应先提示打包进度，实际：' + text(btn));
+      await until(function () { return /^(已存 \d+ 张 ZIP|已导出 \d+ 张 ZIP|出图失败)$/.test(text(btn)); }, FILE_WAIT_MS, '打包完成');
+      assertMatch(text(btn), /^(已存 2 张 ZIP|已导出 2 张 ZIP)$/, '两条应打包成 ZIP 并给出反馈，实际：' + text(btn));
     });
 
     test('cardgen/有效期：解析规范化 / 加月夹紧月末 / 过期判定', async function () {
@@ -1090,6 +1198,20 @@
       assertEq(t.isExpired('2099-01-01'), false, '未来的日期不应判为过期');
       assertEq(t.isExpired(''), false, '空有效期应视为长期有效');
       assertEq(t.isExpired(null), false, '未设置有效期应视为长期有效');
+
+      // 台账第三列的有效期：必须真的写进清单条目（清单里能看到到期时间），并且可被筛选命中
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三,2027-12-31');
+      setValue(q(doc, '#revoke-list'), '', C, 'input');
+      q(doc, '#gen-btn').click();
+      var obj = t.buildManifestObj();
+      assertEq(obj.cards[0].exp, '2027-12-31', '台账第三列的有效期应写进清单条目，供主程序强制校验');
+      assertEq(obj.cards[0].note, '张三', '清单条目应同时带上名称');
+      t.setFilterText('2027-12-31');
+      assertEq(t.filterEntries(t.getPairs()).length, 1, '筛选应能按有效期命中');
+      t.setFilterText('张三');
+      assertEq(t.filterEntries(t.getPairs()).length, 1, '筛选应能按名称命中');
+      t.setFilterText('');
+      t.render();
     });
 
     test('cardgen/台账快照：空台账跳过 / 保存后可一键恢复', async function () {
@@ -1159,7 +1281,7 @@
       assertEq(rep.remoteCards, 1, '应统计线上白名单条数');
 
       // 本机吊销了仍在线上白名单里的卡密：必须报告冲突
-      setValue(q(doc, '#revoke-list'), local.cards[0], C, 'input');
+      setValue(q(doc, '#revoke-list'), local.cards[0].card, C, 'input');
       var rep2 = t.buildDiffReport(local, remote);
       assertEq(rep2.revokedButWhitelisted, 1, '已吊销但线上仍在白名单应计入冲突');
 
@@ -1169,6 +1291,16 @@
         updated: '2026-10-14', sig: new Array(65).join('a'), cards: local.cards.slice(), revoked: []
       });
       assertEq(rep3.consistent, true, '完全一致时 consistent 应为 true');
+
+      // 线上多出的条目必须能看出「是谁」：带名称与机器码，而不是只给一串卡密无从排查
+      var rep4 = t.buildDiffReport(local, {
+        updated: '2026-10-14', sig: new Array(65).join('a'),
+        cards: local.cards.concat([{ card: 'ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ', mc: 'ZZZZ-ZZZZ-ZZZZ-ZZZZ', note: '老王' }]),
+        revoked: []
+      });
+      assertEq(rep4.extraOnline.length, 1, '线上多出的条目应被报告');
+      assertEq(rep4.extraOnline[0].note, '老王', '线上多出条目应带名称，便于排查是哪位用户');
+      assertMatch(rep4.extraOnline[0].mc, /^ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ$/, '线上多出条目应带分组机器码');
     });
 
     test('cardgen/筛选与批量：筛选命中、勾选收集、批量吊销', async function () {
@@ -1198,9 +1330,43 @@
       assertEq(t.normalize(q(doc, '#revoke-list').value), t.normalize(checked[0]),
         '吊销框应写入被勾选的卡密（归一化后一致）');
 
+      // 统一作用域（名字要对得上行为）：批量动作一律「已勾选优先，否则当前筛选结果」。
+      // 旧实现里「吊销目标卡密 / 复制目标话术」只看筛选、「续期」更是无条件作用整份台账，
+      // 同一个界面状态下四个按钮各筛一套，正是「筛选名实不符」的根因。
+      setValue(q(doc, '#revoke-list'), '', C, 'input');
+      t.setFilterText('');
+      t.render();
+      assertEq(t.currentTargets().length, 2, '未勾选、无筛选时目标应为全部台账');
+      t.setFilterText('张三');
+      t.render();
+      assertEq(t.currentTargets().length, 1, '未勾选时应按筛选结果取目标');
+
+      // 勾第二行 + 筛选命中第一行：有勾选时忽略筛选，目标必须是勾选的那一条
+      t.setFilterText('');
+      t.render();
+      var cbs2 = qa(doc, '#out input.lmt-check');
+      cbs2[1].checked = true;
+      t.setFilterText('张三'); // 只改筛选文本，不重排 DOM，勾选状态得以保留
+      var targets = t.currentTargets();
+      assertEq(targets.length, 1, '有勾选时目标数应等于勾选条数');
+      assertEq(targets[0].note, '李四', '有勾选时应忽略筛选、以勾选行为准');
+
+      // 「吊销目标卡密」必须与统一作用域一致（旧实现会误吊销筛选命中的第一行）
+      q(doc, '#revoke-filtered-btn').click();
+      assertEq(t.normalize(q(doc, '#revoke-list').value), t.normalize(cbs2[1].value),
+        '「吊销目标卡密」应只作用于勾选的行');
+
+      // 「复制目标话术」同一口径：作用域内有目标就必须给复制反馈，而不是「无匹配」
+      var dbtn = q(doc, '#deliver-filtered-btn');
+      dbtn.click();
+      assert(text(dbtn) !== '无匹配', '「复制目标话术」应作用于统一作用域，而不是报无匹配');
+      await until(function () { return /^(请手动复制|已复制话术)$/.test(text(dbtn)); }, 2000, '复制目标话术反馈');
+      closeLayers(doc);
+
       // 收尾：清掉吊销框与筛选，避免影响后续用例
       setValue(q(doc, '#revoke-list'), '', C, 'input');
       t.setFilterText('');
+      t.render();
     });
   }
 

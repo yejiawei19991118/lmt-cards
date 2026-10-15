@@ -249,8 +249,8 @@
             <h2 class="panel-block-title">机器码台账</h2>
 
             <div class="control-group">
-                <label for="mc-list">机器码台账（每行一个，可在机器码后加「,备注」，如 <code>XXXX-XXXX-XXXX-XXXX,张三</code>；自动保存到本浏览器）</label>
-                <textarea id="mc-list" placeholder="XXXX-XXXX-XXXX-XXXX,张三
+                <label for="mc-list">机器码台账（每行一个用户，格式：<code>机器码[,备注][,有效期]</code>，如 <code>XXXX-XXXX-XXXX-XXXX,张三,2027-12-31</code>；有效期可写 <code>2027-12-31</code> / <code>2027/12/31</code> / <code>20271231</code>，留空表示长期有效；自动保存到本浏览器）</label>
+                <textarea id="mc-list" placeholder="XXXX-XXXX-XXXX-XXXX,张三,2027-12-31
 YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             </div>
 
@@ -264,7 +264,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 <button type="button" class="btn btn-ghost" id="template-btn">下载模板</button>
                 <button type="button" class="btn btn-danger" id="clear-btn">清空台账</button>
             </div>
-            <div class="ledger-tip" id="ledger-tip" role="status" aria-live="polite">台账共 2 位用户 · 已自动保存到本浏览器</div>
+            <div class="ledger-tip" id="ledger-tip" role="status" aria-live="polite">台账为空 · 已自动保存到本浏览器</div>
             <input type="file" id="import-file" accept=".csv,.txt,text/plain,text/csv" style="display:none">
         </section>
 
@@ -274,7 +274,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
             <div class="row">
                 <button type="button" class="btn btn-ghost" id="deliver-btn">复制交付文案</button>
-                <button type="button" class="btn btn-ghost" id="deliver-img-btn">生成交付图</button>
+                <button type="button" class="btn btn-ghost" id="deliver-img-btn">导出交付图</button>
             </div>
             <div class="row">
                 <button type="button" class="btn btn-ghost" id="backup-btn">备份台账</button>
@@ -293,18 +293,22 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
         <!-- 区块三：生成结果（筛选 / 批量续期与吊销 / 逐条复制） -->
         <section class="panel-block">
-            <h2 class="panel-block-title" id="out-title">生成结果（2 条）</h2>
+            <h2 class="panel-block-title" id="out-title">生成结果</h2>
 
-            <div class="row">
-                <input type="text" id="filter-input" placeholder="筛选：按备注 / 机器码 / 卡密" spellcheck="false" style="flex:1 1 200px;">
-                <button type="button" class="btn btn-ghost" id="select-all-btn">全选</button>
-                <button type="button" class="btn btn-ghost" id="renew-btn">续期</button>
+            <div class="control-group">
+                <label for="filter-input">筛选结果（按 备注 / 机器码 / 卡密 / 有效期 匹配，留空显示全部）</label>
+                <div class="row">
+                    <input type="text" id="filter-input" placeholder="筛选：备注 / 机器码 / 卡密 / 有效期" spellcheck="false" style="flex:1 1 200px;">
+                    <button type="button" class="btn btn-ghost" id="select-all-btn" title="全选当前筛选出的行；全部已勾选时再点一次取消">全选</button>
+                    <button type="button" class="btn btn-ghost" id="renew-btn" title="给目标卡密延长有效期">续期目标卡密</button>
+                </div>
             </div>
+            <p class="sub" id="scope-tip">批量操作（续期 / 吊销 / 复制话术 / 导出交付图）的作用范围：优先「已勾选的行」，没有勾选时按当前筛选结果。</p>
             <div class="row">
-                <button type="button" class="btn btn-danger" id="revoke-filtered-btn">吊销筛选结果</button>
-                <button type="button" class="btn btn-ghost" id="deliver-filtered-btn">复制筛选话术</button>
+                <button type="button" class="btn btn-danger" id="revoke-filtered-btn" title="作废目标卡密：写入下方「已吊销卡密」并刷新清单">吊销目标卡密</button>
+                <button type="button" class="btn btn-ghost" id="deliver-filtered-btn" title="把目标卡密的交付话术复制到剪贴板">复制目标话术</button>
             </div>
-            <div id="out"><div class="item"><span class="mc">D3J7-RC4Y-93VV-W61D</span><span class="arrow">→</span><span class="card-code">H7S0-6M3M-GMA1-Y7T2-VNRM</span><span class="note">菜头</span><button type="button" class="btn btn-ghost">复制卡密</button></div><div class="item"><span class="mc">WF31-AKW0-G0W5-HT1K</span><span class="arrow">→</span><span class="card-code">QDGK-CP94-AF9N-GPCG-C3C6</span><span class="note">菜头</span><button type="button" class="btn btn-ghost">复制卡密</button></div></div>
+            <div id="out"></div>
         </section>
 
         <!-- 区块四：在线清单与发布（低频且影响线上，默认收起） -->
@@ -524,6 +528,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
     function normalize(code) { return String(code == null ? '' : code).toUpperCase().replace(/[^0-9A-Z]/g, ''); }
 
+    // 清单条目统一取卡密：旧格式是字符串，新格式是对象 {card, mc, note, exp}。
+    // 所有「按卡密比较 / 签名 / 去重」的地方都走这里，两种格式都能读，签名载荷也与旧版逐字一致。
+    function cardOf(c) { return normalize((c && typeof c === 'object') ? c.card : c); }
+
     // 卡密结果按机器码缓存：双 SHA-256 是纯 JS 实现，同一机器码在「渲染 / 导出 / 上传 / 对照在线清单」
     // 各条路径上会被反复重算，大台账下是主要卡顿来源；缓存后每条机器码只算一次。
     var cardCache = {};
@@ -538,14 +546,15 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     // 清单签名：对「更新日期 + 归一化白名单 + 归一化吊销名单」做 HMAC-SHA256，随清单一同上传。
     // 主程序拉取后会重算比对，避免 cards.json 被随手篡改（两侧算法必须逐字一致，见 lmt-layout 的 manifestSignature）。
-    // 先归一化（去分隔符、转大写）再签名：签名只绑定卡密内容，不受分组写法影响。
+    // 先归一化（去分隔符、转大写）再签名：签名只绑定卡密内容，不受分组写法影响，
+    // 白名单条目无论写成字符串还是对象 {card,...}，取出的载荷完全相同。
     // 注意：卡密有效期 exp 刻意不参与签名——载荷仍只有「更新日期 + 白名单 + 吊销名单」。
     // 这是双向兼容设计：旧版主程序不认识 exp 也能验签通过；新版读 exp 时旧清单缺省视为无有效期，
     // 因此给老清单补 exp 或去掉 exp 都不会让主程序验签失败。
     function manifestSignature(updated, cards, revoked) {
         var payload = String(updated == null ? '' : updated) + '\n' +
-            cards.map(normalize).join(',') + '\n' +
-            revoked.map(normalize).join(',');
+            cards.map(cardOf).join(',') + '\n' +
+            revoked.map(cardOf).join(',');
         return hmacSha256Hex(LICENSE_SECRET, payload);
     }
 
@@ -829,17 +838,25 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     // 依据「当前台账 + 吊销名单」组装在线清单对象（白名单 + 吊销名单 + 日期 + 签名）。
     // 与 buildManifest 拆开的原因：上传前需要先拿到本地对象、与远端合并后再重新签名。
+    // 白名单条目写成对象 {card, mc, note?, exp?}：作者看清单 JSON 就能把卡密对应到具体用户的名称与机器码，
+    // 不用再回台账里翻。主程序与旧版读法只取 card 字段（见 parseManifest 的 cardOf 写法），因此向后兼容；
+    // 签名仍只取归一化卡密，条目结构不参与签名，故清单对旧版主程序依旧可验签。
     function buildManifestObj() {
         var seen = {};
+        var items = [];
         var cards = [];
-        var expMap = {}; // 归一化卡密 → 有效期（只收录有有效期的卡密）
         // 直接依据「当前台账文本」重算卡密，而不是复用上一次 render() 的结果（pairs）：
         // 否则用户新粘了机器码但还没点「生成卡密」时，复制到的在线清单仍是旧的，
         // 新用户的卡密不在白名单里、无法激活，且不易察觉。
         uniqueEntries(mcList.value).forEach(function (e) {
             var card = makeCard(e.key);
-            if (!seen[card]) { seen[card] = true; cards.push(card); }
-            if (e.exp) expMap[normalize(card)] = e.exp;
+            if (seen[card]) return;
+            seen[card] = true;
+            cards.push(card);
+            var item = { card: card, mc: group(e.key, 4) };
+            if (e.note) item.note = e.note;
+            if (e.exp) item.exp = e.exp;
+            items.push(item);
         });
         var revoked = [];
         // 归一化后去重：吊销框里手抄多遍 / 分隔符写法不同会得到同一张卡密，
@@ -856,11 +873,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var updated = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
         // sig 覆盖「更新日期 + 白名单 + 吊销名单」；主程序验签不通过会拒绝该清单。
         var sig = manifestSignature(updated, cards, revoked);
-        var obj = { updated: updated, cards: cards, revoked: revoked };
-        // exp 为可选字段（归一化卡密 → 日期），仅在存在带有效期的卡密时出现；刻意不参与签名。
-        if (Object.keys(expMap).length) obj.exp = expMap;
-        obj.sig = sig;
-        return obj;
+        return { updated: updated, cards: items, revoked: revoked, sig: sig };
     }
 
     // 生成在线清单 JSON 文本（含白名单 + 吊销名单），供上传到静态空间；返回该文本。
@@ -1522,13 +1535,53 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         }
     }
 
-    // 多张交付图合成一张长图：勾选多条时一次落盘，避免浏览器连开多个下载。
-    function buildDeliverImage(list) {
-        var items = (list || []).slice(0, IMG_MAX);
-        if (!items.length) return null;
+    // 在画布上画一个交付信息块：左侧二维码，右侧 名称 / 机器码 / 卡密 / 有效期。
+    function drawDeliverBlock(g, p, top) {
+        g.strokeStyle = '#e3e8ef';
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(40, top); g.lineTo(IMG_W - 40, top);
+        g.stroke();
+
+        try { drawQrTo(g, QRLIB.encode(activateUrl(p.card, p.mc)), 40, top + 26, 184); }
+        catch (e) { /* 备注过长导致超出 v10-L 容量时跳过二维码，其余信息照常出图 */ }
+
+        var x = 252, y = top + 52;
+        if (p.note) {
+            g.fillStyle = '#1f2430';
+            g.font = '600 24px ' + IMG_SANS;
+            g.fillText(String(p.note), x, y);
+            y += 36;
+        }
+        g.fillStyle = '#5b6472';
+        g.font = '400 18px ' + IMG_SANS;
+        g.fillText('机器码', x, y);
+        g.fillStyle = '#1f2430';
+        g.font = '400 20px ' + IMG_MONO;
+        g.fillText(group(p.mc, 4), x + 84, y);
+        y += 42;
+        g.fillStyle = '#5b6472';
+        g.font = '400 18px ' + IMG_SANS;
+        g.fillText('卡密', x, y);
+        g.fillStyle = '#1f2430';
+        g.font = '600 22px ' + IMG_MONO;
+        g.fillText(p.card, x + 84, y);
+        y += 40;
+        g.fillStyle = '#5b6472';
+        g.font = '400 18px ' + IMG_SANS;
+        g.fillText('有效期', x, y);
+        g.fillStyle = '#1f2430';
+        g.font = '400 20px ' + IMG_MONO;
+        g.fillText(p.exp ? String(p.exp) : '长期有效', x + 84, y);
+    }
+
+    // 单张交付图：一张卡密 = 一张 720×360 的 PNG（含可扫码的激活二维码）。
+    // 旧实现把 N 条挤进一张长图，客户拿到后没法拆分转发；现在改成「一卡一图」，多条时打包成 ZIP 一次给全。
+    function buildDeliverImage(p) {
+        if (!p || !p.card) return null;
         var canvas = document.createElement('canvas');
         canvas.width = IMG_W;
-        canvas.height = IMG_HEAD + items.length * IMG_BLOCK + IMG_PAD;
+        canvas.height = IMG_HEAD + IMG_BLOCK + IMG_PAD;
         var g = canvas.getContext('2d');
         g.fillStyle = '#ffffff';
         g.fillRect(0, 0, canvas.width, canvas.height);
@@ -1538,65 +1591,178 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         g.fillStyle = '#5b6472';
         g.font = '400 17px ' + IMG_SANS;
         g.fillText('扫码打开激活页；也可把图中的卡密与机器码直接发给客户', 40, 80);
-
-        items.forEach(function (p, i) {
-            var top = IMG_HEAD + i * IMG_BLOCK;
-            g.strokeStyle = '#e3e8ef';
-            g.lineWidth = 1;
-            g.beginPath();
-            g.moveTo(40, top); g.lineTo(IMG_W - 40, top);
-            g.stroke();
-
-            try { drawQrTo(g, QRLIB.encode(activateUrl(p.card, p.mc)), 40, top + 26, 184); }
-            catch (e) { /* 备注过长导致超出 v10-L 容量时跳过二维码，其余信息照常出图 */ }
-
-            var x = 252, y = top + 52;
-            if (p.note) {
-                g.fillStyle = '#1f2430';
-                g.font = '600 24px ' + IMG_SANS;
-                g.fillText(String(p.note), x, y);
-                y += 36;
-            }
-            g.fillStyle = '#5b6472';
-            g.font = '400 18px ' + IMG_SANS;
-            g.fillText('机器码', x, y);
-            g.fillStyle = '#1f2430';
-            g.font = '400 20px ' + IMG_MONO;
-            g.fillText(group(p.mc, 4), x + 84, y);
-            y += 42;
-            g.fillStyle = '#5b6472';
-            g.font = '400 18px ' + IMG_SANS;
-            g.fillText('卡密', x, y);
-            g.fillStyle = '#1f2430';
-            g.font = '600 22px ' + IMG_MONO;
-            g.fillText(p.card, x + 84, y);
-            y += 40;
-            g.fillStyle = '#5b6472';
-            g.font = '400 18px ' + IMG_SANS;
-            g.fillText('有效期', x, y);
-            g.fillStyle = '#1f2430';
-            g.font = '400 20px ' + IMG_MONO;
-            g.fillText(p.exp ? String(p.exp) : '长期有效', x + 84, y);
-        });
+        drawDeliverBlock(g, p, IMG_HEAD);
         return canvas;
     }
 
-    function deliverImageName() {
+    // 文件名片段净化：去掉文件系统非法字符并截断，避免落盘/打包时文件名报错或被截成空串。
+    function sanitizeFilePart(s, max) {
+        var t = String(s == null ? '' : s).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim();
+        if (max && t.length > max) t = t.slice(0, max);
+        return t;
+    }
+    // 单张交付图的文件名：机器码-名称（重名自动加序号，避免 ZIP 内互相覆盖）。
+    function deliverSingleName(p, used) {
+        var mc = normalize(p.mc) ? group(normalize(p.mc), 4) : '卡密';
+        var note = sanitizeFilePart(p.note, 24);
+        var base = note ? (mc + '-' + note) : mc;
+        if (used) {
+            used[base] = (used[base] || 0) + 1;
+            if (used[base] > 1) base = base + '(' + used[base] + ')';
+        }
+        return base;
+    }
+
+    // 字节 → base64（分块拼接：一次性 fromCharCode.apply 传大数组在部分引擎上会爆参数）。
+    function bytesToBase64(bytes) {
+        var s = '';
+        var CHUNK = 0x8000;
+        for (var i = 0; i < bytes.length; i += CHUNK) {
+            s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+        }
+        return btoa(s);
+    }
+    // 画布 → PNG 字节：优先 toBlob（异步、不阻塞主线程），拿不到才回退 toDataURL。
+    function canvasToPngBytes(canvas) {
+        var viaDataUrl = function () {
+            var d = canvas.toDataURL('image/png');
+            var i = d.indexOf(',');
+            var bin = atob(i >= 0 ? d.slice(i + 1) : d);
+            var out = new Uint8Array(bin.length);
+            for (var j = 0; j < bin.length; j++) out[j] = bin.charCodeAt(j);
+            return out;
+        };
+        return new Promise(function (resolve, reject) {
+            if (typeof canvas.toBlob !== 'function') { try { resolve(viaDataUrl()); } catch (e) { reject(e); } return; }
+            canvas.toBlob(function (blob) {
+                if (!blob) { try { resolve(viaDataUrl()); } catch (e) { reject(e); } return; }
+                var fr = new FileReader();
+                fr.onload = function () { resolve(new Uint8Array(fr.result)); };
+                fr.onerror = function () { reject(fr.error || new Error('读取图片数据失败')); };
+                fr.readAsArrayBuffer(blob);
+            }, 'image/png');
+        });
+    }
+
+    // ---------- 自研 ZIP（store 模式，零第三方依赖） ----------
+    // 与主程序 lmt-layout 的 zipStore 同一实现口径：只打包、不压缩（PNG 已压缩，再压无收益），
+    // 通用位标记置 bit11 声明文件名用 UTF-8，中文名称在各平台解压都不会乱码。
+    var CRC32_TABLE = (function () {
+        var t = new Uint32Array(256);
+        for (var n = 0; n < 256; n++) {
+            var c = n;
+            for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            t[n] = c >>> 0;
+        }
+        return t;
+    })();
+    function crc32(bytes) {
+        var c = 0xFFFFFFFF;
+        for (var i = 0; i < bytes.length; i++) c = CRC32_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+    // 纯函数：把 [{name, bytes}] 打成 store 模式的 ZIP（不做压缩；不实现 Zip64——单张 PNG 远小于 4GB）。
+    function zipStore(files) {
+        var enc = new TextEncoder();
+        function u16(n) { return [n & 0xFF, (n >>> 8) & 0xFF]; }
+        function u32(n) { return [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF]; }
+        var now = new Date();
+        var dosTime = ((now.getHours() & 31) << 11) | ((now.getMinutes() & 63) << 5) | ((Math.floor(now.getSeconds() / 2)) & 31);
+        var dosDate = ((((now.getFullYear() - 1980) & 127)) << 9) | (((now.getMonth() + 1) & 15) << 5) | (now.getDate() & 31);
+        var locals = [], centrals = [], offset = 0;
+        files.forEach(function (f) {
+            var nameBytes = enc.encode(f.name);
+            var data = f.bytes;
+            var crc = crc32(data);
+            var lh = [];
+            lh.push.apply(lh, u32(0x04034b50));
+            lh.push.apply(lh, u16(20));
+            lh.push.apply(lh, u16(0x0800));
+            lh.push.apply(lh, u16(0));
+            lh.push.apply(lh, u16(dosTime));
+            lh.push.apply(lh, u16(dosDate));
+            lh.push.apply(lh, u32(crc));
+            lh.push.apply(lh, u32(data.length));
+            lh.push.apply(lh, u32(data.length));
+            lh.push.apply(lh, u16(nameBytes.length));
+            lh.push.apply(lh, u16(0));
+            var localHeader = Uint8Array.from(lh);
+
+            var c = [];
+            c.push.apply(c, u32(0x02014b50));
+            c.push.apply(c, u16(20));
+            c.push.apply(c, u16(20));
+            c.push.apply(c, u16(0x0800));
+            c.push.apply(c, u16(0));
+            c.push.apply(c, u16(dosTime));
+            c.push.apply(c, u16(dosDate));
+            c.push.apply(c, u32(crc));
+            c.push.apply(c, u32(data.length));
+            c.push.apply(c, u32(data.length));
+            c.push.apply(c, u16(nameBytes.length));
+            c.push.apply(c, u16(0));
+            c.push.apply(c, u16(0));
+            c.push.apply(c, u16(0));
+            c.push.apply(c, u16(0));
+            c.push.apply(c, u32(0));
+            c.push.apply(c, u32(offset));
+            var centralRec = Uint8Array.from(c);
+
+            locals.push(localHeader, nameBytes, data);
+            centrals.push({ rec: centralRec, nameBytes: nameBytes });
+            offset += localHeader.length + nameBytes.length + data.length;
+        });
+        var centralSize = 0;
+        centrals.forEach(function (e) { centralSize += e.rec.length + e.nameBytes.length; });
+        var centralStart = offset;
+        var eocdArr = [];
+        eocdArr.push.apply(eocdArr, u32(0x06054b50));
+        eocdArr.push.apply(eocdArr, u16(0));
+        eocdArr.push.apply(eocdArr, u16(0));
+        eocdArr.push.apply(eocdArr, u16(files.length));
+        eocdArr.push.apply(eocdArr, u16(files.length));
+        eocdArr.push.apply(eocdArr, u32(centralSize));
+        eocdArr.push.apply(eocdArr, u32(centralStart));
+        eocdArr.push.apply(eocdArr, u16(0));
+        var eocd = Uint8Array.from(eocdArr);
+
+        var out = new Uint8Array(offset + centralSize + eocd.length);
+        var p = 0;
+        locals.forEach(function (ch) { out.set(ch, p); p += ch.length; });
+        centrals.forEach(function (e) { out.set(e.rec, p); p += e.rec.length; out.set(e.nameBytes, p); p += e.nameBytes.length; });
+        out.set(eocd, p);
+        return out;
+    }
+    // 多张交付图 → ZIP：每张卡一个 PNG，文件名「机器码-名称」；逐张出图（await 让出主线程，长台账也不至于假死）。
+    function buildDeliverZip(list) {
+        var items = (list || []).slice();
+        if (!items.length) return Promise.resolve(null);
+        var used = {}, files = [];
+        return items.reduce(function (chain, p) {
+            return chain.then(function () {
+                var canvas = buildDeliverImage(p);
+                if (!canvas) return null;
+                return canvasToPngBytes(canvas).then(function (bytes) {
+                    files.push({ name: deliverSingleName(p, used) + '.png', bytes: bytes });
+                });
+            });
+        }, Promise.resolve()).then(function () {
+            if (!files.length) return null;
+            return { bytes: zipStore(files), count: files.length };
+        });
+    }
+
+    // 交付图文件名：默认 .png；批量打包时传 'zip'。
+    function deliverImageName(ext) {
         var d = new Date();
         function p(x) { return (x < 10 ? '0' : '') + x; }
         return 'lmt-deliver-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' +
-            p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.png';
+            p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.' + (ext || 'png');
     }
 
-    // 交付图目标：优先取勾选项；没有勾选就按当前筛选结果出图。
-    function deliverImageTargets() {
-        var all = computePairs();
-        var checked = checkedCards();
-        if (!checked.length) return filterEntries(all);
-        var set = {};
-        checked.forEach(function (c) { var n = normalize(c); if (n) set[n] = true; });
-        return all.filter(function (p) { return set[normalize(p.card)] === true; });
-    }
+    // 交付图目标：与其它批量动作同一口径（已勾选优先，否则当前筛选结果）。
+    // 保留本函数名：它是「导出交付图」按钮的取数入口，也是既有测试的调用点。
+    function deliverImageTargets() { return currentTargets(); }
 
     function saveCanvasPng(canvas, name) {
         var dataUrl = canvas.toDataURL('image/png');
@@ -1610,6 +1776,24 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         a.click();
         document.body.removeChild(a);
         return 'download';
+    }
+
+    // 二进制落盘（ZIP 用）：安卓外壳走原生桥（非图片类型写入「下载」目录），其余浏览器走 <a download>。
+    function downloadBytes(name, bytes, mime) {
+        if (typeof URL.createObjectURL !== 'function') return false;
+        var url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+        return true;
+    }
+    function saveBytes(bytes, name, mime) {
+        if (bytes && bytes.length && tryNativeSaveBase64(name, mime, bytesToBase64(bytes))) return 'native';
+        return downloadBytes(name, bytes, mime) ? 'download' : 'manual';
     }
 
     // CSV 单元格转义：只要包含 splitFields 认得的任一分隔符（半角/全角逗号、分号、制表符）
@@ -1839,15 +2023,23 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             else localStorage.removeItem(UPLOAD_RECEIPT_KEY);
         } catch (e) {}
     }
-    // 归一化清单内容（白名单 / 吊销 / 有效期，排序去重，不含更新日期）用于「待重传」比较。
+    // 归一化清单内容（白名单 / 吊销 / 有效期 / 名称，排序去重，不含更新日期）用于「待重传」比较。
+    // 有效期与名称以「新格式写在条目内」为准；同时兼容读取旧格式的顶层 exp 映射。
+    // 名称也计入指纹：改名后必须提示「待重传」，否则清单里会一直停在旧名称。
     function manifestFingerprint(obj) {
         var o = obj || {};
-        function normList(arr) {
-            return (arr || []).map(function (c) { return normalize(typeof c === 'string' ? c : (c && c.card)); }).filter(Boolean).sort();
-        }
-        var exp = o.exp || {};
+        function normList(arr) { return (arr || []).map(cardOf).filter(Boolean).sort(); }
+        var exp = {}, names = {};
+        (o.cards || []).forEach(function (c) {
+            if (!c || typeof c !== 'object' || !c.card) return;
+            var n = normalize(c.card);
+            if (c.exp) exp[n] = c.exp;
+            if (c.note) names[n] = c.note;
+        });
+        Object.keys(o.exp || {}).forEach(function (k) { if (!exp[k]) exp[k] = o.exp[k]; });
         var expPairs = Object.keys(exp).sort().map(function (k) { return k + '=' + exp[k]; });
-        return JSON.stringify({ c: normList(o.cards), r: normList(o.revoked), e: expPairs });
+        var namePairs = Object.keys(names).sort().map(function (k) { return k + '=' + names[k]; });
+        return JSON.stringify({ c: normList(o.cards), r: normList(o.revoked), e: expPairs, n: namePairs });
     }
     function pendingUploadCount() {
         var rec = getUploadReceipt();
@@ -1857,7 +2049,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var cur = buildManifestObj();
         function setOf(arr) {
             var s = {};
-            (arr || []).forEach(function (c) { var n = normalize(typeof c === 'string' ? c : (c && c.card)); if (n) s[n] = true; });
+            (arr || []).forEach(function (c) { var n = cardOf(c); if (n) s[n] = true; });
             return s;
         }
         var aC = setOf(cur.cards), bC = setOf(old.cards), aR = setOf(cur.revoked), bR = setOf(old.revoked);
@@ -1904,20 +2096,28 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 返回结构化差异对象；renderDiffReport 负责渲染到 #diff-report。
     function buildDiffReport(local, remote) {
         remote = remote || {};
-        function norm(c) { return normalize(typeof c === 'string' ? c : (c && c.card)); }
         var localCards = {}, mcByCard = {};
-        (local.cards || []).forEach(function (c) { var n = norm(c); if (n) localCards[n] = true; });
+        (local.cards || []).forEach(function (c) { var n = cardOf(c); if (n) localCards[n] = true; });
         uniqueEntries(mcList.value).forEach(function (e) {
             mcByCard[normalize(makeCard(e.key))] = { mc: group(e.key, 4), note: e.note || '' };
         });
         var remoteCards = {}, remoteRevoked = {};
-        (remote.cards || []).forEach(function (c) { var n = norm(c); if (n) remoteCards[n] = true; });
-        (remote.revoked || []).forEach(function (c) { var n = norm(c); if (n) remoteRevoked[n] = true; });
+        (remote.cards || []).forEach(function (c) { var n = cardOf(c); if (n) remoteCards[n] = true; });
+        (remote.revoked || []).forEach(function (c) { var n = cardOf(c); if (n) remoteRevoked[n] = true; });
         var localRevoked = {};
         String(revokeList.value || '').split(/\r?\n/).forEach(function (line) { var n = normalize(line); if (n) localRevoked[n] = true; });
         var notUploaded = [], extraOnline = [];
         Object.keys(localCards).forEach(function (n) { if (!remoteCards[n]) notUploaded.push(mcByCard[n] || { mc: group(n, 4), note: '' }); });
-        Object.keys(remoteCards).forEach(function (n) { if (!localCards[n]) extraOnline.push(group(n, 4)); });
+        // 线上多出的条目带上名称：清单条目为对象时直接取 note，便于作者判断是谁在用。
+        Object.keys(remoteCards).forEach(function (n) {
+            if (localCards[n]) return;
+            var note = '';
+            (remote.cards || []).forEach(function (c) {
+                if (note) return;
+                if (c && typeof c === 'object' && c.card && normalize(c.card) === n && c.note) note = c.note;
+            });
+            extraOnline.push({ mc: group(n, 4), note: note });
+        });
         var revokedButWhitelisted = 0, onlineRevokedLocalKept = 0;
         Object.keys(localRevoked).forEach(function (n) { if (remoteCards[n]) revokedButWhitelisted++; });
         Object.keys(remoteRevoked).forEach(function (n) { if (localCards[n]) onlineRevokedLocalKept++; });
@@ -1953,7 +2153,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             line('本地有、线上无（未上传）：' + report.notUploaded.length + ' 项');
             report.notUploaded.slice(0, 5).forEach(function (it) { line('· ' + it.mc + (it.note ? '（' + it.note + '）' : '')); });
             line('线上有、本地无（线上多出）：' + report.extraOnline.length + ' 项');
-            report.extraOnline.slice(0, 5).forEach(function (code) { line('· ' + code); });
+            report.extraOnline.slice(0, 5).forEach(function (it) {
+                line('· ' + it.mc + (it.note ? '（' + it.note + '）' : ''));
+            });
             line('已吊销但仍出现在线上白名单：' + report.revokedButWhitelisted + ' 项');
             line('线上已吊销、本地台账仍在：' + report.onlineRevokedLocalKept + ' 项');
         }
@@ -1963,6 +2165,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
 
     // ---------- 筛选 + 批量操作（功能⑤） ----------
+    // 筛选语义：留空 = 不筛选（显示全部）；否则按 备注 / 机器码 / 卡密 / 有效期 任一命中即算匹配。
+    // 这里只负责「筛」，批量动作的作用范围统一由 currentTargets 决定，避免各按钮各筛一套导致名实不符。
     var filterText = '';
     function filterEntries(list) {
         var arr = list || [];
@@ -1972,8 +2176,20 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             return String(p.display || '').toLowerCase().indexOf(q) >= 0 ||
                 String(p.mc || '').toLowerCase().indexOf(q) >= 0 ||
                 String(p.note || '').toLowerCase().indexOf(q) >= 0 ||
-                String(p.card || '').toLowerCase().indexOf(q) >= 0;
+                String(p.card || '').toLowerCase().indexOf(q) >= 0 ||
+                String(p.exp || '').toLowerCase().indexOf(q) >= 0;
         });
+    }
+    // 批量操作的统一目标：优先「已勾选的行」；一条都没勾选时，退化为当前筛选结果（筛选为空即全部台账）。
+    // 续期 / 吊销 / 复制话术 / 导出交付图 全部走这一个入口，
+    // 避免同一界面状态下各按钮作用范围不同（同一个「筛选结果」按钮，行为却与「导出交付图」不一致）。
+    function currentTargets() {
+        var all = computePairs();
+        var checked = checkedCards();
+        if (!checked.length) return filterEntries(all);
+        var set = {};
+        checked.forEach(function (c) { var n = cardOf(c); if (n) set[n] = true; });
+        return all.filter(function (p) { return set[normalize(p.card)] === true; });
     }
     // 把一组卡密归一化去重后「追加」到吊销框；返回本次新增条数。
     function revokeCards(cards) {
@@ -1997,10 +2213,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     // ---------- 批量续期（功能③） ----------
     // 自绘浮层（不使用 prompt/alert），含「延长月数」与「按当前有效期 / 从今天起算」两种基准。
+    // 作用范围与其它批量动作保持一致（currentTargets：已勾选优先，否则当前筛选结果），
+    // 不再像旧实现那样无条件改写整份台账——那会让「续期」与旁边的「吊销目标卡密」作用范围对不上。
     function renewAll() {
         var btn = document.getElementById('renew-btn');
-        var entries = uniqueEntries(mcList.value);
-        if (!entries.length) { flashButton(btn, '台账为空'); return; }
+        var targets = currentTargets();
+        if (!targets.length) { flashButton(btn, filterText ? '无匹配' : '台账为空'); return; }
         var mask = document.createElement('div');
         mask.className = 'manual-copy-mask';
         mask.setAttribute('role', 'dialog');
@@ -2010,7 +2228,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var h = document.createElement('h3');
         h.textContent = '批量续期';
         var p = document.createElement('p');
-        p.textContent = '给台账里的卡密延长有效期。选择基准与月数后点「确定续期」，会回写台账并刷新清单。';
+        p.textContent = '给 ' + targets.length + ' 条卡密延长有效期（范围：已勾选的行，未勾选时为当前筛选结果）。' +
+            '选择基准与月数后点「确定续期」，会回写台账并刷新清单。';
         var label = document.createElement('label');
         label.textContent = '延长月数';
         label.setAttribute('for', 'renew-months');
@@ -2051,7 +2270,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             var months = parseInt(String(monthInput.value).replace(/[^0-9]/g, ''), 10);
             if (!months || months < 1 || months > 600) { monthInput.focus(); return; }
             var fromToday = r2.checked;
-            var lines = entries.map(function (e) {
+            // 只改目标卡密那一行的有效期，其余行原样保留（按机器码定位，避免误改同名或同备注的其它行）。
+            var inScope = {};
+            targets.forEach(function (t) { inScope[normalize(t.card)] = true; });
+            var lines = uniqueEntries(mcList.value).map(function (e) {
+                if (!inScope[normalize(makeCard(e.key))]) return entryLine(e);
                 var exp = fromToday ? addMonths('', months) : addMonths(e.exp, months);
                 return entryLine({ mc: e.mc, note: e.note, exp: exp });
             });
@@ -2059,7 +2282,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             dispose();
             saveLedger();
             render();
-            flashButton(document.getElementById('renew-btn'), '已续期');
+            flashButton(btn, '已续期 ' + targets.length + ' 条');
         });
         actions.appendChild(cancel);
         actions.appendChild(ok);
@@ -2124,11 +2347,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             }
             var cards = {}, revoked = {};
             (data.cards || []).forEach(function (c) {
-                var n = normalize(typeof c === 'string' ? c : (c && c.card));
+                var n = cardOf(c);
                 if (n) cards[n] = true;
             });
             (data.revoked || []).forEach(function (c) {
-                var n = normalize(typeof c === 'string' ? c : (c && c.card));
+                var n = cardOf(c);
                 if (n) revoked[n] = true;
             });
             var status = {}, up = 0, notUp = 0, rev = 0;
@@ -2232,44 +2455,49 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 目的：本机没记录的卡密（例如另一台机器加的）不会被覆盖删除，避免误锁用户。
     // 吊销名单则以「本机吊销框」为准，不与远端取并集：否则把某项从吊销框删掉再上传，
     // 会被远端的旧记录并回来，用户无法用本工具解除吊销（撤销只能通过重新生成清单来完成）。
+    // 条目保留 名称 / 机器码 / 有效期：远端旧格式（字符串数组 + 顶层 exp 映射）也一并读入后归一化，
+    // 保证合并结果里每张卡密都带上能对应用户的信息，不再退化成光秃秃一串卡密。
     function mergeWithRemote(local, remote) {
+        local = local || {};
+        remote = remote || {};
         var cardSeen = {}, cards = [];
-        function addCard(code) {
-            var n = normalize(code);
+        function addCard(c, expMap) {
+            var n = cardOf(c);
             if (!n || cardSeen[n]) return;
-            cardSeen[n] = true;
-            cards.push(group(n, 4));
+            var src = (c && typeof c === 'object') ? c : null;
+            var exp = (src && src.exp) || (expMap && expMap[n]) || '';
+            var item = { card: group(n, 4) };
+            if (src && src.mc) item.mc = group(normalize(src.mc), 4);
+            if (src && src.note) item.note = src.note;
+            if (exp) item.exp = exp;
+            cardSeen[n] = item;
+            cards.push(item);
         }
-        (local.cards || []).forEach(addCard);
-        ((remote && remote.cards) || []).forEach(addCard);
+        (local.cards || []).forEach(function (c) { addCard(c, local.exp); });
+        (remote.cards || []).forEach(function (c) { addCard(c, remote.exp); });
         var revSeen = {}, revoked = [];
         function addRev(code) {
-            var n = normalize(code);
+            var n = cardOf(code);
             if (!n || revSeen[n]) return;
             revSeen[n] = true;
             revoked.push(group(n, 4));
         }
         (local.revoked || []).forEach(addRev);
-        // 有效期映射同样取并集（本机优先），随清单一起上传；不参与签名。
-        var exp = {};
-        Object.keys(local.exp || {}).forEach(function (k) { exp[k] = local.exp[k]; });
-        var remExp = (remote && remote.exp) || {};
-        Object.keys(remExp).forEach(function (k) { if (!exp[k]) exp[k] = remExp[k]; });
         var updated = local.updated;
         var merged = { updated: updated, cards: cards, revoked: revoked };
-        if (Object.keys(exp).length) merged.exp = exp;
         merged.sig = manifestSignature(updated, cards, revoked);
         return merged;
     }
 
     // 读取远端 cards.json：用 API 而非 raw CDN，避免 CDN 缓存拿到过期内容。
-    // 返回 { sha, cards, revoked }；文件不存在返回 { sha: null, cards: [], revoked: [] }。
+    // 返回 { sha, cards, revoked, exp }；文件不存在返回空结构。
+    // exp 一并带出：旧格式清单的有效期写在顶层 exp 映射里，合并时不能丢。
     function ghGetFile(target) {
         var url = GH_API + '/repos/' + target.owner + '/' + target.repo + '/contents/' + target.path +
             '?ref=' + encodeURIComponent(target.branch);
         return fetch(url, { headers: { 'Authorization': 'Bearer ' + getToken() }, cache: 'no-store' })
             .then(function (r) {
-                if (r.status === 404) return { sha: null, cards: [], revoked: [] };
+                if (r.status === 404) return { sha: null, cards: [], revoked: [], exp: {} };
                 if (r.status === 401 || r.status === 403) throw new Error('令牌无效或权限不足（HTTP ' + r.status + '）');
                 if (!r.ok) throw new Error('读取远端清单失败（HTTP ' + r.status + '）');
                 return r.json().then(function (d) {
@@ -2278,7 +2506,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                         try { mf = JSON.parse(base64ToUtf8(d.content)); } catch (e) { mf = null; }
                     }
                     if (!mf || !Array.isArray(mf.cards)) mf = { cards: [], revoked: [] };
-                    return { sha: (d && d.sha) || null, cards: mf.cards || [], revoked: mf.revoked || [] };
+                    return {
+                        sha: (d && d.sha) || null,
+                        cards: mf.cards || [],
+                        revoked: mf.revoked || [],
+                        exp: mf.exp || {}
+                    };
                 });
             });
     }
@@ -2557,19 +2790,26 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (!text) { flashButton(b, '无结果'); return; }
         copyWithFeedback(text, b, '已复制文案');
     });
-    // 交付图：勾选优先、否则按当前筛选结果，全部画进一张长图（含可扫码的激活二维码）。
+    // 交付图：勾选优先、否则当前筛选结果。1 条直出 PNG；多条逐卡出图并打包成一个 ZIP（可一次全发给客户）。
     document.getElementById('deliver-img-btn').addEventListener('click', function () {
         var b = document.getElementById('deliver-img-btn');
-        var targets = deliverImageTargets();
-        if (!targets.length) { flashButton(b, '无结果'); return; }
-        var canvas = buildDeliverImage(targets);
-        if (!canvas) { flashButton(b, '出图失败'); return; }
-        var how;
-        try { how = saveCanvasPng(canvas, deliverImageName()); }
-        catch (e) { flashButton(b, '出图失败'); return; }
-        var cut = targets.length > IMG_MAX;
-        flashButton(b, how === 'native' ? (cut ? '已存前 20 条' : '已保存到相册')
-                                       : (cut ? '已导出前 20 条' : '已导出'));
+        var targets = currentTargets();
+        if (!targets.length) { flashButton(b, filterText ? '无匹配' : '无结果'); return; }
+        if (targets.length === 1) {
+            var canvas = buildDeliverImage(targets[0]);
+            if (!canvas) { flashButton(b, '出图失败'); return; }
+            var how;
+            try { how = saveCanvasPng(canvas, deliverImageName()); }
+            catch (e) { flashButton(b, '出图失败'); return; }
+            flashButton(b, how === 'native' ? '已保存到相册' : '已导出');
+            return;
+        }
+        flashButton(b, '打包 ' + targets.length + ' 张…');
+        buildDeliverZip(targets).then(function (res) {
+            if (!res) { flashButton(b, '出图失败'); return; }
+            var how2 = saveBytes(res.bytes, deliverImageName('zip'), 'application/zip');
+            flashButton(b, how2 === 'native' ? ('已存 ' + res.count + ' 张 ZIP') : ('已导出 ' + res.count + ' 张 ZIP'));
+        })['catch'](function () { flashButton(b, '出图失败'); });
     });
     document.getElementById('backup-btn').addEventListener('click', function () {
         var b = document.getElementById('backup-btn');
@@ -2642,15 +2882,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     });
     document.getElementById('revoke-filtered-btn').addEventListener('click', function () {
         var b = document.getElementById('revoke-filtered-btn');
-        var cards = filterEntries(computePairs()).map(function (p) { return p.card; });
-        if (!cards.length) { flashButton(b, '无匹配'); return; }
+        // 作用范围与「续期 / 复制话术 / 导出交付图」一致：已勾选优先，否则当前筛选结果
+        var cards = currentTargets().map(function (p) { return p.card; });
+        if (!cards.length) { flashButton(b, filterText ? '无匹配' : '台账为空'); return; }
         var n = revokeCards(cards);
         flashButton(b, n > 0 ? ('已吊销 ' + n + ' 张') : '已吊销');
     });
     document.getElementById('deliver-filtered-btn').addEventListener('click', function () {
         var b = document.getElementById('deliver-filtered-btn');
-        var text = buildDeliverTextFor(filterEntries(computePairs()));
-        if (!text) { flashButton(b, '无匹配'); return; }
+        var text = buildDeliverTextFor(currentTargets());
+        if (!text) { flashButton(b, filterText ? '无匹配' : '台账为空'); return; }
         copyWithFeedback(text, b, '已复制话术');
     });
     document.getElementById('renew-btn').addEventListener('click', renewAll);
@@ -2758,7 +2999,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         qrEncode: QRLIB.encode, qrDecode: QRLIB.decode, qrSelfTest: QRLIB.selfTest, qrPickVersion: QRLIB.pickVersion,
         activateUrl: activateUrl, ACTIVATE_BASE: ACTIVATE_BASE,
         buildDeliverImage: buildDeliverImage, deliverImageName: deliverImageName,
-        deliverImageTargets: deliverImageTargets, saveCanvasPng: saveCanvasPng
+        deliverImageTargets: deliverImageTargets, saveCanvasPng: saveCanvasPng,
+        // 统一取卡密 / 统一批量作用域 / 交付图打包（多条 → 一个 ZIP，内含每条一张 720×360 图）
+        cardOf: cardOf, currentTargets: currentTargets,
+        buildDeliverZip: buildDeliverZip, deliverSingleName: deliverSingleName,
+        crc32: crc32, zipStore: zipStore, bytesToBase64: bytesToBase64,
+        canvasToPngBytes: canvasToPngBytes, saveBytes: saveBytes, downloadBytes: downloadBytes
     };
 })();
 </script>
