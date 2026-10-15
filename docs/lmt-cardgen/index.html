@@ -314,7 +314,7 @@
     .lmt-chip.is-ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
     /* 初始为空时不渲染空胶囊 */
     .lmt-chip:empty { display: none; }
-    /* 线上清单状态条：结论胶囊 + 条件出现的「重试」挤在一行，结论过长时允许换行 */
+    /* 线上清单状态条：结论胶囊 + 条件出现的「重新同步」挤在一行，结论过长时允许换行 */
     .sync-bar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
     .sync-bar .lmt-chip { align-self: center; }
     /* 折叠说明块：把长格式说明从 label 里挪出来，标签只留一句人话 */
@@ -394,7 +394,7 @@
             <h2 class="panel-block-title">机器码台账</h2>
 
             <div class="control-group">
-                <label for="mc-list">机器码台账（每行一个用户）</label>
+                <label for="mc-list">每行一个用户</label>
                 <textarea id="mc-list" placeholder="XXXX-XXXX-XXXX-XXXX,张三,2027-12-31
 YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 <details class="lmt-details">
@@ -407,13 +407,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 </details>
             </div>
 
-            <!-- 主流程只留一个动作：生成卡密（主）；文件类交换降到下面一行、危险操作再用分隔线单独隔开 -->
+            <!-- 「导入 / 导出」是台账本身的进出入口，紧贴输入框；「生成卡密」是本区块唯一主操作，紧随其后独占一行；
+                 破坏性的「清空台账」仍用分隔线单独隔开（误触成本最高的一枚不与其他按钮并排） -->
             <div class="row">
-                <button type="button" class="btn btn-primary" id="gen-btn">生成卡密</button>
-            </div>
-            <div class="row is-split">
                 <button type="button" class="btn btn-ghost" id="import-btn" title="读入 CSV / TXT；导入前先确认合并或覆盖">导入台账</button>
                 <button type="button" class="btn btn-ghost" id="export-btn" title="导出三列 CSV（机器码 / 备注 / 有效期），与「导入台账」无损回环">导出台账</button>
+            </div>
+            <div class="row">
+                <button type="button" class="btn btn-primary" id="gen-btn" title="为台账里每一行取卡密；已有绑定的机器码直接复用，不会重复发卡">生成卡密</button>
             </div>
             <div class="row is-split">
                 <button type="button" class="btn btn-danger" id="clear-btn">清空台账</button>
@@ -441,30 +442,21 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         <section class="panel-block">
             <h2 class="panel-block-title" id="out-title">卡密清单</h2>
 
-            <!-- 线上清单状态条：自动同步的结论常驻此处。「重试」仅在同步失败时出现（默认隐藏）。 -->
+            <!-- 线上清单状态条：自动同步的结论常驻此处。「重新同步」仅在同步失败时出现（默认隐藏）。 -->
             <div class="sync-bar">
                 <span class="lmt-chip" id="online-tip" role="status" aria-live="polite"></span>
-                <button type="button" class="btn btn-link" id="refresh-btn" hidden>重试</button>
+                <button type="button" class="btn btn-link" id="refresh-btn" hidden title="重新拉取线上清单，并与本机台账合并">重新同步</button>
             </div>
             <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
 
             <div class="control-group">
-                <label for="filter-input">筛选（按 备注 / 机器码 / 卡密 / 有效期 匹配；留空显示全部）</label>
+                <label for="filter-input">筛选（备注 / 机器码 / 卡密 / 有效期）</label>
                 <div class="row">
-                    <input type="text" id="filter-input" placeholder="筛选：备注 / 机器码 / 卡密 / 有效期" spellcheck="false" style="flex:1 1 200px;">
+                    <input type="text" id="filter-input" placeholder="输入关键词，留空显示全部" spellcheck="false" style="flex:1 1 200px;">
                     <button type="button" class="btn btn-ghost" id="select-all-btn" aria-pressed="false" title="全选当前筛选出的行；全部已勾选时再点一次取消">全选</button>
                 </div>
             </div>
 
-            <details class="lmt-details">
-                <summary>列表来源与批量操作的作用范围</summary>
-                <div>
-                    列表 = 你在「机器码台账」里录入的条目 ∪ 线上清单里本机没有的条目；后者带「线上」标记，
-                    只参与展示与发布，不会被写回台账输入框。<br>
-                    批量动作（续期 / 吊销）与交付动作（复制交付文案 / 导出交付图）共用同一作用范围：
-                    优先作用于「已勾选的行」；没有勾选时按当前筛选结果；二者皆空时需要二次确认并回显将影响的条数。
-                </div>
-            </details>
             <!-- 目标计数从长句里摘出来做成状态胶囊：一眼看到「将影响 N 条」 -->
             <div class="lmt-chip" id="scope-count" role="status" aria-live="polite"></div>
 
@@ -477,6 +469,17 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 <button type="button" class="btn btn-ghost" id="deliver-img-btn" title="给目标卡密一卡一图（720×360）；单条直出 PNG，多条打包 ZIP">导出交付图</button>
                 <span class="lmt-scope-count" id="deliver-img-count"></span>
             </div>
+
+            <!-- 说明块紧跟在它解释的那几枚按钮之后：折叠时也不打断「筛选 → 影响范围 → 动作」这条线 -->
+            <details class="lmt-details">
+                <summary>列表来源与批量操作的作用范围</summary>
+                <div>
+                    列表 = 你在「机器码台账」里录入的条目 ∪ 线上清单里本机没有的条目；后者带「线上」标记，
+                    只参与展示与发布，不会被写回台账输入框。<br>
+                    批量动作（续期 / 吊销）与交付动作（复制交付文案 / 导出交付图）共用同一作用范围：
+                    优先作用于「已勾选的行」；没有勾选时按当前筛选结果；二者皆空时需要二次确认并回显将影响的条数。
+                </div>
+            </details>
             <div id="out"></div>
         </section>
 
@@ -498,23 +501,22 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 <div class="row">
                     <button type="button" class="btn btn-link" id="copy-manifest" title="备用 / 兜底通道：复制清单全文，自行覆盖上传到托管地址">复制清单 JSON（备用）</button>
                 </div>
-                <div class="row">
-                    <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（默认关闭；开启后需停止输入数秒且通过发布前自检才提交）</label>
-                </div>
 
                 <div class="control-group">
-                    <label for="gh-token">GitHub 令牌（细粒度 PAT，仅需本仓库的 Contents 读写权限；默认仅本次会话有效）</label>
+                    <label for="gh-token">GitHub 令牌（细粒度 PAT，仅需本仓库 Contents 的读写权限）</label>
                     <input type="password" id="gh-token" placeholder="粘贴令牌后点「保存令牌」" spellcheck="false" autocomplete="off">
                     <div class="row">
                         <button type="button" class="btn btn-ghost" id="gh-token-save">保存令牌</button>
                         <button type="button" class="btn btn-danger" id="gh-token-clear">清除令牌</button>
-                        <label class="inline-check" for="gh-token-persist"><input type="checkbox" id="gh-token-persist"> 记住令牌（持久化到本机，存在 XSS 风险）</label>
                     </div>
+                    <!-- 两个开关各自独占一行：不挤在按钮行里，避免窄屏被折行后与按钮错位 -->
+                    <label class="inline-check" for="gh-token-persist"><input type="checkbox" id="gh-token-persist"> 记住令牌（持久化到本机，存在 XSS 风险）</label>
+                    <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（默认关闭；需先保存令牌，且停止输入数秒并通过发布前自检才提交）</label>
                 </div>
                 <div class="ledger-tip" id="upload-tip" role="status" aria-live="polite"></div>
 
                 <div class="control-group">
-                    <label for="revoke-list">已吊销卡密（可选，每行一个；吊销优先于白名单，命中即拒绝激活）</label>
+                    <label for="revoke-list">已吊销卡密（每行一张；吊销优先于白名单，命中即拒绝激活）</label>
                     <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并发布，即可在线上吊销" spellcheck="false"></textarea>
                 </div>
 
@@ -532,13 +534,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             <h2 class="panel-block-title">账号与密钥</h2>
 
             <div class="control-group">
-                <label for="secret-input">签名私钥（32 字节 seed：base32 52 字符 或 hex 64 字符；只保存在本机，绝不写入清单、绝不上传）</label>
+                <label for="secret-input">签名私钥（32 字节 seed：base32 52 字符 或 hex 64 字符；不写入清单、不上传）</label>
                 <textarea id="secret-input" placeholder="粘贴私钥后点「保存私钥」" spellcheck="false" autocomplete="off" style="min-height:64px;"></textarea>
                 <div class="row">
                     <button type="button" class="btn btn-ghost" id="secret-save">保存私钥</button>
                     <button type="button" class="btn btn-danger" id="secret-clear">清除私钥</button>
-                    <label class="inline-check" for="secret-persist"><input type="checkbox" id="secret-persist"> 记住私钥（默认仅本标签页有效）</label>
                 </div>
+                <!-- 留存范围由这一行说明，标签里不再重复「只保存在本机」 -->
+                <label class="inline-check" for="secret-persist"><input type="checkbox" id="secret-persist"> 记住私钥（勾选才写入本机，否则只在本标签页有效）</label>
             </div>
             <p class="sub">当前私钥派生的公钥指纹：<code id="secret-fingerprint">未录入</code></p>
             <div class="row">
@@ -1586,7 +1589,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 线上同步结果缓存：key = 归一化机器码 → 'up'（已上传）/ 'notup'（未上传）/ 'revoked'（已吊销）。
     // 为 null 表示本次会话尚未同步成功，此时一律不显示状态徽标（不给出未经核实的结论，FR-04）。
     var onlineStatus = null;
-    var syncBusy = false;        // 同步进行中：避免回到前台 / 网络恢复 / 手动重试叠成并发请求
+    var syncBusy = false;        // 同步进行中：避免回到前台 / 网络恢复 / 手动「重新同步」叠成并发请求
     // 上次成功同步的线上清单：{ byMc（机器码→卡密）, revoked（已吊销卡密）, entries（归一化卡密→{mc,note,exp}） }。
     // entries 既供「线上条目」在卡密清单里只读展示，也作为发布时字段级三方合并的基准（base）。
     var lastRemote = null;
@@ -3271,7 +3274,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // ---------- FR-03 线上清单自动同步 ----------
     // 这一步取代了旧版的「对照线上清单 / 备份 / 恢复 / 导入」例行操作：
     // 拉取 → 结构校验 + 验签 → 按机器码合并 → 回灌卡密绑定 → 渲染状态条与差异报告。
-    // 触发点：登录后首次进入、页面回到前台、网络恢复、同步失败后的「重试」、一键发布成功后。
+    // 触发点：登录后首次进入、页面回到前台、网络恢复、同步失败后的「重新同步」、一键发布成功后。
     function setOnlineTip(text, cls) {
         var el = document.getElementById('online-tip');
         if (!el) return;
@@ -3325,7 +3328,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return { byMc: byMc, dupMc: dupMc };
     }
 
-    // 同步主流程。触发点：登录后首次进入、页面回到前台、网络恢复、同步失败后的「重试」、一键发布成功后。
+    // 同步主流程。触发点：登录后首次进入、页面回到前台、网络恢复、同步失败后的「重新同步」、一键发布成功后。
     function syncOnlineManifest() {
         if (!MANIFEST_URL) {
             setOnlineTip('未配置清单地址，无法同步线上清单。', 'is-bad');
@@ -3344,7 +3347,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (privateKeyOk() && !remote.verified) throw new Error('清单验签失败（签名不匹配或已换私钥）');
             return applyRemote(remote, sourceLabel(res.source));
         })['catch'](function (err) {
-            // 失败不阻断任何本机能力：状态条给原因 + 「重试」，本机数据原样保留（§2.3 恢复路径）。
+            // 失败不阻断任何本机能力：状态条给原因 + 「重新同步」，本机数据原样保留（§2.3 恢复路径）。
             onlineStatus = null;
             showSyncRetry(true);
             setOnlineTip('无法同步线上清单：' + (err && err.message ? err.message : '网络错误') + '。本机数据不受影响。', 'is-bad');
@@ -3808,10 +3811,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var el = document.getElementById('scope-count');
         if (el) {
             var msg, warn = false;
-            if (!list.length) msg = '当前无可作用的目标（台账为空）。';
-            else if (checked) msg = '将影响 ' + targets.length + ' 条（来自已勾选的 ' + checked + ' 行）。';
-            else if (filterText) msg = '将影响 ' + targets.length + ' 条（未勾选，按当前筛选结果）。';
-            else { warn = targets.length > 0; msg = '将影响 ' + targets.length + ' 条（未勾选、未筛选 → 作用于全部台账，操作前需二次确认）。'; }
+            if (!list.length) msg = '无可作用的目标 · 台账为空';
+            else if (checked) msg = '将影响 ' + targets.length + ' 条 · 已勾选 ' + checked + ' 行';
+            else if (filterText) msg = '将影响 ' + targets.length + ' 条 · 按当前筛选结果';
+            else { warn = targets.length > 0; msg = '将影响 ' + targets.length + ' 条 · 未筛选，作用于全部台账（需二次确认）'; }
             el.textContent = msg;
             el.className = 'lmt-chip' + (warn ? ' is-warn' : '');
         }
@@ -4152,7 +4155,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         // 空筛选 = 全选全量：这是最容易误操作的一步，明确警示并刷新目标计数（P-21）。
         var scope = document.getElementById('scope-count');
         if (!allChecked && !filterText && scope) {
-            scope.textContent = '已全选全部台账 ' + boxes.length + ' 条（未筛选 → 批量操作将作用于全量，操作前需二次确认）。';
+            scope.textContent = '将影响 ' + boxes.length + ' 条 · 已全选全部台账（需二次确认）';
             scope.className = 'lmt-chip is-warn';
         } else {
             updateScopeCount();

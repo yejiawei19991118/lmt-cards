@@ -1308,26 +1308,26 @@
     // v2 §5.9：`#template-btn`（下载模板）已删除——格式说明与示例行直接写在台账折叠块里，
     // 该入口找不到独有场景，故不保留任何用例（删除即不再有可测行为）。
 
-    test('cardgen/线上清单自动同步：失败给原因 + 「重试」只在失败时出现', async function () {
+    test('cardgen/线上清单自动同步：失败给原因 + 「重新同步」只在失败时出现', async function () {
       g().setPrivateKey(TEST_PRIV);
       var tip = q(doc, '#online-tip');
       var retry = q(doc, '#refresh-btn');
-      // 「重试」是一次性入口：未同步 / 同步正常时都不渲染，只有失败才出现（§2.4）
-      assert(retry.hidden, '尚未同步时「重试」不应出现');
+      // 「重新同步」是一次性入口：未同步 / 同步正常时都不渲染，只有失败才出现（§2.4）
+      assert(retry.hidden, '尚未同步时「重新同步」不应出现');
 
       // 无头环境断网（--host-resolver-rules），同步必然失败。自动触发点（online / visibilitychange /
       // 登录成功）在无头 harness 里无法模拟，这里直接调用同一个入口函数，覆盖的仍是同一条链路。
       await g().syncOnlineManifest();
-      // 断言「失败必须看得见」：状态条给出原因 + 「重试」出现（§2.4 第 3 条）
+      // 断言「失败必须看得见」：状态条给出原因 + 「重新同步」出现（§2.4 第 3 条）
       assert(/无法同步线上清单/.test(text(tip)), '同步失败必须给出原因，实际：' + text(tip));
       assert(/本机数据不受影响/.test(text(tip)), '失败提示应说明本机数据不受影响，实际：' + text(tip));
-      assert(!retry.hidden, '同步失败时「重试」必须出现');
+      assert(!retry.hidden, '同步失败时「重新同步」必须出现');
 
-      // 手动重试：点击后重新进入同步中，并再次收敛到失败结论（仍失败则「重试」保持可用）
+      // 手动重同步：点击后重新进入同步中，并再次收敛到失败结论（仍失败则按钮保持可用）
       retry.click();
-      assert(retry.hidden, '点击「重试」后应回到同步中（按钮先隐藏，避免重复点击）');
-      await until(function () { return /无法同步线上清单/.test(text(tip)); }, 30000, '重试后收敛');
-      assert(!retry.hidden, '重试仍失败时「重试」应保持可用');
+      assert(retry.hidden, '点击「重新同步」后应回到同步中（按钮先隐藏，避免重复点击）');
+      await until(function () { return /无法同步线上清单/.test(text(tip)); }, 30000, '重新同步后收敛');
+      assert(!retry.hidden, '重新同步仍失败时按钮应保持可用');
     });
 
     test('cardgen/自动上传开关', async function () {
