@@ -14,72 +14,121 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <!-- @shell:end -->
 <style>
-    :root { --accent: #2f6df6; --text-main: #1f2430; --text-sub: #5b6472; }
+    :root {
+        /* ===== 界面设计规范（Design Tokens，与「图文排版生成器」共用同一套） ===== */
+        /* 品牌与交互 */
+        --accent: #2f6df6;
+        --accent-ink: #1c4fd6;          /* 主色加深：hover / 文字按钮 */
+        --accent-weak: #eef4ff;         /* 主色浅底：hover 底、选中底 */
+        --accent-line: #cfe0ff;         /* 主色浅描边 */
+        --accent-ring: rgba(47, 109, 246, .5);
+        /* 表面与分隔 */
+        --page-bg: #eef1f6;
+        --surface: #ffffff;
+        --surface-2: #f7f9fc;
+        --line: #e8ecf3;
+        --line-strong: #dbe1ea;
+        /* 文字 */
+        --text-main: #1f2430;
+        --text-sub: #5b6472;
+        --text-mute: #8a94a3;
+        /* 语义色 */
+        --danger: #b42318;  --danger-bg: #fff6f5;  --danger-line: #f0c4c0;
+        --ok: #1f8a4c;      --ok-bg: #f2fbf5;      --ok-line: #b7e2c6;
+        --warn-ink: #b45309; --warn-bg: #fff4e5;
+        /* 字号阶 */
+        --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 19px;
+        /* 间距阶 */
+        --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+        /* 圆角 */
+        --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+        /* 阴影 */
+        --sh-1: 0 1px 2px rgba(24, 33, 51, .04);
+        --sh-2: 0 8px 24px rgba(24, 33, 51, .08), 0 1px 3px rgba(24, 33, 51, .06);
+        --sh-3: 0 18px 48px rgba(24, 33, 51, .24);
+        /* 控件高度 */
+        --h-sm: 32px; --h-md: 40px; --h-lg: 48px;
+    }
     * { box-sizing: border-box; }
     body {
         -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
         margin: 0; padding: 28px 20px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", Arial, sans-serif;
-        background: #eef1f6; color: var(--text-main);
+        background: var(--page-bg); color: var(--text-main);
     }
     .wrap { max-width: 680px; margin: 0 auto; }
     .card {
-        background: #fff; border: 1px solid #e8ecf3; border-radius: 16px;
-        padding: 24px; box-shadow: 0 8px 24px rgba(24, 33, 51, .08);
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+        padding: 24px; box-shadow: var(--sh-2);
     }
-    h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: .5px; }
-    .sub { font-size: 13px; color: var(--text-sub); margin: 0 0 18px; line-height: 1.6; }
+    h1 { font-size: var(--fs-xl); margin: 0 0 6px; letter-spacing: .5px; }
+    .sub { font-size: var(--fs-sm); color: var(--text-sub); margin: 0 0 18px; line-height: 1.6; }
     .warn {
-        font-size: 12.5px; line-height: 1.6; color: #b42318; background: #fef3f2;
-        border: 1px solid #fecdca; border-radius: 9px; padding: 10px 12px; margin-bottom: 18px;
+        font-size: var(--fs-xs); line-height: 1.6; color: var(--danger); background: var(--danger-bg);
+        border: 1px solid var(--danger-line); border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 18px;
     }
-    label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-sub); margin-bottom: 7px; }
+    label { display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--text-sub); margin-bottom: var(--sp-2); }
     textarea {
         width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical;
-        padding: 11px 12px; border: 1px solid #dbe1ea; border-radius: 9px;
-        font-size: 14px; line-height: 1.6; background: #fbfcfe; color: var(--text-main);
+        padding: 10px var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+        font-size: var(--fs-md); line-height: 1.6; background: var(--surface-2); color: var(--text-main);
         font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
     }
-    textarea:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
+    textarea:focus { outline: none; border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
     input[type="text"], input[type="password"] {
-        width: 100%; box-sizing: border-box;
-        padding: 11px 12px; border: 1px solid #dbe1ea; border-radius: 9px;
-        font-size: 13px; background: #fbfcfe; color: var(--text-main);
+        width: 100%; box-sizing: border-box; height: var(--h-md);
+        padding: 0 var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+        font-size: var(--fs-md); background: var(--surface-2); color: var(--text-main);
         font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
     }
-    input[type="text"]:focus, input[type="password"]:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
-    .row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    input[type="text"]:focus, input[type="password"]:focus { outline: none; border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(47,109,246,.12); }
+    .row { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); flex-wrap: wrap; align-items: center; }
+    /* 分隔行：与上一组按钮之间用一条细线物理隔离（危险按钮前必用），避免误触 */
+    .row.is-split { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
     .inline-check { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; cursor: pointer; }
+    /* 按钮基类：只管尺寸与排版，外观由 .btn-primary / .btn-ghost / .btn-link / .btn-danger 决定 */
     .btn {
-        border: none; border-radius: 10px; cursor: pointer; font-size: 14.5px; font-weight: 700;
-        padding: 11px 20px; letter-spacing: .5px; font-family: inherit; transition: filter .15s, transform .12s;
+        display: inline-flex; align-items: center; justify-content: center;
+        height: var(--h-md); padding: 0 var(--sp-3); border: 1px solid transparent;
+        border-radius: var(--r-sm); cursor: pointer; background: none;
+        font-family: inherit; font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0;
+        transition: background .15s, border-color .15s, color .15s, filter .15s, transform .12s;
     }
-    .btn-primary { background: linear-gradient(180deg, #3d78f7, #2f6df6); color: #fff; box-shadow: 0 6px 16px rgba(47,109,246,.28); }
-    .btn-primary:hover { filter: brightness(1.05); }
-    .btn-primary:active { transform: translateY(1px); }
-    .btn-ghost { background: #f7f9fc; color: var(--text-sub); border: 1px solid #dbe1ea; }
-    .btn-ghost:hover { background: #eef4ff; border-color: var(--accent); color: var(--accent); }
+    /* 主操作：实心主色，每个视图仅一个（登录 / 生成卡密 / 确认导入 / 一键发布） */
+    .btn-primary {
+        flex: 1 1 0; height: var(--h-lg); padding: 0 var(--sp-4);
+        background: linear-gradient(180deg, #3d78f7, #2f6df6); color: #fff; border: none;
+        font-size: var(--fs-md); font-weight: 700; letter-spacing: .5px;
+        box-shadow: 0 6px 16px rgba(47,109,246,.28);
+    }
+    .btn-primary:hover:not(:disabled) { filter: brightness(1.05); }
+    .btn-primary:active:not(:disabled) { transform: translateY(1px); }
+    /* 次操作：白底描边 */
+    .btn-ghost { background: var(--surface); color: var(--text-sub); border-color: var(--line-strong); }
+    .btn-ghost:hover:not(:disabled) { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-ink); }
     .item {
-        display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-        border: 1px solid #e8ecf3; border-radius: 10px; margin-bottom: 8px; background: #fbfcfe;
+        display: flex; align-items: center; gap: var(--sp-2); padding: 10px var(--sp-3);
+        border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: var(--sp-2);
+        background: var(--surface-2);
     }
     .item .mc, .item .card-code {
         font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-        font-size: 13px; letter-spacing: .5px; white-space: nowrap;
+        font-size: var(--fs-sm); letter-spacing: .5px; white-space: nowrap;
     }
     .item .mc { color: var(--text-sub); flex: 0 0 auto; }
     .item .arrow { color: #b7c1d1; flex: 0 0 auto; }
     .item .card-code { color: #14181f; font-weight: 700; flex: 1 1 auto; overflow-x: auto; }
-    .item .note { font-size: 12px; color: #8a94a3; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .item .btn-ghost { padding: 6px 12px; font-size: 12.5px; font-weight: 600; }
-    .empty { font-size: 13px; color: #a7b1be; padding: 6px 2px; }
-    .ledger-tip { font-size: 12px; color: var(--text-sub); margin-top: 8px; line-height: 1.6; }
-    .status-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; white-space: nowrap; }
-    .status-badge.is-up { color: #0f7b3f; background: #e7f7ee; }
-    .status-badge.is-notup { color: #b45309; background: #fff4e5; }
-    .status-badge.is-revoked { color: #b42318; background: #fef3f2; }
-    .secret { font-size: 12px; color: var(--text-sub); line-height: 1.6; }
-    code { background: #f2f5fa; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    .item .note { font-size: var(--fs-xs); color: var(--text-mute); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* 行内小号按钮：结果行的「复制卡密」 */
+    .item .btn-ghost { height: var(--h-sm); padding: 0 var(--sp-2); font-size: var(--fs-xs); font-weight: 600; }
+    .empty { font-size: var(--fs-sm); color: var(--text-mute); padding: 6px 2px; }
+    .ledger-tip { font-size: var(--fs-xs); color: var(--text-sub); margin-top: var(--sp-2); line-height: 1.6; }
+    .status-badge { font-size: var(--fs-xs); font-weight: 700; padding: 2px 8px; border-radius: 999px; flex: 0 0 auto; white-space: nowrap; }
+    .status-badge.is-up { color: var(--ok); background: var(--ok-bg); }
+    .status-badge.is-notup { color: var(--warn-ink); background: var(--warn-bg); }
+    .status-badge.is-revoked { color: var(--danger); background: var(--danger-bg); }
+    .secret { font-size: var(--fs-xs); color: var(--text-sub); line-height: 1.6; }
+    code { background: var(--surface-2); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; font-size: var(--fs-xs); }
 
     /* 手机端：结果行原本是「机器码 → 卡密 → 备注 → 复制」横排，
        19 位机器码 + 24 位卡密这类等宽字符串会直接撑破窄屏，这里改为换行堆叠；
@@ -87,15 +136,13 @@
     @media (max-width: 560px) {
         body { padding: 16px 12px; }
         textarea, input[type="text"], input[type="password"] { font-size: 16px; }
-        /* 触屏目标：复制/导入这类按钮不小于 44px，避免手指点不中 */
-        .btn { min-height: 46px; }
+        /* 触屏目标：所有按钮不小于 44px，避免手指点不中 */
+        .btn { min-height: 44px; height: auto; padding: 10px var(--sp-3); }
         .item { flex-wrap: wrap; gap: 6px 10px; }
         .item .mc, .item .card-code { white-space: normal; overflow-wrap: anywhere; }
         .item .card-code { flex: 1 1 100%; }
         .item .note { flex: 1 1 100%; }
-        .item .btn-ghost { margin-left: auto; min-height: 40px; padding: 8px 16px; }
-        /* 提高选择器优先级：manual-copy 的样式定义在本段媒体查询之后 */
-        .manual-copy-card .manual-copy-actions button { min-height: 44px; padding: 10px 18px; }
+        .item .btn-ghost { margin-left: auto; min-height: 40px; height: auto; padding: 8px 16px; }
     }
 
     /* ===== 移动端交互兜底 ===== */
@@ -112,35 +159,41 @@
     }
     .manual-copy-card {
         width: 460px; max-width: 100%; max-height: 100%; overflow-y: auto; box-sizing: border-box;
-        background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 18px 48px rgba(24, 33, 51, .24);
+        background: var(--surface); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--sh-3);
     }
-    .manual-copy-card h3 { margin: 0 0 6px; font-size: 16px; }
-    .manual-copy-card p { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
+    .manual-copy-card h3 { margin: 0 0 6px; font-size: var(--fs-lg); }
+    .manual-copy-card p { margin: 0 0 var(--sp-3); font-size: var(--fs-sm); line-height: 1.6; color: var(--text-sub); }
     .manual-copy-card textarea {
         width: 100%; box-sizing: border-box; min-height: 108px; resize: vertical;
-        padding: 10px 12px; border: 1px solid #dbe1ea; border-radius: 9px;
-        font-size: 13px; line-height: 1.6; color: var(--text-main); background: #fbfcfe;
+        padding: 10px var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+        font-size: var(--fs-sm); line-height: 1.6; color: var(--text-main); background: var(--surface-2);
         font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
         -webkit-user-select: text; user-select: text;
     }
-    .manual-copy-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
-    .manual-copy-actions button {
-        font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-        padding: 9px 16px; border-radius: 9px; border: 1px solid #dbe1ea; background: #f7f9fc; color: var(--text-sub);
+    .manual-copy-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); }
+    /* 无 .btn 类的兜底按钮（手动复制浮层的「关闭 / 全选」）：给一套与次操作一致的外观 */
+    .manual-copy-actions button:not(.btn) {
+        font-family: inherit; font-size: var(--fs-md); font-weight: 600; cursor: pointer;
+        height: var(--h-md); padding: 0 var(--sp-4);
+        border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text-sub);
+        border-radius: var(--r-sm);
     }
+    .manual-copy-actions button:not(.btn):hover { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-ink); }
+    /* 弹层里的主操作保持内容宽度，不与「取消」抢空间（.btn-primary 在正文行里才吃满剩余宽度） */
+    .manual-copy-actions > .btn-primary { flex: 0 0 auto; }
     /* 登录层：未登录时以不透明遮罩盖住整个应用（纯前端门槛，可被绕过，仅防随手使用） */
     .auth-gate {
-        position: fixed; inset: 0; z-index: 9999; background: #eef1f6;
+        position: fixed; inset: 0; z-index: 9999; background: var(--page-bg);
         display: flex; align-items: center; justify-content: center; padding: 24px;
     }
     .auth-gate .card { width: 100%; max-width: 360px; }
-    .auth-err { font-size: 12.5px; color: #b42318; margin: 10px 0 0; min-height: 16px; }
+    .auth-err { font-size: var(--fs-xs); color: var(--danger); margin: 10px 0 0; min-height: 16px; }
 
     /* 键盘可达性：按钮与复选标签在 Tab 聚焦时给出统一外圈（鼠标点击不触发） */
-    button:focus-visible, .inline-check:focus-within { outline: 2px solid rgba(47, 109, 246, .5); outline-offset: 2px; }
+    button:focus-visible, .inline-check:focus-within { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
     /* 结果行：hover / 键盘聚焦时给一层浅底，明确「这一行可以操作」 */
     .item { transition: background .15s, border-color .15s; }
-    .item:hover, .item:focus-within { background: #f4f7fc; border-color: #dbe4f0; }
+    .item:hover, .item:focus-within { background: var(--surface); border-color: var(--line-strong); }
     /* 弹层打开时锁定背景滚动，避免移动端手指在浮层上滑动时背景跟着一起滚 */
     body.modal-open { overflow: hidden; }
     /* 弹层入场：轻微上浮 + 淡入，给出「这是新出现的一层」的反馈 */
@@ -159,56 +212,56 @@
     }
     /* ===== 新增：有效期徽标 / 结果勾选框 / 差异报告（class 一律 lmt- 前缀） ===== */
     .lmt-exp-badge {
-        font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+        font-size: var(--fs-xs); font-weight: 700; padding: 2px 8px; border-radius: 999px;
         flex: 0 0 auto; white-space: nowrap; color: #0b5cad; background: #e8f1fe;
     }
-    .lmt-exp-badge.is-expired { color: #b42318; background: #fef3f2; border: 1px solid #fecdca; }
+    .lmt-exp-badge.is-expired { color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger-line); }
     .lmt-check { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; cursor: pointer; }
     .diff-report {
-        margin-top: 8px; border: 1px solid #e8ecf3; border-radius: 10px; padding: 10px 12px;
-        background: #fbfcfe; font-size: 12.5px; color: var(--text-sub); line-height: 1.7;
+        margin-top: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px var(--sp-3);
+        background: var(--surface-2); font-size: var(--fs-xs); color: var(--text-sub); line-height: 1.7;
     }
-    .diff-report .lmt-diff-ok { color: #0f7b3f; font-weight: 600; }
+    .diff-report .lmt-diff-ok { color: var(--ok); font-weight: 600; }
 
     /* ===== 新增：目标计数 / 快照时间点列表 / 发布自检（class 一律 lmt- 前缀） ===== */
-    .lmt-scope-count { font-size: 12px; font-weight: 600; color: var(--accent); align-self: center; }
-    .lmt-scope-count.is-warn { color: #b42318; }
+    .lmt-scope-count { font-size: var(--fs-xs); font-weight: 600; color: var(--accent); align-self: center; }
+    .lmt-scope-count.is-warn { color: var(--danger); }
     .lmt-snapshot-list { display: flex; flex-direction: column; gap: 6px; }
     .lmt-snapshot-item {
-        display: flex; align-items: center; gap: 8px; padding: 7px 10px; box-sizing: border-box;
-        border: 1px solid #e8ecf3; border-radius: 9px; background: #fbfcfe;
-        font-size: 12.5px; color: var(--text-sub); cursor: pointer;
+        display: flex; align-items: center; gap: var(--sp-2); padding: 7px 10px; box-sizing: border-box;
+        border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2);
+        font-size: var(--fs-xs); color: var(--text-sub); cursor: pointer;
     }
-    .lmt-snapshot-item:hover { background: #f4f7fc; }
-    .lmt-snapshot-item.is-selected { border-color: var(--accent); background: #eef4ff; color: var(--text-main); }
+    .lmt-snapshot-item:hover { background: var(--accent-weak); }
+    .lmt-snapshot-item.is-selected { border-color: var(--accent); background: var(--accent-weak); color: var(--text-main); }
     .lmt-snapshot-item input { flex: 0 0 auto; margin: 0; cursor: pointer; }
-    .lmt-snapshot-empty { font-size: 12.5px; color: var(--text-sub); }
-    .lmt-note { font-size: 12px; color: var(--text-sub); line-height: 1.6; margin: 0; }
-    #publish-check.is-ok { color: #0f7b3f; }
-    #publish-check.is-bad { color: #b42318; }
-    #import-report.is-bad { color: #b42318; }
-    #import-report.is-ok { color: #0f7b3f; }
-    .manual-copy-card .inline-check { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; color: var(--text-main); }
+    .lmt-snapshot-empty { font-size: var(--fs-xs); color: var(--text-sub); }
+    .lmt-note { font-size: var(--fs-xs); color: var(--text-sub); line-height: 1.6; margin: 0; }
+    #publish-check.is-ok { color: var(--ok); }
+    #publish-check.is-bad { color: var(--danger); }
+    #import-report.is-bad { color: var(--danger); }
+    #import-report.is-ok { color: var(--ok); }
+    .manual-copy-card .inline-check { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0; font-size: var(--fs-sm); color: var(--text-main); }
 
     /* ===== 界面分区：与「图文排版生成器」共用同一套分区卡 / 按钮分级 =====
        主意：外层容器改浅灰底，内部白色区块卡自然分区；登录层仍是白卡（未挂 .app-shell）。 */
-    .app-shell { background: #f7f9fc; padding: 18px; }
+    .app-shell { background: var(--surface-2); padding: 18px; }
     .panel-block {
-        display: flex; flex-direction: column; gap: 12px;
-        background: #fff; border: 1px solid #e8ecf3; border-radius: 14px;
-        padding: 14px 14px 16px; box-shadow: 0 1px 2px rgba(24, 33, 51, .04);
+        display: flex; flex-direction: column; gap: var(--sp-3);
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+        padding: var(--sp-3); box-shadow: var(--sh-1);
     }
-    .panel-block + .panel-block { margin-top: 14px; }
+    .panel-block + .panel-block { margin-top: var(--sp-4); }
     /* 区块内的标签不再自带下边距，交由字段分组统一控制间距 */
     .panel-block label { margin-bottom: 0; }
     .panel-block .sub { margin: 0; }
     /* 与 layout 同名的字段分组：标签与控件贴紧，组与组之间才留大间距 */
-    .control-group { display: flex; flex-direction: column; gap: 7px; }
+    .control-group { display: flex; flex-direction: column; gap: var(--sp-2); }
     /* 按钮行的默认上外边距由区块的 gap 接管，避免叠加出过大空档 */
     .panel-block .row { margin-top: 0; }
     .panel-block-title {
-        display: flex; align-items: center; gap: 8px;
-        margin: 0; font-size: 13px; font-weight: 700; color: var(--text-main); letter-spacing: .3px;
+        display: flex; align-items: center; gap: var(--sp-2);
+        margin: 0; font-size: var(--fs-lg); font-weight: 700; color: var(--text-main); letter-spacing: .3px;
     }
     .panel-block-title::before {
         content: ''; flex: 0 0 auto; width: 3px; height: 14px; border-radius: 2px;
@@ -221,7 +274,7 @@
        这里显式用 display:block，避免 flex 容器影响 <details> 的原生开合行为 */
     details.panel-block { display: block; padding: 0; gap: 0; }
     details.panel-block > summary.panel-block-title {
-        padding: 14px; cursor: pointer; list-style: none; user-select: none;
+        padding: var(--sp-3); cursor: pointer; list-style: none; user-select: none;
     }
     details.panel-block > summary.panel-block-title::-webkit-details-marker { display: none; }
     details.panel-block > summary.panel-block-title::after {
@@ -234,12 +287,76 @@
     }
     details.panel-block > summary.panel-block-title:hover { color: var(--accent); }
     details.panel-block > .panel-block-body {
-        display: flex; flex-direction: column; gap: 12px; padding: 0 14px 16px;
+        display: flex; flex-direction: column; gap: var(--sp-3); padding: 0 var(--sp-3) var(--sp-3);
     }
 
-    /* 按钮分级：主操作（实心主色，全局唯一）、次操作（描边中性）、清空/吊销（危险描边） */
-    .btn-danger { background: #fff6f5; color: #b42318; border: 1px solid #f0c4c0; }
-    .btn-danger:hover { background: #fdecea; border-color: #e2938c; }
+    /* ===== 通用工具类（与 layout 共用同一套） ===== */
+    [hidden] { display: none !important; }
+    .lmt-field-help { font-size: var(--fs-xs); line-height: 1.55; color: var(--text-mute); margin: 0; }
+    /* 结果提示区初始为空时不该占位（flex 布局下空 div 仍会吃掉一份 gap） */
+    .ledger-tip:empty { display: none; }
+    /* 状态胶囊：把「将影响 N 条」这类结论从长说明里摘出来，一眼可见 */
+    .lmt-chip {
+        display: inline-flex; align-items: center; gap: var(--sp-1); align-self: flex-start;
+        padding: 4px 10px; border-radius: 999px;
+        background: var(--accent-weak); border: 1px solid var(--accent-line);
+        color: var(--accent-ink); font-size: var(--fs-xs); font-weight: 600; line-height: 1.5;
+    }
+    .lmt-chip.is-warn { background: var(--warn-bg); border-color: #f2d4a8; color: var(--warn-ink); }
+    /* 状态条的两个终态：同步失败（danger）与同步成功（ok）。颜色只在语义确实成立时使用 */
+    .lmt-chip.is-bad { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger); }
+    .lmt-chip.is-ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
+    /* 初始为空时不渲染空胶囊 */
+    .lmt-chip:empty { display: none; }
+    /* 线上清单状态条：结论胶囊 + 条件出现的「重试 / 撤销」挤在一行，结论过长时允许换行 */
+    .sync-bar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+    .sync-bar .lmt-chip { align-self: center; }
+    /* 折叠说明块：把长格式说明从 label 里挪出来，标签只留一句人话 */
+    .lmt-details { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
+    .lmt-details > summary {
+        padding: 8px var(--sp-3); cursor: pointer; list-style: none; user-select: none;
+        font-size: var(--fs-xs); font-weight: 600; color: var(--text-sub);
+    }
+    .lmt-details > summary::-webkit-details-marker { display: none; }
+    .lmt-details > summary::after { content: '▾'; float: right; transition: transform .2s; }
+    .lmt-details[open] > summary::after { transform: rotate(180deg); }
+    .lmt-details > summary:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+    .lmt-details > div { padding: 0 var(--sp-3) var(--sp-3); font-size: var(--fs-xs); line-height: 1.7; color: var(--text-sub); }
+
+    /* ===== 按钮分级：主操作（实心主色）/ 次操作（描边中性）/ 弱操作（文字）/ 危险 ===== */
+    /* 弱操作：透明底 + 主色文字，不抢视觉（下载模板 / 导出含卡密台账 / 复制地址 / 清除令牌） */
+    .btn-link {
+        display: inline-flex; align-items: center; justify-content: center;
+        flex: 0 0 auto; height: var(--h-sm); padding: 0 var(--sp-2);
+        border: none; background: none; border-radius: var(--r-sm);
+        cursor: pointer; font-family: inherit; font-size: var(--fs-sm); font-weight: 600;
+        color: var(--accent-ink); transition: background .15s, color .15s;
+    }
+    .btn-link:hover:not(:disabled) { background: var(--accent-weak); }
+    /* 危险（描边）：清空台账 / 吊销 / 清除私钥；不参与等分，靠右对齐 */
+    .btn-danger { height: var(--h-sm); background: var(--danger-bg); color: var(--danger); border-color: var(--danger-line); }
+    .btn-danger:hover:not(:disabled) { background: #fdecea; border-color: #e2938c; }
+    /* 危险按钮不参与等宽等分（否则误触成本最高的按钮反而最好点）；
+       行尾的危险按钮再推到最右，与同一行里的常规操作拉开距离（行中的危险按钮原地不动） */
+    .row > .btn-danger { flex: 0 0 auto; }
+    .row > .btn-danger:last-child { margin-left: auto; }
+    /* 弱操作同样不参与等分，保持紧凑宽度 */
+    .row > .btn-link { flex: 0 0 auto; }
+    /* 危险确认（实心）：只出现在二次确认弹层里 */
+    .btn-danger-solid {
+        display: inline-flex; align-items: center; justify-content: center;
+        flex: 0 0 auto; height: var(--h-md); padding: 0 var(--sp-4);
+        border: none; border-radius: var(--r-sm); background: var(--danger); color: #fff;
+        cursor: pointer; font-family: inherit; font-size: var(--fs-md); font-weight: 700;
+        transition: filter .15s, transform .12s;
+    }
+    .btn-danger-solid:hover:not(:disabled) { filter: brightness(1.08); }
+    .btn-danger-solid:active:not(:disabled) { transform: translateY(1px); }
+    .btn-link:focus-visible, .btn-danger-solid:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+    /* 选中态：用于「全选」这类可切换按钮（.is-active 与 aria-pressed 同步） */
+    .btn.is-active, [aria-pressed="true"].btn {
+        background: var(--accent-weak); border-color: var(--accent-line); color: var(--accent-ink);
+    }
     .btn:disabled { cursor: not-allowed; opacity: .55; }
 </style>
 </head>
@@ -271,20 +388,28 @@
             <h2 class="panel-block-title">机器码台账</h2>
 
             <div class="control-group">
-                <label for="mc-list">机器码台账（每行一个用户，格式：<code>机器码[,备注][,有效期]</code>，如 <code>XXXX-XXXX-XXXX-XXXX,张三,2027-12-31</code>；有效期可写 <code>2027-12-31</code> / <code>2027/12/31</code> / <code>20271231</code>，留空表示长期有效；自动保存到本浏览器）</label>
+                <label for="mc-list">机器码台账（每行一个用户）</label>
                 <textarea id="mc-list" placeholder="XXXX-XXXX-XXXX-XXXX,张三,2027-12-31
 YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
+                <details class="lmt-details">
+                    <summary>每行的格式与有效期写法</summary>
+                    <div>
+                        每行一个用户，格式 <code>机器码[,备注][,有效期]</code>，例如 <code>XXXX-XXXX-XXXX-XXXX,张三,2027-12-31</code>。<br>
+                        有效期可写 <code>2027-12-31</code> / <code>2027/12/31</code> / <code>20271231</code>；留空表示长期有效。<br>
+                        台账会自动保存到本浏览器。
+                    </div>
+                </details>
             </div>
 
+            <!-- 主流程只留一个动作：生成卡密（主）；文件类交换降到下面一行、危险操作再用分隔线单独隔开 -->
             <div class="row">
                 <button type="button" class="btn btn-primary" id="gen-btn">生成卡密</button>
-                <button type="button" class="btn btn-ghost" id="copy-ledger-table" title="复制台账对照表（机器码 / 备注 / 有效期 三列，复制前重算卡密）">复制台账表</button>
             </div>
-            <div class="row">
-                <button type="button" class="btn btn-ghost" id="export-btn" title="导出三列 CSV（机器码 / 备注 / 有效期），与「导入台账」无损回环">导出台账</button>
+            <div class="row is-split">
                 <button type="button" class="btn btn-ghost" id="import-btn" title="读入 CSV / TXT；导入前先确认合并或覆盖">导入台账</button>
-                <button type="button" class="btn btn-ghost" id="template-btn" title="下载三列模板，与「导出台账」同构">下载模板</button>
-                <button type="button" class="btn btn-ghost" id="export-deliver-btn" title="导出四列 CSV（机器码 / 卡密 / 备注 / 有效期），仅供查阅与交付，不与「导入台账」混用">导出含卡密台账</button>
+                <button type="button" class="btn btn-ghost" id="export-btn" title="导出三列 CSV（机器码 / 备注 / 有效期），与「导入台账」无损回环">导出台账</button>
+            </div>
+            <div class="row is-split">
                 <button type="button" class="btn btn-danger" id="clear-btn">清空台账</button>
             </div>
             <div class="ledger-tip" id="ledger-tip" role="status" aria-live="polite">台账为空 · 已自动保存到本浏览器</div>
@@ -306,88 +431,74 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             </div>
         </section>
 
-        <!-- 区块二：结果（原「生成结果」区块） -->
+        <!-- 区块二：生成结果（筛选结果区：展示全量清单 + 筛选 + 批量动作 + 交付出口） -->
         <section class="panel-block">
             <h2 class="panel-block-title" id="out-title">生成结果</h2>
+
+            <!-- 线上清单状态条：自动同步的结论常驻此处。
+                 「重试」仅在同步失败时出现，「撤销」仅在本次自动并入台账后可用（均默认隐藏）。 -->
+            <div class="sync-bar">
+                <span class="lmt-chip" id="online-tip" role="status" aria-live="polite"></span>
+                <button type="button" class="btn btn-link" id="refresh-btn" hidden>重试</button>
+                <button type="button" class="btn btn-link" id="undo-btn" hidden>撤销</button>
+            </div>
+            <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
 
             <div class="control-group">
                 <label for="filter-input">筛选结果（按 备注 / 机器码 / 卡密 / 有效期 匹配，留空显示全部）</label>
                 <div class="row">
                     <input type="text" id="filter-input" placeholder="筛选：备注 / 机器码 / 卡密 / 有效期" spellcheck="false" style="flex:1 1 200px;">
-                    <button type="button" class="btn btn-ghost" id="select-all-btn" title="全选当前筛选出的行；全部已勾选时再点一次取消">全选</button>
-                    <button type="button" class="btn btn-ghost" id="renew-btn" title="给目标卡密延长有效期">续期目标卡密</button>
+                    <button type="button" class="btn btn-ghost" id="select-all-btn" aria-pressed="false" title="全选当前筛选出的行；全部已勾选时再点一次取消">全选</button>
                 </div>
             </div>
-            <p class="sub" id="scope-tip">批量操作（续期 / 吊销 / 复制话术 / 导出交付图）的作用范围：优先「已勾选的行」；没有勾选时按当前筛选结果；二者皆空时需要二次确认并回显将影响的条数。</p>
-            <div class="ledger-tip" id="scope-count" role="status" aria-live="polite"></div>
+
+            <details class="lmt-details">
+                <summary>批量操作的作用范围</summary>
+                <div>批量动作（续期 / 吊销）与交付动作（复制交付文案 / 导出交付图）共用同一作用范围：优先作用于「已勾选的行」；没有勾选时按当前筛选结果；二者皆空时需要二次确认并回显将影响的条数。</div>
+            </details>
+            <!-- 目标计数从长句里摘出来做成状态胶囊：一眼看到「将影响 N 条」 -->
+            <div class="lmt-chip" id="scope-count" role="status" aria-live="polite"></div>
+
+            <div class="row is-split">
+                <button type="button" class="btn btn-ghost" id="renew-btn" title="给目标卡密延长有效期">续期目标卡密</button>
+                <button type="button" class="btn btn-danger" id="revoke-filtered-btn" title="作废目标卡密：写入「已吊销卡密」并刷新清单">吊销目标卡密</button>
+            </div>
             <div class="row">
-                <button type="button" class="btn btn-danger" id="revoke-filtered-btn" title="作废目标卡密：写入下方「已吊销卡密」并刷新清单">吊销目标卡密</button>
-                <button type="button" class="btn btn-ghost" id="deliver-filtered-btn" title="把目标卡密的交付话术复制到剪贴板（复制前重算卡密）">复制目标话术</button>
+                <button type="button" class="btn btn-ghost" id="deliver-btn" title="把目标卡密的交付文案复制到剪贴板（机器码 / 卡密 / 有效期 / 激活指引），复制前重算卡密">复制交付文案</button>
+                <button type="button" class="btn btn-ghost" id="deliver-img-btn" title="给目标卡密一卡一图（720×360）；单条直出 PNG，多条打包 ZIP">导出交付图</button>
+                <span class="lmt-scope-count" id="deliver-img-count"></span>
             </div>
             <div id="out"></div>
         </section>
 
-        <!-- 区块三：交付 -->
+        <!-- 区块三：发布到线上（作者每次改卡密都要用，故常驻；「一键发布」是全页唯一的主操作） -->
         <section class="panel-block">
-            <h2 class="panel-block-title">交付</h2>
+            <h2 class="panel-block-title">发布到线上</h2>
 
             <div class="row">
-                <button type="button" class="btn btn-ghost" id="deliver-btn" title="复制整份台账的交付文案（机器码 / 卡密 / 有效期 / 激活指引），复制前重算卡密">复制交付文案</button>
-                <button type="button" class="btn btn-ghost" id="deliver-img-btn" title="给目标卡密一卡一图（720×360）；单条直出 PNG，多条打包 ZIP">导出交付图</button>
-                <span class="lmt-scope-count" id="deliver-img-count"></span>
+                <button type="button" class="btn btn-primary" id="publish-btn">一键发布</button>
             </div>
-        </section>
+            <div class="ledger-tip" id="publish-check" role="status" aria-live="polite"></div>
+            <div class="ledger-tip" id="receipt-tip" role="status" aria-live="polite"></div>
 
-        <!-- 区块四：备份与对照 -->
-        <section class="panel-block">
-            <h2 class="panel-block-title">备份与对照</h2>
-
-            <div class="row">
-                <button type="button" class="btn btn-ghost" id="backup-btn">备份台账</button>
-                <button type="button" class="btn btn-ghost" id="restore-btn">恢复备份</button>
-                <button type="button" class="btn btn-ghost" id="online-check-btn">对照线上清单</button>
-            </div>
-
-            <div class="control-group">
-                <label id="snapshot-label">台账快照（自动留存最近若干份；选取一个时间点后可下载 / 恢复）</label>
-                <div class="lmt-snapshot-list" id="snapshot-list" role="listbox" aria-labelledby="snapshot-label"></div>
-                <div class="row">
-                    <button type="button" class="btn btn-ghost" id="snapshot-btn" title="下载所选时间点的台账快照 CSV">下载所选快照</button>
-                    <button type="button" class="btn btn-ghost" id="snapshot-restore-btn" title="把所选时间点快照合并回台账">恢复所选快照</button>
-                </div>
-            </div>
-
-            <div class="ledger-tip" id="snapshot-tip" role="status" aria-live="polite">尚未生成快照</div>
-            <div class="ledger-tip" id="online-tip" role="status" aria-live="polite"></div>
-            <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
-            <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
-        </section>
-
-        <!-- 区块五：在线清单与发布（可折叠；低频且影响线上，默认收起） -->
-        <details class="panel-block is-aux">
-            <summary class="panel-block-title">在线清单与发布</summary>
-            <div class="panel-block-body">
-                <p class="sub">「上传到 GitHub」是首发通道（提交后约 5 分钟生效）；「复制清单 JSON」降为备用 / 兜底通道，仅在无法上传时使用。</p>
+            <details class="lmt-details">
+                <summary>清单内容、上传通道与令牌</summary>
+                <div>
+                <p class="sub">「一键发布」是唯一的写线上通道；「复制清单 JSON」是无令牌时的兜底通道。发布前自检不通过会被拦下。</p>
                 <textarea id="manifest-out" readonly="" spellcheck="false" style="min-height:160px;"></textarea>
                 <div class="row">
-                    <button type="button" class="btn btn-ghost" id="upload-btn">上传到 GitHub（首发）</button>
-                    <button type="button" class="btn btn-ghost" id="copy-manifest" title="备用 / 兜底通道：复制清单全文，自行覆盖上传到托管地址">复制清单 JSON（备用）</button>
+                    <button type="button" class="btn btn-link" id="copy-manifest" title="备用 / 兜底通道：复制清单全文，自行覆盖上传到托管地址">复制清单 JSON（备用）</button>
                 </div>
                 <div class="row">
                     <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（默认关闭；开启后需停止输入数秒且通过发布前自检才提交）</label>
                 </div>
-                <div class="row">
-                    <button type="button" class="btn btn-ghost" id="publish-btn">一键发布</button>
-                </div>
-                <div class="ledger-tip" id="publish-check" role="status" aria-live="polite"></div>
-                <div class="ledger-tip" id="receipt-tip" role="status" aria-live="polite"></div>
 
                 <div class="control-group">
                     <label for="gh-token">GitHub 令牌（细粒度 PAT，仅需本仓库的 Contents 读写权限；默认仅本次会话有效）</label>
                     <input type="password" id="gh-token" placeholder="粘贴令牌后点「保存令牌」" spellcheck="false" autocomplete="off">
                     <div class="row">
                         <button type="button" class="btn btn-ghost" id="gh-token-save">保存令牌</button>
-                        <button type="button" class="btn btn-ghost" id="gh-token-clear">清除令牌</button>
+                        <button type="button" class="btn btn-danger" id="gh-token-clear">清除令牌</button>
                         <label class="inline-check" for="gh-token-persist"><input type="checkbox" id="gh-token-persist"> 记住令牌（持久化到本机，存在 XSS 风险）</label>
                     </div>
                 </div>
@@ -395,21 +506,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
                 <div class="control-group">
                     <label for="revoke-list">已吊销卡密（可选，每行一个；吊销优先于白名单，命中即拒绝激活）</label>
-                    <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并上传覆盖，即可在线吊销" spellcheck="false"></textarea>
+                    <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并发布，即可在线吊销" spellcheck="false"></textarea>
                 </div>
 
                 <div class="control-group">
                     <label for="manifest-url">清单托管地址（MANIFEST_URL，需与主程序保持一致）</label>
                     <input type="text" id="manifest-url" readonly="" spellcheck="false">
-                    <div class="row">
-                        <button type="button" class="btn btn-ghost" id="copy-manifest-url">复制地址</button>
-                    </div>
                 </div>
                 <p class="sub" id="manifest-mirror">备用源（主源不可达时自动回退）：https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json</p>
-            </div>
-        </details>
+                </div>
+            </details>
+        </section>
 
-        <!-- 区块六：账号与密钥（私钥录入 / 公钥指纹自检 + 退出登录） -->
+        <!-- 区块四：账号与密钥（私钥录入 / 公钥指纹自检 + 退出登录） -->
         <section class="panel-block">
             <h2 class="panel-block-title">账号与密钥</h2>
 
@@ -418,17 +527,33 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 <textarea id="secret-input" placeholder="粘贴私钥后点「保存私钥」" spellcheck="false" autocomplete="off" style="min-height:64px;"></textarea>
                 <div class="row">
                     <button type="button" class="btn btn-ghost" id="secret-save">保存私钥</button>
-                    <button type="button" class="btn btn-ghost" id="secret-clear">清除私钥</button>
+                    <button type="button" class="btn btn-danger" id="secret-clear">清除私钥</button>
                     <label class="inline-check" for="secret-persist"><input type="checkbox" id="secret-persist"> 记住私钥（默认仅本标签页有效）</label>
                 </div>
             </div>
             <p class="sub">当前私钥派生的公钥指纹：<code id="secret-fingerprint">未录入</code></p>
             <div class="row">
                 <button type="button" class="btn btn-ghost" id="secret-compare-btn" title="把当前私钥派生的公钥与客户端内置公钥比对，只返回是否一致，不回显明文">与客户端公钥比对</button>
-                <button type="button" class="btn btn-ghost" id="logout-btn">退出登录</button>
+                <button type="button" class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">退出登录</button>
             </div>
             <div class="ledger-tip" id="secret-tip" role="status" aria-live="polite"></div>
         </section>
+
+        <!-- 区块五：台账快照（折叠。留存已由页面自动完成，此处只剩「选择时间点 + 恢复」两个动作；
+             整份数据要带走时用「导出台账」） -->
+        <details class="panel-block is-aux">
+            <summary class="panel-block-title">台账快照（自动留存）</summary>
+            <div class="panel-block-body">
+                <div class="control-group">
+                    <label id="snapshot-label">台账快照（自动留存最近若干份；选取一个时间点后恢复）</label>
+                    <div class="lmt-snapshot-list" id="snapshot-list" role="listbox" aria-labelledby="snapshot-label"></div>
+                    <div class="row">
+                        <button type="button" class="btn btn-ghost" id="snapshot-restore-btn" title="把所选时间点快照合并回台账">恢复所选快照</button>
+                    </div>
+                </div>
+                <div class="ledger-tip" id="snapshot-tip" role="status" aria-live="polite">尚未生成快照</div>
+            </div>
+        </details>
     </div>
 </div>
 
@@ -1072,7 +1197,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (obj && typeof obj === 'object') {
                 for (var k in obj) {
                     if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
-                    if (cardFormatOk(k)) cardMap[normalize(k)] = group(normalize(obj[k]), 4);
+                    // 键是机器码（4 组共 16 位）、值是卡密（20 位）：卡密格式校验必须落在 value 上。
+                    // 旧实现误把 16 位机器码当卡密校验，落盘的绑定永远读不回来，
+                    // 于是同一机器码每次重载都会被判为「新机器码」重新发卡（FR-11 的根因之一）。
+                    var key = normalize(k), card = normalize(obj[k]);
+                    if (key && cardFormatOk(card)) cardMap[key] = group(card, 4);
                 }
             }
         } catch (e) { cardMap = {}; }
@@ -1146,6 +1275,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (err) err.textContent = '';
             if (p) p.value = '';
             showApp();
+            // FR-03 触发时机第一条：登录成功后首次进入主界面即同步线上清单
+            syncOnlineManifest();
         } else if (err) {
             err.textContent = '账号或密码错误';
         }
@@ -1383,13 +1514,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     var mcList = document.getElementById('mc-list');
     var out = document.getElementById('out');
     var outTitle = document.getElementById('out-title');
-    var copyLedgerBtn = document.getElementById('copy-ledger-table');
     var revokeList = document.getElementById('revoke-list');
     var manifestOut = document.getElementById('manifest-out');
     var manifestUrlEl = document.getElementById('manifest-url');
     var ledgerTip = document.getElementById('ledger-tip');
     var importFile = document.getElementById('import-file');
-    var restoreFile = document.getElementById('restore-file');
     manifestUrlEl.value = MANIFEST_URL;
     var mirrorEl = document.getElementById('manifest-mirror');
     if (mirrorEl) mirrorEl.textContent = '备用源（主源不可达时自动回退）：' + MANIFEST_MIRRORS.join('、');
@@ -1442,11 +1571,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     updateSecretUi();
 
     var pairs = []; // 最近一次生成结果 [{ mc, card }]
-    // 「对照线上清单」的结果缓存：key = 归一化机器码 → 'up'（已上传）/ 'notup'（未上传）/ 'revoked'（已吊销）。
-    // 为 null 表示尚未对照过，此时不显示状态徽标。
+    // 线上同步结果缓存：key = 归一化机器码 → 'up'（已上传）/ 'notup'（未上传）/ 'revoked'（已吊销）。
+    // 为 null 表示本次会话尚未同步成功，此时一律不显示状态徽标（不给出未经核实的结论，FR-04）。
     var onlineStatus = null;
-    // 是否已执行过一次「对照在线清单」：网络恢复后只对用过该功能的用户自动重查，避免无谓请求。
-    var onlineCheckAttempted = false;
+    var syncBusy = false;        // 同步进行中：避免回到前台 / 网络恢复 / 手动重试叠成并发请求
+    var syncMerged = null;       // 本次自动并入的机器码列表，供「撤销」一次性还原
+    var lastRemote = null;       // 上次成功同步的线上映射 { byMc, revoked }，撤销后用它重算徽标
+    // 作者自上次同步后是否人工改过台账：编辑中不自动写入，只提示「线上新增 N 条未并入」（FR-03 第 4 条）
+    var ledgerTouched = false;
 
     // 依据「当前台账 + 吊销名单」组装在线清单对象（契约 ver 2：ver / updated / rev / cards / revoked / sig2）。
     // 与 buildManifest 拆开的原因：上传前需要先拿到本地对象、与远端合并后再重新签名。
@@ -1506,6 +1638,22 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return manifestOut.value;
     }
 
+    // FR-11 唯一性断言：同一机器码只允许一条卡密、同一卡密只允许绑定一个机器码（§3.5 第 1、2 层）。
+    // 数据层（按机器码建表 + 生成时避让已用卡密）已保证结构唯一，这里守的是「推上线之前」那道门：
+    // 任何来源（手改 JSON、脏缓存、线上脏数据）混进来的重复都必须被拦下，而不是静默收敛后发出去。
+    function manifestUniqueness(obj) {
+        var mcSeen = {}, cardSeen = {}, dupMc = 0, dupCard = 0, i, c, mc, cd;
+        var list = (obj && Array.isArray(obj.cards)) ? obj.cards : [];
+        for (i = 0; i < list.length; i++) {
+            c = list[i];
+            mc = normalize(c && c.mc);
+            cd = cardOf(c);
+            if (mc) { if (mcSeen[mc]) dupMc++; else mcSeen[mc] = true; }
+            if (cd) { if (cardSeen[cd]) dupCard++; else cardSeen[cd] = true; }
+        }
+        return { dupMc: dupMc, dupCard: dupCard };
+    }
+
     // 发布前自检（P-01 / P-14）：校验清单结构完整性与 sig2 是否真的生成出来。
     // 自动上传与「一键发布」都以本自检为门槛，避免把未签名 / 结构不完整的清单推到线上。
     function manifestSelfCheck(obj) {
@@ -1520,6 +1668,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (!Array.isArray(obj.revoked)) problems.push('revoked 不是数组');
             if (!privateKeyOk()) problems.push('未录入签名私钥，sig2 无法生成');
             else if (!obj.sig2) problems.push('缺少 sig2 签名');
+            // FR-11 唯一性：重复机器码 = 同一台机器发了两张卡；重复卡密 = 一卡多用。
+            var dup = manifestUniqueness(obj);
+            if (dup.dupMc) problems.push('存在同一机器码的多条卡密（' + dup.dupMc + ' 条，违反一机一卡）');
+            if (dup.dupCard) problems.push('存在同一卡密绑定多个机器码（' + dup.dupCard + ' 条，违反一卡一机）');
         }
         return {
             ok: problems.length === 0,
@@ -1691,7 +1843,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
     // 通用二次确认弹层（自绘，不用 window.confirm；样式与「手动复制」浮层一致）。
     // 用于：批量操作缺少显式目标时回显将影响的条数，避免静默作用于全量台账。
-    function showConfirm(title, message, okText, onOk) {
+    function showConfirm(title, message, okText, onOk, danger) {
         var mask = document.createElement('div');
         mask.className = 'manual-copy-mask';
         mask.setAttribute('role', 'dialog');
@@ -1719,7 +1871,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         cancel.addEventListener('click', dispose);
         var ok = document.createElement('button');
         ok.type = 'button';
-        ok.className = 'btn btn-primary';
+        ok.className = 'btn ' + (danger ? 'btn-danger-solid' : 'btn-primary');
         ok.textContent = okText || '确认';
         ok.addEventListener('click', function () { dispose(); if (onOk) onOk(); });
         actions.appendChild(cancel);
@@ -2509,25 +2661,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return /["\t,;\r\n，；]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
     }
 
-    // 台账 CSV 生成：列口径由 mode 决定。
-    //   · 三列（机器码 / 备注 / 有效期）→「导出台账」与台账快照，保证「导出 → 导入」无损回环；
-    //   · 四列（+卡密）→「导出含卡密台账」，仅供查阅与交付，不与导入混用。
-    // 带 BOM 便于 Excel 正确识别中文。
-    function ledgerCsvRows(mode) {
+    // 台账 CSV 生成：三列（机器码 / 备注 / 有效期）→「导出台账」与台账快照，
+    // 保证「导出 → 导入」无损回环。带 BOM 便于 Excel 正确识别中文。
+    function ledgerCsvRows() {
         var ps = computePairs(); // 只用当前台账重算卡密，避免像旧实现那样整表重排 DOM
-        var withCard = mode === 'deliver';
-        var rows = [withCard ? ['机器码', '卡密', '备注', '有效期'] : ['机器码', '备注', '有效期']];
+        var rows = [['机器码', '备注', '有效期']];
         ps.forEach(function (p) {
-            rows.push(withCard
-                ? [group(p.mc, 4), p.card, p.note || '', p.exp || '']
-                : [group(p.mc, 4), p.note || '', p.exp || '']);
+            rows.push([group(p.mc, 4), p.note || '', p.exp || '']);
         });
         return '\uFEFF' + rows.map(function (r) {
             return r.map(csvCell).join(',');
         }).join('\r\n');
     }
-    function buildLedgerCsv() { return ledgerCsvRows('ledger'); }
-    function buildLedgerDeliverCsv() { return ledgerCsvRows('deliver'); }
+    function buildLedgerCsv() { return ledgerCsvRows(); }
     function ledgerFileName(suffix) {
         var d = new Date();
         var pad = function (x) { return (x < 10 ? '0' : '') + x; };
@@ -2565,21 +2711,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|HarmonyOS/i.test(String(ua));
     }
 
-    // 导入模板：与「导出台账」同构的三列格式（机器码,备注,有效期）。
-    // 列位与导出完全对齐，导出文件可直接当作模板改写后再导入，无损回环。
-    function buildTemplateCsv() {
-        var rows = [
-            ['机器码', '备注', '有效期'],
-            ['ABCD-EFGH-JKMN-PQRS', '张三', '2027-12-31'],
-            ['STVW-XYZ0-1234-5678', '李四', ''],
-            ['WXYZ-0123-4567-89AB', '王五', '']
-        ];
-        return '\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
-    }
-
     // 交付文案（可指定列表）：一段可直接发给用户的文字，机器码 / 卡密 / 有效期一目了然
     // （有备注时以备注作标题），末尾附激活指引。与交付图（含有效期）保持同一信息口径。
-    // 抽成 buildDeliverTextFor(list) 后，交付按钮与「复制筛选话术」共用同一份生成逻辑。
+    // 交付按钮与批量作用范围共用同一份生成逻辑。
     function buildDeliverTextFor(list) {
         var ps = list || [];
         if (!ps.length) return '';
@@ -2595,44 +2729,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
     function buildDeliverText() {
         return buildDeliverTextFor(computePairs()); // 纯计算，无需重排结果列表 DOM
-    }
-
-    // 台账备份：把台账原文与吊销清单一起存成 JSON，换机 / 清缓存后可完整恢复。
-    var BACKUP_FORMAT = 'lmt-ledger-backup';
-    function buildLedgerBackup() {
-        return JSON.stringify({
-            format: BACKUP_FORMAT,
-            version: 1,
-            savedAt: new Date().toISOString(),
-            ledger: mcList.value,
-            revoke: revokeList.value
-        }, null, 2);
-    }
-    function backupFileName() {
-        var d = new Date();
-        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
-        return '卡密台账备份_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.json';
-    }
-    // 恢复备份：与「导入台账」一致地按机器码合并（不覆盖现有数据），吊销清单取并集。
-    // 返回 { added }；当文件不是本工具的备份格式时返回 null，交由调用方提示。
-    function applyLedgerBackup(text) {
-        var data;
-        try { data = JSON.parse(String(text == null ? '' : text)); } catch (e) { return null; }
-        if (!data || data.format !== BACKUP_FORMAT) return null;
-        var before = extractMc(mcList.value).length;
-        mcList.value = mergeCodes(mcList.value, typeof data.ledger === 'string' ? data.ledger : '');
-        var seenR = {}, mergedR = [];
-        (String(revokeList.value || '') + '\n' + (typeof data.revoke === 'string' ? data.revoke : ''))
-            .split(/\r?\n/).forEach(function (line) {
-                var g = group(normalize(line), 4);
-                if (!g || seenR[g]) return;
-                seenR[g] = true; mergedR.push(g);
-            });
-        revokeList.value = mergedR.join('\n');
-        saveLedger();
-        saveRevoke();
-        render();
-        return { added: extractMc(mcList.value).length - before };
     }
 
     // ---------- 台账快照自动备份（功能①） ----------
@@ -3091,7 +3187,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         try { monthInput.focus(); } catch (e) {}
     }
 
-    // 拉取在线清单（主源 + 备用源依次尝试），返回解析后的对象；全部失败返回 null。
+    // 拉取在线清单（主源 + 备用源依次尝试），返回 { data, source }；全部失败返回 null。
     function fetchOnlineManifest() {
         var sources = [MANIFEST_URL].concat(MANIFEST_MIRRORS);
         var i = 0;
@@ -3111,67 +3207,246 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 clear();
                 // 结构校验：CDN 的错误页 / 异常 JSON 不能当成「空清单」，否则会把所有人标成未上传。
                 if (!data || typeof data !== 'object' || !Array.isArray(data.cards)) return next();
-                return data;
+                return { data: data, source: u };
             })['catch'](function () { clear(); return next(); });
         }
         return next();
     }
 
-    // 对照当前台账与线上清单：逐行标注「已上传 / 未上传 / 已吊销」，并给出汇总。
-    function runOnlineCheck() {
-        var b = document.getElementById('online-check-btn');
-        var tip = document.getElementById('online-tip');
-        if (!MANIFEST_URL) {
-            flashButton(b, '未配置清单');
-            if (tip) tip.textContent = '未配置 MANIFEST_URL，无法对照。';
-            return;
+    // 解析线上清单，口径与客户端「图文排版生成器」的 parseManifest 逐字一致：
+    // cards 以归一化卡密为键、revoked 为归一化卡密集合，canonical 由解析结果重建后验签。
+    // verified 为 false（ver 不符 / 缺 sig2 / 本机无私钥 / 验签失败）时一律不得采纳该清单（FR-03 第 2 条）。
+    function parseRemoteManifest(data) {
+        if (!data || typeof data !== 'object') return null;
+        var ver = Number(data.ver);
+        var updated = String(data.updated == null ? '' : data.updated).trim();
+        var rev = String(data.rev == null ? '' : data.rev).trim();
+        var cardsMap = {}, revMap = {}, i, ent, c, n;
+        var list = Array.isArray(data.cards) ? data.cards : [];
+        for (i = 0; i < list.length; i++) {
+            ent = list[i];
+            if (!ent) continue;
+            if (typeof ent === 'string') ent = { card: ent };
+            c = normalize(ent.card);
+            if (!c) continue;
+            cardsMap[c] = {
+                card: c,
+                mc: normalize(ent.mc),
+                note: String(ent.note == null ? '' : ent.note).trim(),
+                exp: String(ent.exp == null ? '' : ent.exp).trim()
+            };
         }
-        onlineCheckAttempted = true;
-        flashButton(b, '查询中…');
-        if (tip) tip.textContent = '正在拉取在线清单…';
-        fetchOnlineManifest().then(function (data) {
-            if (!data) {
-                flashButton(b, '拉取失败');
-                if (tip) tip.textContent = '无法连接在线清单（主源与备用源均失败），请稍后重试。';
-                return;
-            }
-            var cards = {}, revoked = {};
-            (data.cards || []).forEach(function (c) {
-                var n = cardOf(c);
-                if (n) cards[n] = true;
-            });
-            (data.revoked || []).forEach(function (c) {
-                var n = cardOf(c);
-                if (n) revoked[n] = true;
-            });
-            var status = {}, up = 0, notUp = 0, rev = 0;
-            uniqueEntries(mcList.value).forEach(function (e) {
-                var card = normalize(makeCard(e.key));
-                var st = revoked[card] ? 'revoked' : (cards[card] ? 'up' : 'notup');
-                status[e.key] = st;
-                if (st === 'revoked') rev++; else if (st === 'up') up++; else notUp++;
-            });
-            onlineStatus = status;
-            render();
-            // 功能⑦：把结构化差异报告渲染到 #diff-report（无差异则显示一致提示）。
-            renderDiffReport(buildDiffReport(buildManifestObj(), data));
-            flashButton(b, notUp > 0 ? (notUp + ' 张未上传') : '全部已上传');
-            if (tip) tip.textContent = '线上清单更新于 ' + (data.updated || '未知') +
-                (data.sig2 ? '（已签名）' : '（未签名）') +
-                ' · 已上传 ' + up + ' · 未上传 ' + notUp + ' · 已吊销 ' + rev;
-        })['catch'](function () {
-            flashButton(b, '拉取失败');
-            if (tip) tip.textContent = '无法连接在线清单，请稍后重试。';
-        });
+        var revList = Array.isArray(data.revoked) ? data.revoked : [];
+        for (i = 0; i < revList.length; i++) {
+            n = normalize(typeof revList[i] === 'string' ? revList[i] : (revList[i] && revList[i].card));
+            if (n) revMap[n] = true;
+        }
+        var canonical = canonicalManifestString(ver, updated, rev, cardsMap, revMap);
+        var sig = typeof data.sig2 === 'string' ? data.sig2 : '';
+        var verified = false;
+        if (ver === MANIFEST_VER && sig && privPubB32 && ed25519Supported()) {
+            verified = verifyCanonical(canonical, sig);
+        }
+        return { ver: ver, updated: updated, rev: rev, cards: cardsMap, revoked: revMap, verified: verified };
     }
 
-    // 网络恢复后自动重查在线清单：断网时「对照」会停在「无法连接」，
-    // 过去只能手动重试，这里监听 online 事件自动补查一次。
-    // 只对已用过「对照」的用户生效，避免从不用该功能的人产生无谓请求。
+    // ---------- FR-03 线上清单自动同步 ----------
+    // 这一步取代了旧版的「对照线上清单 / 备份 / 恢复 / 导入」例行操作：
+    // 拉取 → 结构校验 + 验签 → 按机器码合并 → 回灌卡密绑定 → 渲染状态条与差异报告。
+    // 触发点：登录后首次进入、页面回到前台、网络恢复、同步失败后的「重试」、一键发布成功后。
+    function setOnlineTip(text, cls) {
+        var el = document.getElementById('online-tip');
+        if (!el) return;
+        el.textContent = text || '';
+        el.className = 'lmt-chip' + (cls ? ' ' + cls : '');
+    }
+    function showSyncRetry(on) { var b = document.getElementById('refresh-btn'); if (b) b.hidden = !on; }
+    function showSyncUndo(on) { var b = document.getElementById('undo-btn'); if (b) b.hidden = !on; }
+    // 状态条文案用的本机时钟与来源名：让「上次同步时间 / 清单来源」成为可读信息而不是内部常量
+    function nowClock() {
+        var d = new Date();
+        function p(x) { return (x < 10 ? '0' : '') + x; }
+        return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+    function sourceLabel(u) {
+        if (u === MANIFEST_URL) return '主源';
+        var i = MANIFEST_MIRRORS.indexOf(u);
+        return i >= 0 ? ('备用源 ' + (i + 1)) : '线上';
+    }
+
+    // 把线上「机器码 → 卡密」回灌本机绑定缓存（FR-03 第 6 条）。
+    // 不做这一步，换设备后同一机器码会被判成新机器码重新发卡，清单里随即出现「一码两卡」。
+    // 权威顺序：线上绑定 > 本机缓存绑定（§3.5），因此线上值直接覆盖本机同机器码的旧值。
+    function rehydrateCardMap(remoteCards, conflicts) {
+        var map = loadCardMap(), owner = {}, k, changed = false;
+        for (k in map) { if (Object.prototype.hasOwnProperty.call(map, k)) owner[normalize(map[k])] = k; }
+        Object.keys(remoteCards || {}).forEach(function (card) {
+            var mc = remoteCards[card].mc;
+            if (!mc || !cardFormatOk(card)) return;
+            var other = owner[card];
+            if (other && other !== mc) {
+                // 同一张卡密在两端被绑到两台机器：保留线上那张（权威），把冲突条数暴露给状态条。
+                // 不在这里做「解绑」，避免静默改动另一台机器的绑定（自检会在发布前拦下这批发不出去的清单）。
+                conflicts.dupCard++;
+                return;
+            }
+            if (map[mc] !== group(card, 4)) { map[mc] = group(card, 4); changed = true; }
+            owner[card] = mc;
+        });
+        if (changed) saveCardMap();
+    }
+
+    // 线上清单 → 结构化映射：归一化机器码 → 归一化卡密。同一机器码出现多条时只取权威顺序最高的一条。
+    function remoteBindings(remoteCards) {
+        var byMc = {}, dupMc = 0;
+        Object.keys(remoteCards || {}).forEach(function (card) {
+            var mc = remoteCards[card].mc;
+            if (!mc) return;
+            if (byMc[mc]) { dupMc++; return; }
+            byMc[mc] = card;
+        });
+        return { byMc: byMc, dupMc: dupMc };
+    }
+
+    // 同步主流程。触发点：登录后首次进入、页面回到前台、网络恢复、同步失败后的「重试」、一键发布成功后。
+    function syncOnlineManifest() {
+        if (!MANIFEST_URL) {
+            setOnlineTip('未配置清单地址，无法同步线上清单。', 'is-bad');
+            showSyncRetry(false);
+            return Promise.resolve(false);
+        }
+        if (syncBusy) return Promise.resolve(false);
+        syncBusy = true;
+        showSyncRetry(false);
+        setOnlineTip('正在同步线上清单…');
+        return fetchOnlineManifest().then(function (res) {
+            if (!res) throw new Error('主源与备用源均不可达');
+            var remote = parseRemoteManifest(res.data);
+            if (!remote) throw new Error('返回内容不是合法清单');
+            // 本机已载入私钥时清单必须验签通过；验签失败 = 清单被篡改或换了私钥，不采纳（FR-03 第 2 条）。
+            if (privateKeyOk() && !remote.verified) throw new Error('清单验签失败（签名不匹配或已换私钥）');
+            return applyRemote(remote, sourceLabel(res.source));
+        })['catch'](function (err) {
+            // 失败不阻断任何本机能力：状态条给原因 + 「重试」，本机数据原样保留（§2.3 恢复路径）。
+            onlineStatus = null;
+            showSyncRetry(true);
+            setOnlineTip('无法同步线上清单：' + (err && err.message ? err.message : '网络错误') + '。本机数据不受影响。', 'is-bad');
+            render();
+            return false;
+        })['then'](function (r) { syncBusy = false; return r; });
+    }
+
+    // 用「上次成功同步的线上映射」重算状态徽标：撤销并入后不重新拉取，避免刚撤销又被自动并回来。
+    function recomputeOnlineStatus() {
+        if (!lastRemote) { onlineStatus = null; return; }
+        var status = {};
+        computePairs().forEach(function (p) {
+            var mc = normalize(p.mc), card = normalize(p.card);
+            if (lastRemote.revoked[card]) status[mc] = 'revoked';
+            else if (lastRemote.byMc[mc] === card) status[mc] = 'up';
+            else status[mc] = 'notup';
+        });
+        onlineStatus = status;
+    }
+
+    // 把线上清单并入本机：回灌绑定 → 合并台账 → 计算徽标 → 渲染状态条与差异报告。
+    function applyRemote(remote, srcLabel) {
+        var bind = remoteBindings(remote.cards);
+        var revokedCards = remote.revoked;
+        var conflicts = { dupCard: 0 };
+        // 1) 回灌绑定：先让「机器码 → 卡密」与线上一致，后续展示 / 交付 / 导出才不会是另一张卡。
+        rehydrateCardMap(remote.cards, conflicts);
+
+        var local = uniqueEntries(mcList.value);
+        var localKeys = {};
+        local.forEach(function (e) { localKeys[e.key] = true; });
+
+        var added = [], mismatched = 0;
+        Object.keys(bind.byMc).forEach(function (mc) {
+            var card = bind.byMc[mc];
+            var entry = remote.cards[card];
+            if (revokedCards[card]) return; // 线上已吊销：不进台账，只参与状态标记（FR-03 第 5 条）
+            if (!localKeys[mc]) {
+                added.push({ mc: mc, note: entry.note || '', exp: entry.exp || '' });
+                return;
+            }
+            // 两端都有：本机字段优先（§3.3）。仅在两侧都写了值且不同才算「两端不一致」，避免空值噪声。
+            var cur = null;
+            local.forEach(function (e) { if (e.key === mc) cur = e; });
+            if (!cur) return;
+            var noteA = normalize(cur.note || ''), noteB = normalize(entry.note || '');
+            var expA = normalize(cur.exp || ''), expB = normalize(entry.exp || '');
+            if ((noteA && noteB && noteA !== noteB) || (expA && expB && expA !== expB)) mismatched++;
+        });
+
+        // 2) 并入台账：作者正在编辑（输入区有未落盘改动）时不写入，只提示未并入（FR-03 第 4 条）。
+        var written = 0;
+        if (added.length && !ledgerTouched) {
+            var base = String(mcList.value || '').replace(/\s+$/, '');
+            mcList.value = (base ? base + '\n' : '') + added.map(function (a) {
+                return group(a.mc, 4) + (a.note ? (',' + a.note) : '') + (a.exp ? (',' + a.exp) : '');
+            }).join('\n');
+            saveLedger();
+            written = added.length;
+            syncMerged = added.map(function (a) { return a.mc; });
+        } else {
+            syncMerged = null;
+        }
+        showSyncUndo(!!syncMerged);
+
+        // 3) 状态徽标：只有同步成功过才显示（未同步前不给出未经核实的结论，FR-04）
+        lastRemote = { byMc: bind.byMc, revoked: revokedCards };
+        recomputeOnlineStatus();
+        render();
+
+        // 4) 状态条 + 差异报告
+        var up = 0, notup = 0, rev = 0;
+        Object.keys(onlineStatus).forEach(function (mc) {
+            if (onlineStatus[mc] === 'up') up++; else if (onlineStatus[mc] === 'revoked') rev++; else notup++;
+        });
+        var bits = [];
+        bits.push('线上清单更新于 ' + (remote.updated || '未知') + '（' + srcLabel + (remote.verified ? ' · 验签通过' : ' · 未验签') + '）');
+        bits.push('已上传 ' + up + ' · 未上传 ' + notup + (rev ? (' · 已吊销 ' + rev) : ''));
+        if (written) bits.push('线上新增 ' + written + ' 条已并入');
+        else if (added.length) bits.push('线上新增 ' + added.length + ' 条未并入（台账正在编辑）');
+        if (mismatched) bits.push('两端不一致 ' + mismatched + ' 条（以本机为准）');
+        if (bind.dupMc) bits.push('已合并重复机器码 ' + bind.dupMc + ' 条');
+        if (conflicts.dupCard) bits.push('一卡多用 ' + conflicts.dupCard + ' 条（发布前自检会拦下）');
+        bits.push('本机同步于 ' + nowClock());
+        setOnlineTip(bits.join(' · '), (written || added.length || mismatched || bind.dupMc || conflicts.dupCard) ? 'is-warn' : 'is-ok');
+        showSyncRetry(false);
+        try { renderDiffReport(buildDiffReport(buildManifestObj(), remote)); } catch (e) {}
+        return true;
+    }
+
+    // 一次性撤销：把本次自动并入的那几行从台账里删掉，回到并之前的状态（FR-03 / §5.6）。
+    // 只删本次并入的机器码，不整份回滚——作者在并入之后自己录的内容不受影响。
+    // 刻意不重新拉取：否则刚撤掉的条目会被下一次同步原样并回来，撤销就等于没做。
+    function undoAutoMerge() {
+        var b = document.getElementById('undo-btn');
+        if (!syncMerged || !syncMerged.length) { showSyncUndo(false); return; }
+        var drop = {}, n = syncMerged.length;
+        syncMerged.forEach(function (mc) { drop[mc] = true; });
+        mcList.value = uniqueEntries(mcList.value).filter(function (e) { return !drop[e.key]; })
+            .map(function (e) { return e.mc + (e.note ? (',' + e.note) : '') + (e.exp ? (',' + e.exp) : ''); })
+            .join('\n');
+        syncMerged = null;
+        saveLedger();
+        showSyncUndo(false);
+        if (b) flashButton(b, '已撤销');
+        recomputeOnlineStatus();
+        render();
+        setOnlineTip('已撤销本次自动并入的 ' + n + ' 条；它们仍在线上，需要时重新同步即可。', 'is-warn');
+    }
+
+    // 网络恢复后自动补一次同步，并在存在「待重传」且已保存令牌时自动补传（§5.8 自动化优先）。
     window.addEventListener('online', function () {
-        if (onlineCheckAttempted) runOnlineCheck();
-        // 功能②：网络恢复后若存在「待重传」且已保存令牌，自动补传一次。
+        syncOnlineManifest();
         if (getToken() && isPendingUpload()) uploadManifest(false);
+    });
+    // 页面从后台回到前台：覆盖「手机切走再切回」的常见场景（FR-03 触发时机表）
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') syncOnlineManifest();
     });
 
     // ---------- 上传到 GitHub（细粒度 PAT，令牌仅存本机） ----------
@@ -3275,18 +3550,27 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 会被远端的旧记录并回来，用户无法用本工具解除吊销（撤销只能通过重新生成清单来完成）。
     // 合并结果按 ver 2 契约重算 rev 并用私钥重新签名；旧格式清单（字符串条目 + 顶层 exp 映射）
     // 也一并读入后归一化，保证合并结果里每张卡密都尽量带上能对应用户的信息。
+    // 去重主键 = 归一化机器码（§3.3 / FR-11）：同一机器码在两端各有一张卡密时只保留一张，
+    // 远端先入 → 保留线上那张（§3.5 权威顺序「已发布的线上绑定 > 本机缓存绑定」）；
+    // 同一张卡密被两个机器码引用属「一卡多用」，只保留先绑定者，另一条丢弃（自检复核）。
     function mergeWithRemote(local, remote) {
         local = local || {};
         remote = remote || {};
-        var cardsMap = {};
+        var byKey = {}, byCard = {};
         function addCard(c, expMap) {
             var n = cardOf(c);
-            if (!n || cardsMap[n]) return;
+            if (!n) return;
             var src = (c && typeof c === 'object') ? c : null;
+            var mc = normalize(src && src.mc);
+            // 旧格式条目没有 mc：以卡密占位作主键，保证各条互相独立、不被错误合并。
+            var key = mc || ('~' + n);
+            if (byKey[key]) return;
+            if (byCard[n] && byCard[n] !== key) return;
+            byCard[n] = key;
             var exp = (src && src.exp) || (expMap && expMap[n]) || '';
-            cardsMap[n] = {
+            byKey[key] = {
                 card: group(n, 4),
-                mc: (src && src.mc) ? group(normalize(src.mc), 4) : '',
+                mc: mc ? group(mc, 4) : '',
                 note: (src && src.note) ? String(src.note) : '',
                 exp: exp ? String(exp) : ''
             };
@@ -3295,7 +3579,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         (local.cards || []).forEach(function (c) { addCard(c, local.exp); });
         var revokedMap = {};
         subRev(local.revoked, revokedMap); // 只取本机吊销框（见上方注释：允许解除吊销）
-        Object.keys(revokedMap).forEach(function (n) { delete cardsMap[n]; });
+        // 吊销按卡密命中：主键已是机器码，不能直接 delete，需经 byCard 反查（一卡一机，故一一对应）
+        Object.keys(revokedMap).forEach(function (n) {
+            var k = byCard[n];
+            if (k !== undefined) delete byKey[k];
+        });
+        var cardsMap = {};
+        Object.keys(byKey).forEach(function (k) { cardsMap[k] = byKey[k]; });
         var updated = String(local.updated || '');
         // cardsMap 的 card/mc 是分组展示形式，参与规范化串前必须统一去分组（normCardsMap）
         var norm = normCardsMap(cardsMap);
@@ -3410,9 +3700,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
 
     // 上传当前清单到 GitHub（与远端取并集合并 + 重新签名）。
-    // manual=true 表示用户主动点击：即使内容未变化也要给出反馈。
+    // 唯一入口是「一键发布」（#publish-btn）：v2 已删除重复的「上传到 GitHub」按钮，
+    // 手动反馈只挂在它身上；自动上传（manual=false）不碰按钮文案，避免静默改动界面状态。
     function uploadManifest(manual) {
-        var btn = document.getElementById('upload-btn');
+        var btn = document.getElementById('publish-btn');
         var target = parseManifestTarget();
         if (!target) {
             if (manual) { flashButton(btn, '无法上传'); setUploadTip('MANIFEST_URL 不是可识别的 GitHub raw 地址，无法自动上传。'); }
@@ -3456,12 +3747,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             });
         }).then(function (ok) {
             if (!ok) return false;
-            if (btn) flashButton(btn, '已上传');
+            if (manual) flashButton(btn, '已上传');
             setUploadTip('已上传到 GitHub（白名单 ' + pending.cards.length + ' 张 / 吊销 ' + pending.revoked.length +
                 ' 张）。raw / jsDelivr CDN 约 5 分钟生效。');
             return true;
         })['catch'](function (err) {
-            if (btn) flashButton(btn, '上传失败');
+            if (manual) flashButton(btn, '上传失败');
             setUploadTip('上传失败：' + (err && err.message ? err.message : '网络错误'));
             return false;
         })['then'](function (r) { uploadBusy = false; return r; });
@@ -3490,10 +3781,26 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             else if (filterText) msg = '将影响 ' + targets.length + ' 条（未勾选，按当前筛选结果）。';
             else { warn = targets.length > 0; msg = '将影响 ' + targets.length + ' 条（未勾选、未筛选 → 作用于全部台账，操作前需二次确认）。'; }
             el.textContent = msg;
-            el.className = 'ledger-tip' + (warn ? ' is-warn' : '');
+            el.className = 'lmt-chip' + (warn ? ' is-warn' : '');
         }
         var imgEl = document.getElementById('deliver-img-count');
         if (imgEl) imgEl.textContent = targets.length ? ('将生成 ' + targets.length + ' 张') : '';
+    }
+
+    // 「全选」按钮的选中态：按钮本身就是当前勾选状态的回显与控制端（不再靠闪现文案表达状态）。
+    // 文案切换与 aria-pressed 必须同步，否则读屏用户无法得知当前是否已全选。
+    function syncSelectAllState() {
+        var btn = document.getElementById('select-all-btn');
+        if (!btn) return;
+        var boxes = Array.prototype.slice.call(out.querySelectorAll('input.lmt-check'));
+        var active = boxes.length > 0 && boxes.every(function (x) { return x.checked; });
+        var label = active ? '取消全选' : '全选';
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        // 同步闪现反馈的还原文案：否则 flashButton 1.5s 后会把文案还原成切换前的旧文字
+        btn.__flashLabel = label;
+        btn.textContent = label;
+        btn.title = active ? '取消全选当前筛选出的行' : '全选当前筛选出的行；全部已勾选时再点一次取消';
     }
 
     function render() {
@@ -3517,7 +3824,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             check.value = card;
             check.setAttribute('aria-label', '选择 ' + p.display);
             // 勾选即刷新目标计数（updateScopeCount 依赖 checkedCards()），否则「将影响 N 条」会滞后。
-            check.addEventListener('change', function () { updateScopeCount(); });
+            check.addEventListener('change', function () { updateScopeCount(); syncSelectAllState(); });
             item.appendChild(check);
 
             var mcEl = document.createElement('span');
@@ -3582,13 +3889,18 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         out.appendChild(frag);
         buildManifest();
         updateScopeCount(pairs);
+        syncSelectAllState();
     }
 
     document.getElementById('gen-btn').addEventListener('click', render);
     mcList.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) render();
     });
-    mcList.addEventListener('input', scheduleSave);
+    mcList.addEventListener('input', function () {
+        // 作者已人工改动台账：此后的自动同步不写入台账，只提示「线上新增 N 条未并入」（FR-03 第 4 条）
+        ledgerTouched = true;
+        scheduleSave();
+    });
     // 吊销框与台账框一致加 300ms 防抖：否则每敲一个字符都要全量重建清单并重算签名，长名单下输入明显卡顿。
     var revokeTimer = null;
     revokeList.addEventListener('input', function () {
@@ -3598,22 +3910,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     document.getElementById('copy-manifest').addEventListener('click', function () {
         buildManifest(); // 台账/吊销框输入是防抖更新的，复制前再重算一次，确保清单与当前输入一致
         copyWithFeedback(manifestOut.value, document.getElementById('copy-manifest'), '已复制清单');
-    });
-    document.getElementById('copy-manifest-url').addEventListener('click', function () {
-        copyWithFeedback(MANIFEST_URL, document.getElementById('copy-manifest-url'), '已复制地址');
-    });
-    copyLedgerBtn.addEventListener('click', function () {
-        // 台账输入是防抖更新的、pairs 也只是「上次点生成卡密」的结果：复制前按当前台账重算一次，
-        // 否则改了台账又没点「生成卡密」时会复制到过期卡密（与 copy-manifest 的处理保持一致）。
-        var fresh = computePairs();
-        if (fresh.length === 0) { flashButton(copyLedgerBtn, '无结果'); return; }
-        // 三列固定对齐（机器码 / 备注 / 有效期），缺失的列输出空串，
-        // 与「导出台账」的列口径一致，避免粘贴进表格时列位错乱。
-        // 卡密不在此列：供内部查阅带卡密的台账请用「导出含卡密台账」（四列）。
-        var text = fresh.map(function (p) {
-            return group(p.mc, 4) + '\t' + (p.note || '') + '\t' + (p.exp || '');
-        }).join('\n');
-        copyWithFeedback(text, copyLedgerBtn, '已复制台账表');
     });
     document.getElementById('export-btn').addEventListener('click', function () {
         var b = document.getElementById('export-btn');
@@ -3731,45 +4027,29 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (mask && mask.style.display !== 'none') closeImportConfirm();
     });
     document.getElementById('import-confirm').addEventListener('click', function (e) { if (e.target === this) closeImportConfirm(); });
-    // 导入含卡密台账（CG-01-12 / P-12）：四列 CSV，仅供查阅与交付，不与「导入台账」混用。
-    // 走共享核心的 tryNativeSave / downloadFile 双通道，两壳共用同一份实现，无需 @shell 分叉。
-    document.getElementById('export-deliver-btn').addEventListener('click', function () {
-        var b = document.getElementById('export-deliver-btn');
-        if (extractMc(mcList.value).length === 0) { flashButton(b, '台账为空'); return; }
-        var csv = buildLedgerDeliverCsv();
-        var name = ledgerFileName('_含卡密');
-        if (tryNativeSave(name, 'text/csv', csv)) { flashButton(b, '已保存'); return; }
-        var downloaded = downloadFile(name, csv);
-        if (!downloaded || isMobileUA()) {
-            flashButton(b, downloaded ? '已导出' : '请手动复制');
-            showManualCopy(csv, downloaded ? '导出含卡密台账（若未自动保存，请长按复制）' : '导出含卡密台账（请手动保存为 CSV）');
-            return;
-        }
-        flashButton(b, '已导出');
-    });
-    document.getElementById('template-btn').addEventListener('click', function () {
-        var b = document.getElementById('template-btn');
-        var csv = buildTemplateCsv();
-        // @shell:template
-        // @shell:end
-        // 手机端 <a download> 同样可能被静默忽略，一并给出手动保存出口
-        if (!downloadFile('卡密导入模板.csv', csv) || isMobileUA()) {
-            flashButton(b, '请手动复制');
-            showManualCopy(csv, '导入模板（长按复制，保存为 .csv）');
-            return;
-        }
-        flashButton(b, '已下载');
-    });
     document.getElementById('clear-btn').addEventListener('click', function () {
-        mcList.value = '';
-        saveLedger();
-        render();
-        mcList.focus();
+        var b = document.getElementById('clear-btn');
+        // 清空是不可撤销的破坏性操作，因此必须二次确认；已空时直接短路，不弹空确认框。
+        var count = analyzeLedger(mcList.value).entries.length;
+        if (count === 0) { flashButton(b, '台账已空'); return; }
+        showConfirm('清空台账？',
+            '将删除当前台账中的 ' + count + ' 位用户及其全部卡密，且无法撤销（草稿箱与已发布的线上清单不受影响）。',
+            '确认清空',
+            function () {
+                mcList.value = '';
+                saveLedger();
+                render();
+                mcList.focus();
+            },
+            true);
     });
+    // 交付文案：作用范围与批量动作完全一致（勾选 → 筛选 → 全部），
+    // 不再存在「复制交付文案作用于全量、复制目标话术作用于筛选」这种同名不同范围的歧义。
     document.getElementById('deliver-btn').addEventListener('click', function () {
         var b = document.getElementById('deliver-btn');
-        var text = buildDeliverText();
-        if (!text) { flashButton(b, '无结果'); return; }
+        var targets = currentTargets();
+        var text = buildDeliverTextFor(targets);
+        if (!text) { flashButton(b, filterText ? '无匹配' : '无结果'); return; }
         copyWithFeedback(text, b, '已复制文案');
     });
     // 交付图：勾选优先、否则当前筛选结果。1 条直出 PNG；多条逐卡出图并打包成一个 ZIP（可一次全发给客户）。
@@ -3793,39 +4073,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             flashButton(b, how2 === 'native' ? ('已存 ' + res.count + ' 张 ZIP') : ('已导出 ' + res.count + ' 张 ZIP'));
         })['catch'](function () { flashButton(b, '出图失败'); });
     });
-    document.getElementById('backup-btn').addEventListener('click', function () {
-        var b = document.getElementById('backup-btn');
-        var json = buildLedgerBackup();
-        if (tryNativeSave(backupFileName(), 'application/json', json)) { flashButton(b, '已保存'); return; }
-        var downloaded = downloadFile(backupFileName(), json, 'application/json');
-        if (!downloaded || isMobileUA()) {
-            flashButton(b, downloaded ? '已导出' : '请手动复制');
-            showManualCopy(json, downloaded ? '台账备份（若未自动保存，请长按复制）' : '台账备份（请手动保存为 .json）');
-            return;
-        }
-        flashButton(b, '已导出');
-    });
-    document.getElementById('restore-btn').addEventListener('click', function () { restoreFile.click(); });
-    restoreFile.addEventListener('change', function () {
-        var f = restoreFile.files && restoreFile.files[0];
-        if (!f) return;
-        var reader = new FileReader();
-        reader.onload = function () {
-            var res = applyLedgerBackup(reader.result);
-            var b = document.getElementById('restore-btn');
-            flashButton(b, res ? (res.added > 0 ? ('已恢复 +' + res.added) : '已合并（无新增）') : '文件格式不对');
-            restoreFile.value = '';
-        };
-        reader.onerror = function () { flashButton(document.getElementById('restore-btn'), '读取失败'); restoreFile.value = ''; };
-        reader.readAsText(f);
-    });
-    document.getElementById('online-check-btn').addEventListener('click', runOnlineCheck);
-    document.getElementById('upload-btn').addEventListener('click', function () { uploadManifest(true); });
-    // 一键发布：发布前自检（P-14）→ 生成清单 → 上传 → 成功后写回执（含清单指纹 / 张数 / 清单全文），并刷新差异报告。
+    // 一键发布：发布前自检（P-14）→ 生成清单 → 上传 → 成功后写回执（含清单指纹 / 张数 / 清单全文），
+    // 并自动再同步一次线上清单，让状态徽标立刻反映刚发布的结果（FR-03 / FR-08）。
     document.getElementById('publish-btn').addEventListener('click', function () {
         var b = document.getElementById('publish-btn');
         var obj = buildManifestObj();
-        // 自检未通过（未录私钥 / 结构不完整 / 无 sig2）时直接拦下，避免把不可验签的清单推到线上。
+        // 自检未通过（未录私钥 / 结构不完整 / 无 sig2 / 机器码或卡密重复）时直接拦下，
+        // 避免把不可验签或「一卡多用」的清单推到线上。
         if (!updatePublishCheck(obj).ok) { flashButton(b, '自检未通过'); return; }
         manifestOut.value = JSON.stringify(obj, null, 2);
         flashButton(b, '发布中…');
@@ -3834,21 +4088,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             recordUploadReceipt(manifestOut.value);
             try { renderDiffReport(buildDiffReport(buildManifestObj(), JSON.parse(lastUploadedJson || '{}'))); } catch (e) {}
             flashButton(b, '已发布');
+            syncOnlineManifest(); // 发布后自动补一次同步，状态徽标随之刷新
         });
     });
-    // 台账快照：下载 / 恢复「所选时间点」的那一份（P-24，不再只认最近一份）
-    document.getElementById('snapshot-btn').addEventListener('click', function () {
-        var b = document.getElementById('snapshot-btn');
-        var rec = selectedSnapshot();
-        if (!rec) { flashButton(b, '无快照'); return; }
-        var name = '台账快照_' + String(rec.at || '').slice(0, 10).replace(/-/g, '') + '.csv';
-        if (!downloadFile(name, rec.csv || '') || isMobileUA()) {
-            flashButton(b, isMobileUA() ? '请手动复制' : '已导出');
-            showManualCopy(rec.csv || '', '台账快照（若未自动保存，请长按复制）');
-            return;
-        }
-        flashButton(b, '已下载');
-    });
+    // 同步失败时的唯一兜底入口（同步正常时该按钮不渲染）。
+    document.getElementById('refresh-btn').addEventListener('click', function () { syncOnlineManifest(); });
+    // 自动并入属于改数据，必须可逆：仅在本次真的并入过条目时出现，撤销后即消失（一次性）。
+    document.getElementById('undo-btn').addEventListener('click', undoAutoMerge);
+    // 台账快照：只保留「恢复所选时间点」；留存与下载已按 §5.9 删除（整份数据要带走请用「导出台账」）。
     document.getElementById('snapshot-restore-btn').addEventListener('click', function () {
         var b = document.getElementById('snapshot-restore-btn');
         var res = restoreSnapshot(selectedSnapshot());
@@ -3860,23 +4107,26 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         render();
     });
     document.getElementById('select-all-btn').addEventListener('click', function () {
+        var btn = document.getElementById('select-all-btn');
         var boxes = Array.prototype.slice.call(out.querySelectorAll('input.lmt-check'));
-        if (!boxes.length) { flashButton(document.getElementById('select-all-btn'), filterText ? '无匹配' : '无结果'); return; }
+        if (!boxes.length) { flashButton(btn, filterText ? '无匹配' : '无结果'); return; }
         var allChecked = boxes.every(function (x) { return x.checked; });
         boxes.forEach(function (x) { x.checked = !allChecked; });
         // 空筛选 = 全选全量：这是最容易误操作的一步，明确警示并刷新目标计数（P-21）。
         var scope = document.getElementById('scope-count');
         if (!allChecked && !filterText && scope) {
             scope.textContent = '已全选全部台账 ' + boxes.length + ' 条（未筛选 → 批量操作将作用于全量，操作前需二次确认）。';
-            scope.className = 'ledger-tip is-warn';
+            scope.className = 'lmt-chip is-warn';
         } else {
             updateScopeCount();
         }
-        flashButton(document.getElementById('select-all-btn'), allChecked ? '已取消全选' : '已全选');
+        // 先落定持久文案与选中态，再闪现反馈：闪现结束会由 __flashLabel 还原成「全选 / 取消全选」
+        syncSelectAllState();
+        flashButton(btn, allChecked ? '已取消全选' : '已全选');
     });
     document.getElementById('revoke-filtered-btn').addEventListener('click', function () {
         var b = document.getElementById('revoke-filtered-btn');
-        // 作用范围与「续期 / 复制话术 / 导出交付图」一致：已勾选优先，否则当前筛选结果
+        // 作用范围与「续期 / 复制交付文案 / 导出交付图」完全一致：已勾选优先，否则当前筛选结果
         var targets = currentTargets();
         if (!targets.length) { flashButton(b, filterText ? '无匹配' : '台账为空'); return; }
         // 无显式目标（既未勾选、也未筛选）= 将吊销全量：必须二次确认并回显条数（P-04 / P-05）。
@@ -3892,12 +4142,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         }
         var n = revokeCards(targets.map(function (p) { return p.card; }));
         flashButton(b, n > 0 ? ('已吊销 ' + n + ' 张') : '已吊销');
-    });
-    document.getElementById('deliver-filtered-btn').addEventListener('click', function () {
-        var b = document.getElementById('deliver-filtered-btn');
-        var text = buildDeliverTextFor(currentTargets());
-        if (!text) { flashButton(b, filterText ? '无匹配' : '台账为空'); return; }
-        copyWithFeedback(text, b, '已复制话术');
     });
     document.getElementById('renew-btn').addEventListener('click', renewAll);
     document.getElementById('gh-token-save').addEventListener('click', function () {
@@ -3981,6 +4225,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     buildManifest(); // 首屏就按当前台账 + 私钥状态生成清单 JSON（未录入私钥时 sig2 为空）
     updateSnapshotTip();
     updateReceiptTip();
+    // FR-03：登录后首次进入即自动拉取、合并、渲染线上清单（主路径，冷启动就补齐）。
+    // 未登录时不发请求——登录门只是遮罩，没必要在门后打网络。
+    if (isLoggedIn()) syncOnlineManifest();
 
     // 页面被隐藏/关闭时立即落盘：台账保存有 300ms 防抖，避免最后一次输入来不及写入
     function flushSave() {
@@ -4008,9 +4255,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         ed25519Supported: ed25519Supported, ed25519PublicKey: ed25519PublicKey,
         ed25519Sign: ed25519Sign, ed25519Verify: ed25519Verify,
         MANIFEST_VER: MANIFEST_VER, EXPECTED_PUBKEY: EXPECTED_PUBKEY, CARD_MAP_KEY: CARD_MAP_KEY,
-        buildDeliverText: buildDeliverText, buildLedgerBackup: buildLedgerBackup, applyLedgerBackup: applyLedgerBackup,
-        fetchOnlineManifest: fetchOnlineManifest, runOnlineCheck: runOnlineCheck, MANIFEST_MIRRORS: MANIFEST_MIRRORS,
+        buildDeliverText: buildDeliverText,
+        // FR-03 线上清单自动同步：拉取（主源 → 备用源）/ 解析与验签 / 按机器码合并 / 回灌绑定 / 撤销
+        fetchOnlineManifest: fetchOnlineManifest, parseRemoteManifest: parseRemoteManifest,
+        syncOnlineManifest: syncOnlineManifest, applyRemote: applyRemote, undoAutoMerge: undoAutoMerge,
+        recomputeOnlineStatus: recomputeOnlineStatus, rehydrateCardMap: rehydrateCardMap,
+        MANIFEST_MIRRORS: MANIFEST_MIRRORS,
         getOnlineStatus: function () { return onlineStatus; },
+        getSyncMerged: function () { return syncMerged; },
         setRevoke: function (t) { revokeList.value = t; },
         LEDGER_KEY: LEDGER_KEY, loadLedger: loadLedger, saveLedger: saveLedger, exportLedger: exportLedger,
         REVOKE_KEY: REVOKE_KEY, loadRevoke: loadRevoke, saveRevoke: saveRevoke, buildManifest: buildManifest,
@@ -4021,10 +4273,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         MANIFEST_URL: MANIFEST_URL,
         hashAuth: hashAuth, isLoggedIn: isLoggedIn, setLoggedIn: setLoggedIn,
         AUTH_SALT: AUTH_SALT, AUTH_HASH: AUTH_HASH,
-        buildTemplateCsv: buildTemplateCsv, buildLedgerCsv: buildLedgerCsv, ledgerFileName: ledgerFileName,
+        buildLedgerCsv: buildLedgerCsv, ledgerFileName: ledgerFileName,
         copyText: copyText, copyWithFeedback: copyWithFeedback, showManualCopy: showManualCopy,
         flashButton: flashButton, isIOSLike: isIOSLike, isMobileUA: isMobileUA,
-        getPairs: function () { return pairs; }, setLedger: function (t) { mcList.value = t; }, render: render,
+        // setLedger 是「程序化载入台账」的测试钩子：等同于换设备后读回来的台账，
+        // 因此一并复位「人工改过台账」标记，否则此后的自动同步会被上一个用例的输入事件挡住。
+        getPairs: function () { return pairs; },
+        setLedger: function (t) { mcList.value = t; ledgerTouched = false; }, render: render,
+        // 仅供测试：清掉内存缓存，强制下次 loadCardMap 从 localStorage 重读
+        //（回归守「落盘的机器码→卡密绑定必须能读回」，否则同一机器码重载后会重新发卡）
+        resetCardMapCache: function () { cardMap = null; },
         // 新增能力：有效期 / 快照 / 上传回执 / 差异报告 / 筛选批量 / 令牌
         parseExpiry: parseExpiry, addMonths: addMonths, isExpired: isExpired, renewAll: renewAll,
         buildDeliverTextFor: buildDeliverTextFor, filterEntries: filterEntries,
@@ -4037,8 +4295,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         analyzeImport: analyzeImport, openImportConfirm: openImportConfirm, closeImportConfirm: closeImportConfirm,
         doImport: doImport, setImportReport: setImportReport,
         updateScopeCount: updateScopeCount, lacksExplicitTarget: lacksExplicitTarget,
-        manifestSelfCheck: manifestSelfCheck, updatePublishCheck: updatePublishCheck,
-        buildLedgerDeliverCsv: buildLedgerDeliverCsv, showConfirm: showConfirm,
+        manifestSelfCheck: manifestSelfCheck, manifestUniqueness: manifestUniqueness, updatePublishCheck: updatePublishCheck,
+        showConfirm: showConfirm,
         tokenPersistOn: tokenPersistOn, setTokenPersist: setTokenPersist,
         TOKEN_SESSION_KEY: TOKEN_SESSION_KEY, TOKEN_PERSIST_KEY: TOKEN_PERSIST_KEY,
         getUploadReceipt: getUploadReceipt, setUploadReceipt: setUploadReceipt, isPendingUpload: isPendingUpload,

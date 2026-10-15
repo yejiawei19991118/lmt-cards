@@ -1090,20 +1090,13 @@
       g().setLedger('');
       q(doc, '#gen-btn').click();
       assert(doc.querySelector('#out .empty'), '空台账应显示「暂无结果」占位');
-      // 「复制全部」在阶段 2 改名为「复制台账表」（三列对照表，复制前重算卡密）
-      var copyAll = q(doc, '#copy-ledger-table');
-      copyAll.click();
-      assertEq(text(copyAll), '无结果', '空台账点「复制台账表」应提示无结果');
+      // 「复制台账表」「导出含卡密台账」已按 §5.9 删除（与导出台账同数据），此处只验留下的出口
       var exp = q(doc, '#export-btn');
       exp.click();
       assertEq(text(exp), '台账为空', '空台账点「导出台账」应提示台账为空');
       var del = q(doc, '#deliver-btn');
       del.click();
       assertEq(text(del), '无结果', '空台账点「复制交付文案」应提示无结果');
-      // 新增出口：导出含卡密台账 / 导出交付图，空台账时同样必须有明确反馈（不得静默无反应）
-      var deliver = q(doc, '#export-deliver-btn');
-      deliver.click();
-      assertEq(text(deliver), '台账为空', '空台账点「导出含卡密台账」应提示台账为空');
       var imgBtn = q(doc, '#deliver-img-btn');
       imgBtn.click();
       assertEq(text(imgBtn), '无结果', '空台账点「导出交付图」应提示无结果，实际：' + text(imgBtn));
@@ -1155,30 +1148,28 @@
       assert(/2027-12-31/.test(line), '有效期应保留');
     });
 
-    test('cardgen/台账备份导出与恢复（含格式校验）', async function () {
-      var btn = q(doc, '#backup-btn');
-      btn.click();
-      await until(function () { return /已导出|请手动复制|已保存/.test(text(btn)); }, 4000, '备份反馈');
-      assert(/已导出|请手动复制|已保存/.test(text(btn)), '备份应给出反馈，实际：' + text(btn));
-      closeLayers(doc);
+    test('cardgen/一机一卡：卡密绑定必须能重新读回，同一机器码不得重新发卡（FR-11）', async function () {
+      var t = g();
+      t.setLedger('ABCD-EFGH-JKMN-PQRS,张三');
+      var c1 = t.makeCard('ABCDEFGHJKMNPQRS');
+      assertMatch(c1, /^[0-9A-Z]{4}(-[0-9A-Z]{4}){4}$/, '卡密应为 5 组 20 位 base32');
 
-      var restoreInput = q(doc, '#restore-file');
-      var rbtn = q(doc, '#restore-btn');
-      attachFile(C, restoreInput, 'bad.json', 'application/json', new TextEncoder().encode('这不是备份'));
-      await until(function () { return text(rbtn) !== '恢复备份'; }, FILE_WAIT_MS, '格式错误反馈');
-      assertEq(text(rbtn), '文件格式不对', '非本工具备份应提示格式不对');
-      closeLayers(doc);
+      // 落盘契约：{ 归一化机器码: 分组卡密 }；键是机器码、值是卡密，两者格式不同
+      var raw = JSON.parse(C.localStorage.getItem(t.CARD_MAP_KEY));
+      assertEq(t.normalize(raw.ABCDEFGHJKMNPQRS), t.normalize(c1), '绑定应按「机器码 → 卡密」落盘');
 
-      var backup = JSON.stringify({
-        format: 'lmt-ledger-backup', version: 1, savedAt: '2026-10-14T00:00:00.000Z',
-        ledger: 'WXYZ-0123-4567-89AB,王五', revoke: 'H7S0-6M3M-GMA1-Y7T2-VNRM'
-      });
-      attachFile(C, restoreInput, 'ok.json', 'application/json', new TextEncoder().encode(backup));
-      await until(function () { return /已恢复|已合并/.test(text(rbtn)); }, FILE_WAIT_MS, '恢复反馈');
-      assert(/已恢复|已合并/.test(text(rbtn)), '恢复应给出反馈，实际：' + text(rbtn));
-      assert(/WXYZ-0123-4567-89AB/.test(q(doc, '#mc-list').value), '恢复后台账应包含备份里的机器码');
-      assert(/H7S0-6M3M-GMA1-Y7T2-VNRM/.test(q(doc, '#revoke-list').value), '恢复后吊销名单应取并集');
-      assertEq(restoreInput.value, '', '恢复后应清空 input');
+      // 回归守：旧实现把 16 位机器码当卡密校验（要求 20 位），导致落盘的绑定永远读不回来，
+      // 换设备 / 重载后同一机器码会被当成新机器码重新发卡。这里清掉内存缓存强制从 localStorage 重读。
+      t.resetCardMapCache();
+      assertEq(t.loadCardMap().ABCDEFGHJKMNPQRS, c1,
+        '落盘的绑定必须能重新读回（读不回来就会让同一机器码反复发卡，清单里出现「一码两卡」）');
+      assertEq(t.makeCard('ABCDEFGHJKMNPQRS'), c1, '重载后同一机器码必须复用同一张卡密，不得重新生成');
+      assertEq(t.makeCard('abcd efgh j/kmn-pqrs'), c1, '卡密复用应与机器码写法无关（先归一化）');
+
+      // 生成侧避让：不同机器码不得拿到同一张卡密（一卡多用）
+      var c2 = t.makeCard('STVWXYZ012345678');
+      assert(t.normalize(c2) !== t.normalize(c1), '不同机器码必须拿到不同的卡密');
+      assertEq(t.loadCardMap().STVWXYZ012345678, c2, '第二台机器的绑定同样应可读回');
     });
 
     test('cardgen/在线清单 JSON：ver 2 结构、sig2 自校验、复制', async function () {
@@ -1218,6 +1209,7 @@
     });
 
     test('cardgen/令牌保存与清除，以及上传前置提示', async function () {
+      g().setPrivateKey(TEST_PRIV); // 自检是发布的前置门槛，先让私钥可用，才能测到「缺令牌」这一步
       var saveBtn = q(doc, '#gh-token-save');
       var clearBtn = q(doc, '#gh-token-clear');
       var input = q(doc, '#gh-token');
@@ -1238,9 +1230,10 @@
       assertEq(g().getToken(), '', '令牌应被清除');
       assertEq(input.placeholder, '粘贴令牌后点「保存令牌」', '占位文案应还原');
 
-      var up = q(doc, '#upload-btn');
+      // v2 起「上传到 GitHub」按钮已删除，唯一手动发布入口是「一键发布」（#publish-btn）
+      var up = q(doc, '#publish-btn');
       up.click();
-      assertEq(text(up), '需先填令牌', '未保存令牌点上传应提示');
+      assertEq(text(up), '需先填令牌', '未保存令牌点发布应提示');
       assert(text(q(doc, '#upload-tip')).length > 0, '上传提示区应给出说明');
     });
 
@@ -1248,7 +1241,36 @@
       g().setLedger('ABCD-EFGH-JKMN-PQRS,张三');
       q(doc, '#gen-btn').click();
       assert(qa(doc, '#out .item').length === 1, '清空前应有 1 条结果');
+      // 清空是整页唯一不可撤销的破坏性操作：必须先弹二次确认（B7），
+      // 因此「点一下 #clear-btn 就清空」的旧契约已作废，这里改为实测「取消不清 / 确认才清」。
+      function confirmBtn(mask, re) {
+        var btns = qa(mask, 'button');
+        for (var i = 0; i < btns.length; i++) if (re.test(text(btns[i]))) return btns[i];
+        return null;
+      }
+      // HTML 里还静态写着一个 .manual-copy-mask（#import-confirm 模板，平时 display:none），
+      // 它是文档里第一个匹配项，所以只能取「当前真正可见」的那层（自绘弹层追加在 body 末尾）。
+      function visibleMask() {
+        var all = qa(doc, '.manual-copy-mask').filter(isRendered);
+        assert(all.length === 1, '应恰好有 1 个可见模态层，实际 ' + all.length);
+        return all[0];
+      }
       q(doc, '#clear-btn').click();
+      var mask = visibleMask();
+      assertEq(mask.getAttribute('role'), 'dialog', '清空确认弹层应声明 role=dialog');
+      assertEq(mask.getAttribute('aria-modal'), 'true', '清空确认弹层应是模态');
+      assert(hasClass(doc.body, 'modal-open'), '确认弹层打开时应锁定背景滚动');
+      var okBtn = confirmBtn(mask, /^确认清空$/);
+      var cancelBtn = confirmBtn(mask, /^取消$/);
+      assert(okBtn, '清空确认弹层应有「确认清空」按钮');
+      assert(cancelBtn, '清空确认弹层应有「取消」按钮');
+      assert(hasClass(okBtn, 'btn-danger-solid'), '清空确认按钮应是危险实心样式（btn-danger-solid）');
+      cancelBtn.click();
+      assertEq(q(doc, '#mc-list').value, 'ABCD-EFGH-JKMN-PQRS,张三', '点「取消」不应清空台账');
+      assert(!qa(doc, '.manual-copy-mask').some(isRendered), '取消后确认弹层应关闭');
+      assert(!hasClass(doc.body, 'modal-open'), '关闭弹层后应解除背景滚动锁定');
+      q(doc, '#clear-btn').click();
+      confirmBtn(visibleMask(), /^确认清空$/).click();
       assertEq(q(doc, '#mc-list').value, '', '清空后台账应为空');
       assert(doc.querySelector('#out .empty'), '清空后应显示占位');
     });
@@ -1283,38 +1305,32 @@
       assertEq(text(b), '已保存', '安卓壳应提示「已保存」，实际：' + text(b));
     });
 
-    test('cardgen/外壳：下载模板 —— 安卓走原生桥，PWA 走文档化回退', async function () {
-      var b = q(doc, '#template-btn');
-      var calls = saverCalls.cardgen;
-      var before = calls.length;
-      b.click();
+    // v2 §5.9：`#template-btn`（下载模板）已删除——格式说明与示例行直接写在台账折叠块里，
+    // 该入口找不到独有场景，故不保留任何用例（删除即不再有可测行为）。
 
-      if (!hasSaverRef(C)) {
-        // PWA 外壳：@shell:template 只存在于安卓壳，PWA 侧必须是干净的回退（等回退反馈出现再判定）。
-        await until(function () { return /已下载|请手动复制/.test(text(b)); }, FILE_WAIT_MS, '下载模板回退反馈');
-        closeLayers(doc);
-        skip('PWA 外壳没有模板原生落盘（@shell:template 只存在于安卓壳），模板走 <a download> 回退；'
-          + '安卓壳对应路径由「安卓副本」那次运行覆盖');
-      }
-
-      // 安卓外壳：@shell:template 存在，下载模板就必须真的走到桥（没走到即悄悄回退，判失败）。
-      await until(function () { return calls.length > before; }, FILE_WAIT_MS,
-        '安卓壳下载模板必须调用原生桥（页面源码含 AndroidSaver，却未落盘）');
-
-      var call = calls[calls.length - 1];
-      assertEq(call.name, '卡密导入模板.csv', '原生落盘文件名');
-      assertEq(call.mime, 'text/csv', '原生落盘 MIME 类型');
-      assert(/^\uFEFF机器码,备注,有效期/.test(g().base64ToUtf8(call.base64)), '原生落盘内容应是带 BOM 与三列表头的模板 CSV');
-      assertEq(text(b), '已保存', '安卓壳应提示「已保存」，实际：' + text(b));
-    });
-
-    test('cardgen/对照线上清单：点击即反馈并收敛到终态', async function () {
-      var btn = q(doc, '#online-check-btn');
+    test('cardgen/线上清单自动同步：失败给原因 + 「重试」只在失败时出现', async function () {
+      g().setPrivateKey(TEST_PRIV);
       var tip = q(doc, '#online-tip');
-      btn.click();
-      assertEq(text(btn), '查询中…', '点击对照应立刻变为「查询中…」');
-      await until(function () { return text(tip) && !/^正在拉取/.test(text(tip)); }, 30000, '在线对照收敛');
-      assert(/无法连接|线上清单更新于/.test(text(tip)), '提示应收敛为终态，实际：' + text(tip));
+      var retry = q(doc, '#refresh-btn');
+      var undo = q(doc, '#undo-btn');
+      // 两个一次性入口在「未同步 / 同步正常」时都不渲染，只有失败或真的并入过才出现（§2.4 / §4.1）
+      assert(retry.hidden, '尚未同步时「重试」不应出现');
+      assert(undo.hidden, '尚未并入任何条目时「撤销」不应出现');
+
+      // 无头环境断网（--host-resolver-rules），同步必然失败。自动触发点（online / visibilitychange /
+      // 登录成功）在无头 harness 里无法模拟，这里直接调用同一个入口函数，覆盖的仍是同一条链路。
+      await g().syncOnlineManifest();
+      // 断言「失败必须看得见」：状态条给出原因 + 「重试」出现（§2.4 第 3 条）
+      assert(/无法同步线上清单/.test(text(tip)), '同步失败必须给出原因，实际：' + text(tip));
+      assert(/本机数据不受影响/.test(text(tip)), '失败提示应说明本机数据不受影响，实际：' + text(tip));
+      assert(!retry.hidden, '同步失败时「重试」必须出现');
+      assert(undo.hidden, '没有并入任何条目时「撤销」不应出现');
+
+      // 手动重试：点击后重新进入同步中，并再次收敛到失败结论（仍失败则「重试」保持可用）
+      retry.click();
+      assert(retry.hidden, '点击「重试」后应回到同步中（按钮先隐藏，避免重复点击）');
+      await until(function () { return /无法同步线上清单/.test(text(tip)); }, 30000, '重试后收敛');
+      assert(!retry.hidden, '重试仍失败时「重试」应保持可用');
     });
 
     test('cardgen/自动上传开关', async function () {
@@ -1373,10 +1389,8 @@
       assertEq(t.parseEntry('ABCD-EFGH-JKMN-PQRS,5\'6"').note, '5\'6"', '字段中间的引号应按普通字符保留');
 
       assertEq(t.extractMc('ABCD-EFGH-JKMN-PQRS').join(','), 'ABCD-EFGH-JKMN-PQRS', 'extractMc 应返回分组写法');
-      // 模板与台账导出都是「机器码,备注,有效期」三列（含卡密的四列只用于交付，不参与导入回环）
-      assert(/^\uFEFF机器码,备注,有效期/.test(t.buildTemplateCsv()), '模板 CSV 应带 BOM 与三列表头（机器码,备注,有效期）');
+      // 导出台账是「机器码,备注,有效期」三列：与导入无损回环（含卡密的四列导出已按 §5.9 删除）
       assert(/^机器码,备注,有效期/.test(t.buildLedgerCsv().replace(/^\uFEFF/, '')), '台账 CSV 应带三列表头');
-      assert(/^机器码,卡密,备注,有效期/.test(t.buildLedgerDeliverCsv().replace(/^\uFEFF/, '')), '含卡密台账 CSV 应带四列表头');
 
       assertMatch(t.makeCard('abcd efgh j/kmn-pqrs-1234'), /^[0-9A-Z]{4}(-[0-9A-Z]{4}){4}$/, '卡密应为 5 组 20 位');
       assertEq(t.makeCard('abcd efgh j/kmn-pqrs-1234'), t.makeCard('ABCDEFGHJKMNPQRS1234'), '卡密应与写法无关（先归一化）');
@@ -1407,8 +1421,6 @@
 
       assertDeepEq(t.parseManifestTarget(), { owner: 'yejiawei19991118', repo: 'lmt-cards', branch: 'main', path: 'cards.json' }, '应从 MANIFEST_URL 解析出上传目标');
       assertEq(t.base64ToUtf8(t.utf8ToBase64('中文\n换行')), '中文\n换行', 'Base64 往返应保持 UTF-8');
-      assertEq(t.applyLedgerBackup('不是 JSON'), null, '非 JSON 应返回 null');
-      assertEq(t.applyLedgerBackup('{"format":"other"}'), null, '其它格式应返回 null');
       assertMatch(t.hashAuth('944807230', 'x'), /^[0-9a-f]{64}$/, '登录哈希应为 64 位 hex');
       assert(t.hashAuth('a', 'b') !== t.hashAuth('a', 'c'), '不同密码应得到不同哈希');
       assertEq(t.isLoggedIn(), false, '未登录时 isLoggedIn 应为 false');
@@ -1435,6 +1447,119 @@
         { cards: [], revoked: ['STVW-XYZ0-1234-5678-89AB'] });
       assertEq(merged2.revoked.length, 1, '本机吊销项应归一化去重后保留');
       assertEq(merged2.revoked[0], 'H7S0-6M3M-GMA1-Y7T2-VNRM', '吊销项应恢复为分组写法');
+
+      // FR-11：合并主键是归一化机器码，不是卡密。同一机器码在两端各有一张卡密时只保留一张，
+      // 且按 §3.5 权威顺序保留「线上那张」（远端先入）——否则一机两卡会直接被发布前自检拦下。
+      var merged3 = t.mergeWithRemote(
+        {
+          updated: '2026-10-14',
+          cards: [{ card: 'AAAA-AAAA-AAAA-AAAA-AAAA', mc: 'ABCD-EFGH-JKMN-PQRS', note: '本机旧卡', exp: '' }],
+          revoked: []
+        },
+        {
+          updated: '2026-10-14',
+          cards: [{ card: 'BBBB-BBBB-BBBB-BBBB-BBBB', mc: 'ABCD-EFGH-JKMN-PQRS', note: '线上卡', exp: '2027-01-01' }],
+          revoked: []
+        });
+      assertEq(merged3.cards.length, 1, '同一机器码两端各一张卡密时只能留一张（一机一卡）');
+      assertEq(merged3.cards[0].card, 'BBBB-BBBB-BBBB-BBBB-BBBB', '应保留线上那张（已发布的线上绑定优先于本机缓存）');
+      assertEq(merged3.cards[0].note, '线上卡', '保留的条目应带线上那侧的字段');
+      var dup3 = t.manifestUniqueness(merged3);
+      assertEq(dup3.dupMc + dup3.dupCard, 0, '合并结果必须同时满足一机一卡与一卡一机（否则自检会拦下自己发的清单）');
+    });
+
+    test('cardgen/发布前自检：重复机器码与重复卡密都必须被拦下（FR-08 / FR-11）', async function () {
+      var t = g();
+      t.setPrivateKey(TEST_PRIV);
+      var base = {
+        ver: t.MANIFEST_VER,
+        updated: '2026-10-14T10:00:00+08:00',
+        rev: '0123456789abcdef',
+        cards: [
+          { card: 'AAAA-AAAA-AAAA-AAAA-AAAA', mc: 'ABCD-EFGH-JKMN-PQRS', note: '张三', exp: '' },
+          { card: 'BBBB-BBBB-BBBB-BBBB-BBBB', mc: 'STVW-XYZ0-1234-5678', note: '李四', exp: '' }
+        ],
+        revoked: [],
+        sig2: new Array(104).join('A')
+      };
+      assertEq(t.manifestUniqueness(base).dupMc, 0, '无重复时 dupMc 应为 0');
+      assertEq(t.manifestUniqueness(base).dupCard, 0, '无重复时 dupCard 应为 0');
+      assertEq(t.manifestSelfCheck(base).ok, true, '结构完整且无重复时自检应通过');
+
+      // 同一机器码两条卡密（一机两卡）；写法不同（含空格小写）也必须识别为同一台机器
+      var dupMc = JSON.parse(JSON.stringify(base));
+      dupMc.cards.push({ card: 'CCCC-CCCC-CCCC-CCCC-CCCC', mc: 'abcd efgh jkmn pqrs', note: '', exp: '' });
+      assertEq(t.manifestUniqueness(dupMc).dupMc, 1, '同一机器码的重复条目应被计数（先归一化再比）');
+      var r1 = t.manifestSelfCheck(dupMc);
+      assertEq(r1.ok, false, '存在重复机器码时自检必须失败');
+      assert(/违反一机一卡/.test(r1.msg), '自检结论应指明违反一机一卡，实际：' + r1.msg);
+
+      // 同一卡密被两个机器码引用（一卡多用）
+      var dupCard = JSON.parse(JSON.stringify(base));
+      dupCard.cards.push({ card: 'AAAA-AAAA-AAAA-AAAA-AAAA', mc: 'WXYZ-0123-4567-89AB', note: '', exp: '' });
+      assertEq(t.manifestUniqueness(dupCard).dupCard, 1, '同一张卡密被两个机器码引用应被计数');
+      var r2 = t.manifestSelfCheck(dupCard);
+      assertEq(r2.ok, false, '一卡多用时自检必须失败');
+      assert(/违反一卡一机/.test(r2.msg), '自检结论应指明违反一卡一机，实际：' + r2.msg);
+    });
+
+    test('cardgen/线上清单并入：新增条目写进台账 + 状态徽标 + 一次性撤销（FR-03）', async function () {
+      var t = g();
+      t.setPrivateKey(TEST_PRIV);
+      t.setFilterText('');
+      t.setLedger('ABCD-EFGH-JKMN-PQRS,张三');
+      q(doc, '#gen-btn').click();
+      var onlineCard = t.makeCard('ABCDEFGHJKMNPQRS'); // 线上那张（本机第一次生成时也是它）
+
+      // 模拟本机缓存漂移（换设备 / 本地绑定被改脏）：把本机绑定换成一个明显不同的卡密。
+      // 同步必须用线上那张覆盖它，否则后续交付会发出另一张卡（FR-11 第 3 层）。
+      C.localStorage.setItem(t.CARD_MAP_KEY, JSON.stringify({ ABCDEFGHJKMNPQRS: 'ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ' }));
+      t.resetCardMapCache();
+      assert(t.normalize(t.makeCard('ABCDEFGHJKMNPQRS')) !== t.normalize(onlineCard),
+        '前置：本机绑定此时确实与线上那张不同');
+
+      // 线上清单：本机那台也在（=已上传），另有两台是本机没有的（应被并入台账）
+      var data = signManifest(C, '2026-10-15T10:00:00+08:00', [
+        { card: onlineCard, mc: 'ABCD-EFGH-JKMN-PQRS', note: '张三', exp: '' },
+        { card: 'STVW-XYZ0-1234-5678-89AB', mc: 'STVW-XYZ0-1234-5678', note: '李四', exp: '2027-01-01' },
+        { card: 'WXYZ-0123-4567-89AB-CDEF', mc: 'WXYZ-0123-4567-89AB', note: '王五', exp: '' }
+      ], []);
+      var remote = t.parseRemoteManifest(data);
+      assert(remote, '合法清单应能被解析');
+      assertEq(remote.verified, true, '用当前私钥签出的清单验签应通过');
+
+      assertEq(t.applyRemote(remote, '主源'), true, 'applyRemote 应成功并返回 true');
+      // 绑定回灌：线上那张必须覆盖本机脏缓存
+      assertEq(t.loadCardMap().ABCDEFGHJKMNPQRS, onlineCard,
+        '线上绑定应回灌进本机缓存，并覆盖本机旧值（权威顺序：线上 > 本机）');
+      assertEq(t.makeCard('ABCDEFGHJKMNPQRS'), onlineCard, '同步后本机对同一机器码应复用线上那张卡密');
+
+      var lines = q(doc, '#mc-list').value;
+      assert(/STVW-XYZ0-1234-5678/.test(lines), '线上新增的机器码应并入台账');
+      assert(/WXYZ-0123-4567-89AB/.test(lines), '线上新增的机器码应全部并入');
+      assert(/李四/.test(lines), '并入时应带上线上备注');
+      assert(/2027-01-01/.test(lines), '并入时应带上线上有效期');
+
+      var tip = text(q(doc, '#online-tip'));
+      assert(/线上新增 2 条已并入/.test(tip), '状态条应报告并入条数，实际：' + tip);
+      assert(/已上传 3/.test(tip), '三条都在线上 → 状态条应显示已上传 3，实际：' + tip);
+
+      var undo = q(doc, '#undo-btn');
+      assert(!undo.hidden, '发生过自动并入后「撤销」应出现');
+      var badges = qa(doc, '#out .status-badge');
+      assertEq(badges.length, 3, '同步成功过之后每行都应带在线状态徽标');
+      badges.forEach(function (b) {
+        assert(hasClass(b, 'is-up'), '三条都已上传，徽标应全部是 is-up，实际：' + b.className);
+        assertEq(text(b), '已上传', '徽标文案应为「已上传」');
+      });
+
+      // 一次性撤销：本次并入的两条被移除，本机原有那条保留，撤销入口随之消失
+      undo.click();
+      var after = q(doc, '#mc-list').value;
+      assert(/ABCD-EFGH-JKMN-PQRS/.test(after), '撤销只该移除本次自动并入的条目，本机原有台账不得被删');
+      assert(!/STVW-XYZ0-1234-5678/.test(after) && !/WXYZ-0123-4567-89AB/.test(after), '撤销后本次并入的条目应被移除');
+      assert(undo.hidden, '撤销是一次性入口，用过即消失');
+      assert(/已撤销本次自动并入的 2 条/.test(text(q(doc, '#online-tip'))), '撤销应有明确反馈，实际：' + text(q(doc, '#online-tip')));
     });
 
     // ============================================================
@@ -1739,11 +1864,12 @@
       assertEq(t.normalize(q(doc, '#revoke-list').value), t.normalize(cbs2[1].value),
         '「吊销目标卡密」应只作用于勾选的行');
 
-      // 「复制目标话术」同一口径：作用域内有目标就必须给复制反馈，而不是「无匹配」
-      var dbtn = q(doc, '#deliver-filtered-btn');
+      // 「复制交付文案」同一口径（v2 起它统一了旧「复制目标话术」的作用范围）：
+      // 作用域内有目标就必须给复制反馈，而不是「无匹配」
+      var dbtn = q(doc, '#deliver-btn');
       dbtn.click();
-      assert(text(dbtn) !== '无匹配', '「复制目标话术」应作用于统一作用域，而不是报无匹配');
-      await until(function () { return /^(请手动复制|已复制话术)$/.test(text(dbtn)); }, 2000, '复制目标话术反馈');
+      assert(text(dbtn) !== '无匹配', '「复制交付文案」应作用于统一作用域，而不是报无匹配');
+      await until(function () { return /^(请手动复制|已复制文案)$/.test(text(dbtn)); }, 2000, '复制交付文案反馈');
       closeLayers(doc);
 
       // 收尾：清掉吊销框与筛选，避免影响后续用例
@@ -1805,47 +1931,18 @@
       assertEq(t.privateKeyOk(), true, '收尾：测试私钥应可用');
     });
 
-    test('cardgen/导出含卡密台账：四列 CSV（机器码,卡密,备注,有效期）', async function () {
+    // v2 §5.9：`#export-deliver-btn`（导出含卡密台账）已删除——与「导出台账」同数据，
+    // 含卡密的交付由「复制交付文案」与「导出交付图」承担，故不保留任何用例。
+
+    test('cardgen/导出台账：三列 CSV 与导入无损回环', async function () {
       var t = g();
       g().setLedger('ABCD-EFGH-JKMN-PQRS,张三,2027-12-31');
       setValue(q(doc, '#revoke-list'), '', C, 'input');
       q(doc, '#gen-btn').click();
-
-      var csv = t.buildLedgerDeliverCsv();
-      assert(/^\uFEFF机器码,卡密,备注,有效期/.test(csv), '含卡密台账应为四列表头（带 BOM）');
-      var lines = csv.replace(/^\uFEFF/, '').split('\r\n');
-      assertEq(lines[0], '机器码,卡密,备注,有效期', '四列表头应逐字一致');
-      assertMatch(lines[1], /^ABCD-EFGH-JKMN-PQRS,[0-9A-Z]{4}(-[0-9A-Z]{4}){4},张三,2027-12-31$/,
-        '四列行应依次为 机器码,卡密,备注,有效期');
-
-      var b = q(doc, '#export-deliver-btn');
-      // 空台账：不得产出文件，且必须给出明确反馈
-      g().setLedger('');
-      b.click();
-      assertEq(text(b), '台账为空', '空台账导出含卡密台账应给出提示');
-
-      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三,2027-12-31');
-      var calls = saverCalls.cardgen;
-      var before = calls.length;
-      b.click();
-
-      if (!hasSaverRef(C)) {
-        await until(function () { return /已保存|已导出|请手动复制/.test(text(b)); },
-          FILE_WAIT_MS, '导出含卡密台账回退反馈');
-        closeLayers(doc);
-        skip('PWA 外壳没有 AndroidSaver 桥（原生落盘只存在于安卓壳），导出含卡密台账走 <a download> 回退；'
-          + '安卓壳对应路径由「安卓副本」那次运行覆盖');
-      }
-
-      await until(function () { return calls.length > before; }, FILE_WAIT_MS,
-        '安卓壳导出含卡密台账必须调用原生桥（页面源码含 AndroidSaver，却未落盘）');
-      var call = calls[calls.length - 1];
-      assertMatch(call.name, /^卡密台账_含卡密_\d{8}\.csv$/, '原生落盘文件名应标明「含卡密」');
-      assertEq(call.mime, 'text/csv', '原生落盘 MIME 类型');
-      var out = t.base64ToUtf8(call.base64);
-      assert(/^\uFEFF机器码,卡密,备注,有效期/.test(out), '原生落盘内容应是四列表头的含卡密台账');
-      assert(/ABCD-EFGH-JKMN-PQRS/.test(out), '原生落盘内容应包含台账里的机器码');
-      assertEq(text(b), '已保存', '安卓壳应提示「已保存」，实际：' + text(b));
+      var csv = t.buildLedgerCsv().replace(/^\uFEFF/, '');
+      assertEq(csv.split('\r\n')[0], '机器码,备注,有效期', '台账导出表头应逐字一致');
+      assertMatch(csv.split('\r\n')[1], /^ABCD-EFGH-JKMN-PQRS,张三,2027-12-31$/, '台账导出行应依次为 机器码,备注,有效期');
+      assertEq(t.parseEntry(csv.split('\r\n')[1]).key, 'ABCDEFGHJKMNPQRS', '导出的台账必须能被导入侧原样读回（无损回环）');
     });
   }
 

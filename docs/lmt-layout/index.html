@@ -53,6 +53,38 @@
             --tpl-subtitle-size: 20px;      /* 副标题字号（仍乘以 --fit） */
             --tpl-subtitle-color: #14181f;  /* 副标题颜色 */
             --tpl-radius: 10px;             /* 图片/截图框圆角 */
+
+            /* ===== 界面设计规范（Design Tokens）=====
+               与「卡密生成器」共用同一段变量。只服务于界面外观，
+               上面 --safe-* / --tpl-* 才决定导出像素，两者互不干涉。 */
+            /* 品牌与交互 */
+            --accent-ink: #1c4fd6;          /* 主色加深：hover / 文字按钮 */
+            --accent-weak: #eef4ff;         /* 主色浅底：hover 底、选中底 */
+            --accent-line: #cfe0ff;         /* 主色浅描边 */
+            --accent-ring: rgba(47, 109, 246, .5);  /* focus 环 */
+            /* 表面与分隔 */
+            --surface: #ffffff;             /* 卡片 / 面板底 */
+            --surface-2: #f7f9fc;           /* 面板内浅底（输入、折叠区、列表） */
+            --line: #e8ecf3;                /* 区块卡描边 / 分隔线 */
+            --line-strong: #dbe1ea;         /* 控件描边 */
+            /* 文字 */
+            --text-mute: #8a94a3;           /* 占位、次要说明、禁用 */
+            /* 语义色 */
+            --danger: #b42318;  --danger-bg: #fff6f5;  --danger-line: #f0c4c0;
+            --ok: #1f8a4c;      --ok-bg: #f2fbf5;      --ok-line: #b7e2c6;
+            --warn-ink: #b45309; --warn-bg: #fff4e5;
+            /* 字号阶（12/13/14/16/19） */
+            --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 19px;
+            /* 间距阶（4 的倍数） */
+            --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+            /* 圆角 */
+            --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+            /* 阴影（层级由浅到深） */
+            --sh-1: 0 1px 2px rgba(24, 33, 51, .04);
+            --sh-2: 0 8px 24px rgba(24, 33, 51, .08), 0 1px 3px rgba(24, 33, 51, .06);
+            --sh-3: 0 18px 48px rgba(24, 33, 51, .24);
+            /* 控件高度 */
+            --h-sm: 32px; --h-md: 40px; --h-lg: 48px;
         }
         /* 移动端：禁止 iOS/安卓按屏幕宽度自动放大字号，避免固定像素排版被撑变形 */
         html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -73,11 +105,11 @@
         /* 控制面板：底色用浅灰，让内部的白色「区块卡」自然浮起来，一眼看出分组结构 */
         .control-panel {
             width: 330px;
-            background: #f7f9fc;
-            padding: 18px;
-            border-radius: 16px;
-            border: 1px solid #e8ecf3;
-            box-shadow: 0 8px 24px rgba(24, 33, 51, .08), 0 1px 3px rgba(24, 33, 51, .06);
+            background: var(--surface-2);
+            padding: 18px 18px 0;
+            border-radius: var(--r-lg);
+            border: 1px solid var(--line);
+            box-shadow: var(--sh-2);
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -94,14 +126,14 @@
             content: ''; flex: 0 0 auto; width: 4px; height: 17px; border-radius: 3px;
             background: linear-gradient(180deg, #6f9bff, var(--accent));
         }
-        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        .control-group { display: flex; flex-direction: column; gap: var(--sp-2); }
         .control-group > label:not(.upload-btn) {
-            font-size: 12.5px; color: var(--text-sub); font-weight: 600; letter-spacing: .2px;
+            font-size: var(--fs-sm); color: var(--text-sub); font-weight: 600; letter-spacing: .2px;
         }
         .control-group input[type="text"], .control-group textarea, .control-group select {
             width: 100%; box-sizing: border-box;
-            padding: 9px 11px; border: 1px solid #dbe1ea; border-radius: 9px;
-            font-size: 14px; font-family: inherit; background: #fbfcfe; color: var(--text-main);
+            padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+            font-size: var(--fs-md); font-family: inherit; background: var(--surface-2); color: var(--text-main);
             transition: border-color .15s, box-shadow .15s, background .15s;
         }
         .control-group input[type="text"]:focus, .control-group textarea:focus, .control-group select:focus {
@@ -140,36 +172,81 @@
            长文件名会「啪」地被硬切掉；改成块级布局后才能真正显示省略号 */
         .upload-btn {
             display: block; text-align: center;
-            background: #f7f9fc; border: 1px dashed #c6d0de; color: var(--text-sub);
-            padding: 11px 10px; border-radius: 9px; cursor: pointer; font-size: 13px;
+            background: var(--surface-2); border: 1px dashed #c6d0de; color: var(--text-sub);
+            padding: 11px 10px; border-radius: var(--r-sm); cursor: pointer; font-size: var(--fs-sm);
             box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
             transition: background .15s, border-color .15s, color .15s, transform .12s;
         }
-        .upload-btn:hover { background: #eef4ff; border-color: var(--accent); color: var(--accent); }
+        .upload-btn:hover { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-ink); }
         .upload-btn:active { transform: translateY(1px); }
-        .upload-btn.done { border-style: solid; border-color: #b7e2c6; background: #f2fbf5; color: #1f8a4c; }
+        .upload-btn.done { border-style: solid; border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
         .btn-primary {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 100%; min-width: 0; box-sizing: border-box;
+            height: var(--h-lg); padding: 0 var(--sp-4);
             background: linear-gradient(180deg, #3d78f7, #2f6df6); color: #fff; border: none;
-            padding: 13px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: 700;
-            letter-spacing: 1px; margin-top: 4px;
+            border-radius: var(--r-sm); cursor: pointer; font-size: var(--fs-md); font-weight: 700;
+            font-family: inherit; letter-spacing: .5px;
             box-shadow: 0 6px 16px rgba(47, 109, 246, .28);
             transition: filter .15s, box-shadow .15s, transform .12s;
         }
-        .btn-primary:hover { filter: brightness(1.05); box-shadow: 0 8px 20px rgba(47, 109, 246, .34); }
-        .btn-primary:active { transform: translateY(1px); }
+        .btn-primary:hover:not(:disabled) { filter: brightness(1.05); box-shadow: 0 8px 20px rgba(47, 109, 246, .34); }
+        .btn-primary:active:not(:disabled) { transform: translateY(1px); }
         /* 置灰有两种原因：内容超出安全区（不可用）与正在导出（忙）。
            默认用 not-allowed 表达「不可用」，导出中额外加 .is-busy 换成 progress。 */
-        .btn-primary:disabled { cursor: not-allowed; filter: grayscale(.35) brightness(.96); box-shadow: none; }
-        .btn-primary.is-busy:disabled { cursor: progress; }
+        .btn-primary:disabled { cursor: not-allowed; opacity: .55; filter: grayscale(.35) brightness(.96); box-shadow: none; }
+        .btn-primary.is-busy:disabled { cursor: progress; filter: none; opacity: .75; }
+        /* 弱操作：透明底 + 主色文字，无边框；不抢视觉（恢复默认、复制地址这类） */
+        .btn-link {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 0; box-sizing: border-box;
+            height: var(--h-sm); padding: 0 var(--sp-2);
+            background: transparent; border: 1px solid transparent; border-radius: var(--r-sm);
+            color: var(--accent-ink); font-size: var(--fs-sm); font-weight: 600; font-family: inherit;
+            cursor: pointer; transition: background .15s, color .15s;
+        }
+        .btn-link:hover:not(:disabled) { background: var(--accent-weak); }
+        .btn-link:disabled { cursor: not-allowed; opacity: .5; }
+        /* 危险确认：仅出现在二次确认弹层里的「确认删除 / 确认清空」 */
+        .btn-danger-solid {
+            display: inline-flex; align-items: center; justify-content: center;
+            box-sizing: border-box; height: var(--h-md); padding: 0 var(--sp-4);
+            background: var(--danger); border: 1px solid var(--danger); border-radius: var(--r-sm);
+            color: #fff; font-size: var(--fs-md); font-weight: 700; font-family: inherit;
+            cursor: pointer; transition: filter .15s, transform .12s;
+        }
+        .btn-danger-solid:hover:not(:disabled) { filter: brightness(1.06); }
+        .btn-danger-solid:active:not(:disabled) { transform: translateY(1px); }
+        .btn-danger-solid:disabled { cursor: not-allowed; opacity: .5; }
+        /* 按钮三态统一：焦点环与禁用（含 .btn-link / .btn-danger-solid） */
+        .btn-primary:focus-visible,
+        .btn-link:focus-visible,
+        .btn-danger-solid:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+        /* 选中态：切换类按钮（全选 / 安全区）用主色浅底表达「当前已生效」 */
+        .btn-ghost.is-active,
+        [aria-pressed="true"].btn-ghost {
+            background: var(--accent-weak); border-color: var(--accent-line); color: var(--accent-ink);
+        }
+        /* 通用：提示文字 / 芯片 / 字段说明 */
+        [hidden] { display: none !important; }
+        .lmt-field-help { font-size: var(--fs-xs); line-height: 1.55; color: var(--text-mute); margin: 0; }
+        .lmt-chip {
+            display: inline-flex; align-items: center; gap: var(--sp-1);
+            align-self: flex-start; box-sizing: border-box;
+            padding: 4px 10px; border-radius: 999px;
+            background: var(--accent-weak); border: 1px solid var(--accent-line);
+            color: var(--accent-ink); font-size: var(--fs-xs); font-weight: 600; line-height: 1.5;
+        }
+        .lmt-chip.is-warn { background: var(--warn-bg); border-color: #f2d4a8; color: var(--warn-ink); }
         .toggle-safe-zone {
-            display: flex; align-items: center; gap: 9px; font-size: 13px;
+            display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm);
             cursor: pointer; color: var(--text-sub); user-select: none;
-            padding: 10px 12px; border-radius: 10px;
-            background: #f7f9fc; border: 1px solid #e8ecf3;
+            padding: 10px 12px; border-radius: var(--r-sm);
+            background: var(--surface-2); border: 1px solid var(--line);
             box-sizing: border-box; /* 有内边距+边框后按 border-box 计算，避免撑出 2px 横向溢出 */
             transition: background .15s, border-color .15s;
         }
-        .toggle-safe-zone:hover { background: #eef4ff; border-color: #cfe0ff; }
+        .toggle-safe-zone:hover { background: var(--accent-weak); border-color: var(--accent-line); }
         .toggle-safe-zone input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 
         /* 美化滚动条（桌面端 WebKit 内核）：与卡片圆角风格统一 */
@@ -194,22 +271,23 @@
         .toggle-safe-zone:focus-within,
         details.panel-block > summary:focus-visible,
         .control-group select:focus-visible {
-            outline: 2px solid rgba(47, 109, 246, .5); outline-offset: 2px;
+            outline: 2px solid var(--accent-ring); outline-offset: 2px;
         }
 
         /* 在线字体加载状态 */
         .font-status { font-size: 12px; line-height: 16px; min-height: 16px; color: var(--text-sub); }
-        .font-status.error { color: #b42318; }
+        .font-status.error { color: var(--danger); }
 
         /* 内容超出安全区提示 */
         .overflow-warn {
-            display: none; font-size: 12px; line-height: 1.55; color: #b42318;
-            background: #fef3f2; border: 1px solid #fecdca; border-radius: 9px; padding: 9px 11px;
+            display: none; font-size: var(--fs-xs); line-height: 1.55; color: var(--danger);
+            background: var(--danger-bg); border: 1px solid var(--danger-line);
+            border-radius: var(--r-sm); padding: 9px 11px;
         }
         .overflow-warn.show { display: block; }
 
         /* 自动缩小字号以适配安全区时的说明（正常状态，弱化显示，不是错误） */
-        .fit-note { display: none; font-size: 12px; line-height: 1.55; color: #7a8699; }
+        .fit-note { display: none; font-size: var(--fs-xs); line-height: 1.55; color: var(--text-mute); }
         .fit-note.show { display: block; }
 
         /* 预览区容器（纵向：顶部轻量标题栏 + 下方画布舞台）
@@ -226,7 +304,8 @@
         }
         .preview-head {
             flex: 0 0 auto; width: 100%; box-sizing: border-box;
-            display: flex; align-items: center; gap: 10px; padding: 0 4px 10px;
+            display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3);
+            padding: 0 4px 10px;
         }
         .preview-head-title {
             display: flex; align-items: center; gap: 8px;
@@ -236,7 +315,8 @@
             content: ''; width: 3px; height: 14px; border-radius: 2px;
             background: linear-gradient(180deg, #6f9bff, var(--accent));
         }
-        .preview-head-hint { margin-left: auto; font-size: 12px; color: var(--text-sub); }
+        .preview-head-hint { margin-left: auto; font-size: var(--fs-xs); color: var(--text-sub); }
+        .preview-head .toggle-safe-zone { flex: 0 0 auto; }
         /* 画布舞台：原先挂在 .preview-container 上的居中 + 纵向滚动逻辑原样搬到这里 */
         .preview-stage {
             flex: 1 1 auto; min-height: 0; width: 100%;
@@ -538,6 +618,9 @@
                 max-width: 420px;
                 box-sizing: border-box;
                 margin: 12px 0 20px;
+                /* 手机端改为整页滚动：面板不再自成一个滚动容器，
+                   常驻底栏才能真正贴住视口底部（否则只贴在面板内容末尾） */
+                overflow: visible;
             }
             /* iOS 聚焦输入框时，字号 < 16px 会自动放大整个页面，统一提到 16px 避免跳动。
                授权门输入框的规则在下方（源码顺序更靠后），这里必须提高优先级才压得住。 */
@@ -560,8 +643,8 @@
         body.locked > .preview-container { visibility: hidden; }
         .license-card {
             width: 380px; max-width: 100%; box-sizing: border-box;
-            background: #fff; border: 1px solid #e8ecf3; border-radius: 18px;
-            padding: 26px 24px; box-shadow: 0 18px 48px rgba(24, 33, 51, .16);
+            background: #fff; border: 1px solid var(--line); border-radius: var(--r-lg);
+            padding: var(--sp-5); box-shadow: var(--sh-3);
         }
         .license-card h1 { margin: 0 0 6px; font-size: 19px; letter-spacing: .5px; }
         .license-sub { margin: 0 0 20px; font-size: 13px; color: var(--text-sub); }
@@ -581,14 +664,17 @@
         }
         .license-field input[readonly] { background: #f2f5fa; color: #44506a; }
         .btn-ghost {
-            flex: 0 0 auto; padding: 0 14px; border: 1px solid #dbe1ea; background: #f7f9fc;
-            border-radius: 9px; cursor: pointer; font-size: 13px; color: var(--text-sub);
+            display: inline-flex; align-items: center; justify-content: center;
+            flex: 0 0 auto; min-width: 0; box-sizing: border-box;
+            height: var(--h-md); padding: 0 var(--sp-3);
+            border: 1px solid var(--line-strong); background: var(--surface);
+            border-radius: var(--r-sm); cursor: pointer; font-size: var(--fs-sm); color: var(--text-sub);
             font-family: inherit; transition: background .15s, border-color .15s, color .15s;
         }
-        .btn-ghost:hover { background: #eef4ff; border-color: var(--accent); color: var(--accent); }
+        .btn-ghost:hover:not(:disabled) { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-ink); }
         .license-gate .btn-primary { width: 100%; margin-top: 6px; }
-        .license-msg { min-height: 18px; margin-top: 12px; font-size: 13px; line-height: 1.5; color: #b42318; }
-        .license-msg.ok { color: #1f8a4c; }
+        .license-msg { min-height: 18px; margin-top: 12px; font-size: var(--fs-sm); line-height: 1.5; color: var(--danger); }
+        .license-msg.ok { color: var(--ok); }
         .license-msg.info { color: var(--text-sub); }
         .license-net { margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
         .license-hint { margin-top: 8px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
@@ -598,8 +684,9 @@
         /* 导出失败的内联提示：移动端 WebView 里 alert() 可能被静默忽略，
            改用页内提示，保证用户一定看得到反馈。 */
         .export-msg {
-            display: none; font-size: 12px; line-height: 1.55; color: #b42318;
-            background: #fef3f2; border: 1px solid #fecdca; border-radius: 9px; padding: 9px 11px;
+            display: none; font-size: var(--fs-xs); line-height: 1.55; color: var(--danger);
+            background: var(--danger-bg); border: 1px solid var(--danger-line);
+            border-radius: var(--r-sm); padding: 9px 11px;
         }
         .export-msg.show { display: block; }
 
@@ -617,7 +704,7 @@
         }
         .manual-copy-card {
             width: 420px; max-width: 100%; max-height: 100%; overflow-y: auto; box-sizing: border-box;
-            background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 18px 48px rgba(24, 33, 51, .24);
+            background: #fff; border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--sh-3);
         }
         .manual-copy-card h3 { margin: 0 0 6px; font-size: 16px; }
         .manual-copy-card p { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
@@ -637,8 +724,8 @@
            这里给出可视化出口，长按图片即可保存到相册。桌面端不会出现。 */
         .img-preview-card {
             width: 92vw; max-width: 420px; max-height: 100%; overflow-y: auto; box-sizing: border-box;
-            background: #fff; border-radius: 16px; padding: 16px; text-align: center;
-            box-shadow: 0 18px 48px rgba(24, 33, 51, .24);
+            background: #fff; border-radius: var(--r-lg); padding: var(--sp-4); text-align: center;
+            box-shadow: var(--sh-3);
         }
         .img-preview-card img {
             display: block; width: 100%; max-height: 60vh; object-fit: contain;
@@ -648,8 +735,14 @@
 
         /* ===== 新增功能（草稿箱 / 批量出图 / 模板自定义 / 文案库）样式 ===== */
         /* 按钮组：等宽并排，窄屏自动换行，避免新增按钮把面板挤变形 */
-        .lmt-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .lmt-btn-row { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
         .lmt-btn-row > button, .lmt-btn-row > .upload-btn { flex: 1 1 0; min-width: 0; margin: 0; }
+        /* 弱操作按钮（文字按钮）不参与等分，保持本身的紧凑宽度，不与主次按钮抢空间 */
+        .lmt-btn-row > .btn-link { flex: 0 0 auto; }
+        /* 分隔行：与上一组按钮之间用一条细线物理隔离（危险按钮前必用），避免误触 */
+        .lmt-btn-row.is-split {
+            margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line);
+        }
         /* 内联提示：默认不占位，仅有内容时才显示（与 .export-msg 同一套路） */
         .lmt-tip { display: none; font-size: 12px; line-height: 1.55; color: var(--text-sub); }
         .lmt-tip.show { display: block; }
@@ -666,10 +759,10 @@
         .lmt-batch-list label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .lmt-batch-list .lmt-group-title { font-size: 12px; font-weight: 600; color: var(--text-sub); margin: 4px 0 2px; }
         /* 「样式自定义」折叠区 */
-        .lmt-details { border: 1px solid #e8ecf3; border-radius: 10px; background: #f7f9fc; padding: 10px 12px; }
-        .lmt-details > summary { font-size: 12.5px; font-weight: 600; color: var(--text-sub); cursor: pointer; }
-        .lmt-style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
-        .lmt-style-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-sub); }
+        .lmt-details { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); padding: var(--sp-3); }
+        .lmt-details > summary { font-size: var(--fs-sm); font-weight: 600; color: var(--text-sub); cursor: pointer; }
+        .lmt-style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); margin: var(--sp-3) 0; }
+        .lmt-style-grid label { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-xs); color: var(--text-sub); }
         .lmt-style-grid input[type="color"] { width: 100%; height: 30px; padding: 2px; cursor: pointer; }
         .lmt-style-grid input[type="range"] { width: 100%; accent-color: var(--accent); }
         .lmt-details input[type="text"] {
@@ -679,9 +772,9 @@
         }
         /* 锁定字号开关（样式区，与安全区开关同款外观） */
         .toggle-fit-lock {
-            display: flex; align-items: center; gap: 8px; box-sizing: border-box;
-            padding: 8px 12px; margin: 8px 0 10px; border: 1px solid #e8ecf3; border-radius: 9px;
-            font-size: 13px; font-weight: 400; color: var(--text-main); background: #f7f9fc; cursor: pointer;
+            display: flex; align-items: center; gap: var(--sp-2); box-sizing: border-box;
+            padding: 8px 12px; margin: var(--sp-2) 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm);
+            font-size: var(--fs-sm); font-weight: 400; color: var(--text-main); background: var(--surface); cursor: pointer;
         }
         .toggle-fit-lock input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
         /* 通用确认弹层里的正文说明 */
@@ -709,7 +802,7 @@
         }
         .lmt-modal-card {
             width: 380px; max-width: 100%; box-sizing: border-box;
-            background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 18px 48px rgba(24, 33, 51, .24);
+            background: #fff; border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--sh-3);
         }
         .lmt-modal-card h3 { margin: 0 0 10px; font-size: 16px; }
         .lmt-modal-card input[type="text"] {
@@ -721,14 +814,14 @@
            目的：主流程一眼可见，辅助/高频次要功能收进折叠区，降低一屏内的视觉噪声。
            注意：区块卡只是分组容器，不改动内部控件的 id / 文案 / data-tpl 显隐逻辑。 */
         .panel-block {
-            display: flex; flex-direction: column; gap: 12px;
-            background: #fff; border: 1px solid #e8ecf3; border-radius: 14px;
-            padding: 12px 12px 14px;
-            box-shadow: 0 1px 2px rgba(24, 33, 51, .04);
+            display: flex; flex-direction: column; gap: var(--sp-3);
+            background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+            padding: var(--sp-3);
+            box-shadow: var(--sh-1);
         }
         .panel-block-title {
-            display: flex; align-items: center; gap: 8px;
-            margin: 0; font-size: 13px; font-weight: 700; color: var(--text-main); letter-spacing: .3px;
+            display: flex; align-items: center; gap: var(--sp-2);
+            margin: 0; font-size: var(--fs-lg); font-weight: 700; color: var(--text-main); letter-spacing: .3px;
         }
         .panel-block-title::before {
             content: ''; flex: 0 0 auto; width: 3px; height: 14px; border-radius: 2px;
@@ -741,7 +834,7 @@
            这里显式用 display:block，避免 flex 容器影响 <details> 的原生开合行为 */
         details.panel-block { display: block; padding: 0; gap: 0; }
         details.panel-block > summary.panel-block-title {
-            padding: 13px 12px; cursor: pointer; list-style: none; user-select: none;
+            padding: var(--sp-3); cursor: pointer; list-style: none; user-select: none;
         }
         details.panel-block > summary.panel-block-title::-webkit-details-marker { display: none; }
         details.panel-block > summary.panel-block-title::after {
@@ -754,17 +847,59 @@
         }
         details.panel-block > summary.panel-block-title:hover { color: var(--accent); }
         details.panel-block > .panel-block-body {
-            display: flex; flex-direction: column; gap: 12px; padding: 0 12px 14px;
+            display: flex; flex-direction: column; gap: var(--sp-3); padding: 0 var(--sp-3) var(--sp-3);
         }
+
+        /* ===== 常驻底栏：把最高频的「导出为图片」固定在面板底部，出图不再需要滚到最末 =====
+           桌面：.control-panel 自己是滚动容器 → 贴面板底；手机：body 滚动 → 贴视口底。 */
+        .panel-footer {
+            position: sticky; bottom: 0; z-index: 5;
+            display: flex; flex-direction: column; gap: var(--sp-2);
+            margin: auto -18px 0; padding: var(--sp-3) 18px var(--sp-4);
+            background: var(--surface); border-top: 1px solid var(--line);
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 -6px 16px rgba(24, 33, 51, .06);
+        }
+        .panel-footer-row { display: flex; align-items: center; gap: var(--sp-2); }
+        /* 尺寸选择占据余下宽度，主按钮保持内容宽度（不与主线操作抢焦点，也不挤压选项文字） */
+        .panel-footer-row > select { flex: 1 1 auto; width: auto; min-width: 0; }
+        .panel-footer-row > .btn-primary { flex: 0 0 auto; width: auto; padding: 0 var(--sp-5); }
+
+        /* ===== 图片素材区：网格 / 图文配对 ===== */
+        .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+        .upload-grid .upload-btn { font-size: var(--fs-xs); padding: 10px 6px; }
+        .img-cap-pair {
+            display: flex; flex-direction: column; gap: var(--sp-2);
+            padding-bottom: var(--sp-3); border-bottom: 1px solid var(--line);
+        }
+        .img-cap-pair:last-child { padding-bottom: 0; border-bottom: none; }
+
+        /* ===== 样式自定义：控件分「文字 / 图形」两组，组标题横跨两列 ===== */
+        .lmt-style-group-title {
+            grid-column: 1 / -1; margin-top: var(--sp-1);
+            font-size: var(--fs-sm); font-weight: 700; color: var(--text-main);
+        }
+
+        /* 预览头里的安全区开关：与外层提示同排，做成紧凑版 */
+        .preview-head .toggle-safe-zone {
+            padding: 6px 10px; gap: var(--sp-2); font-size: var(--fs-xs);
+            border-radius: var(--r-sm); background: var(--surface-2);
+        }
+        .preview-head .toggle-safe-zone input { width: 15px; height: 15px; }
 
         /* 按钮分级：主操作（实心主色，全局唯一）、次操作（描边中性）、删除/清空（危险描边） */
         .btn-danger {
-            flex: 0 0 auto; padding: 0 14px; border: 1px solid #f0c4c0; background: #fff6f5;
-            border-radius: 9px; cursor: pointer; font-size: 13px; color: #b42318; font-family: inherit;
-            transition: background .15s, border-color .15s, color .15s;
+            display: inline-flex; align-items: center; justify-content: center;
+            flex: 0 0 auto; min-width: 0; box-sizing: border-box;
+            height: var(--h-sm); padding: 0 var(--sp-3);
+            border: 1px solid var(--danger-line); background: var(--danger-bg);
+            border-radius: var(--r-sm); cursor: pointer; font-size: var(--fs-sm); color: var(--danger);
+            font-family: inherit; transition: background .15s, border-color .15s, color .15s;
         }
-        .btn-danger:hover { background: #fdecea; border-color: #e2938c; }
-        .btn-danger:disabled, .btn-ghost:disabled { cursor: not-allowed; opacity: .5; }
+        .btn-danger:hover:not(:disabled) { background: #fdecea; border-color: #e2938c; }
+        .btn-danger:disabled, .btn-ghost:disabled { cursor: not-allowed; opacity: .5; box-shadow: none; }
+        /* 危险按钮不参与等宽等分（否则误触成本最高的按钮反而最好点），并统一靠右 */
+        .lmt-btn-row > .btn-danger { flex: 0 0 auto; margin-left: auto; }
 
         /* 弹层打开时锁定背景滚动，避免移动端手指在浮层上滑动时背景跟着一起滚 */
         body.modal-open { overflow: hidden; }
@@ -792,7 +927,8 @@
                 padding: 20px 16px;
             }
             .license-card { margin: auto 0; }
-            /* 触屏目标尺寸：复制/激活这类关键按钮不小于 44px，避免手指点不中 */
+            /* 触屏目标尺寸：所有按钮不小于 44px，避免手指点不中（min-height 会压过固定 height） */
+            .btn-primary, .btn-ghost, .btn-danger, .btn-link, .btn-danger-solid, .upload-btn { min-height: 44px; }
             .license-field input { padding: 12px; }
             .license-gate .btn-ghost { min-height: 46px; padding: 0 16px; font-size: 14px; }
             .license-gate .btn-primary { min-height: 50px; }
@@ -823,7 +959,7 @@
                 <input type="text" id="license-input" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
             </div>
 
-            <button type="button" class="btn-primary" id="license-activate">激 活</button>
+            <button type="button" class="btn-primary" id="license-activate">激活</button>
             <div class="license-msg" id="license-msg" role="status" aria-live="polite"></div>
             <div class="license-exp" id="license-exp" role="status" aria-live="polite"></div>
             <div class="license-cred" id="license-cred"></div>
@@ -845,6 +981,7 @@
                     <option value="window">橱窗排版</option>
                     <option value="three">三图竖排</option>
                 </select>
+                <p class="lmt-field-help">在「样式自定义」里存下的样式会作为一条模板出现在本下拉中。</p>
             </div>
 
             <div class="control-group">
@@ -872,67 +1009,72 @@
         <section class="panel-block">
             <h3 class="panel-block-title">图片素材</h3>
 
-            <div class="control-group" data-tpl="window">
-                <label>左侧模特图 (1:1)</label>
-                <label for="upload-left" class="upload-btn">点击上传图片</label>
-                <input type="file" id="upload-left" class="file-upload" accept="image/*">
+            <div class="upload-grid" data-tpl="window">
+                <div class="control-group">
+                    <label>左侧模特图 (1:1)</label>
+                    <label for="upload-left" class="upload-btn">点击上传图片</label>
+                    <input type="file" id="upload-left" class="file-upload" accept="image/*">
+                </div>
+
+                <div class="control-group">
+                    <label>右侧模特图 (1:1)</label>
+                    <label for="upload-right" class="upload-btn">点击上传图片</label>
+                    <input type="file" id="upload-right" class="file-upload" accept="image/*">
+                </div>
+
+                <div class="control-group">
+                    <label>底部左侧截图 (3:4)</label>
+                    <label for="upload-screenshot-left" class="upload-btn">点击上传图片</label>
+                    <input type="file" id="upload-screenshot-left" class="file-upload" accept="image/*">
+                </div>
+
+                <div class="control-group">
+                    <label>底部右侧截图 (3:4)</label>
+                    <label for="upload-screenshot-right" class="upload-btn">点击上传图片</label>
+                    <input type="file" id="upload-screenshot-right" class="file-upload" accept="image/*">
+                </div>
             </div>
 
-            <div class="control-group" data-tpl="window">
-                <label>右侧模特图 (1:1)</label>
-                <label for="upload-right" class="upload-btn">点击上传图片</label>
-                <input type="file" id="upload-right" class="file-upload" accept="image/*">
+            <div class="img-cap-pair" data-tpl="three">
+                <div class="control-group">
+                    <label>图片一 (1440×600)</label>
+                    <label for="upload-wide-1" class="upload-btn">点击上传图片</label>
+                    <input type="file" id="upload-wide-1" class="file-upload" accept="image/*">
+                </div>
+                <div class="control-group">
+                    <label for="input-cap-1">小标题一</label>
+                    <textarea id="input-cap-1" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
+                </div>
             </div>
 
-            <div class="control-group" data-tpl="window">
-                <label>底部左侧截图 (3:4)</label>
-                <label for="upload-screenshot-left" class="upload-btn">点击上传图片</label>
-                <input type="file" id="upload-screenshot-left" class="file-upload" accept="image/*">
+            <div class="img-cap-pair" data-tpl="three">
+                <div class="control-group">
+                    <label>图片二 (1440×600)</label>
+                    <label for="upload-wide-2" class="upload-btn">点击上传图片</label>
+                    <input type="file" id="upload-wide-2" class="file-upload" accept="image/*">
+                </div>
+                <div class="control-group">
+                    <label for="input-cap-2">小标题二</label>
+                    <textarea id="input-cap-2" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
+                </div>
             </div>
 
-            <div class="control-group" data-tpl="window">
-                <label>底部右侧截图 (3:4)</label>
-                <label for="upload-screenshot-right" class="upload-btn">点击上传图片</label>
-                <input type="file" id="upload-screenshot-right" class="file-upload" accept="image/*">
-            </div>
-
-            <div class="control-group" data-tpl="three">
-                <label>图片一 (1440×600)</label>
-                <label for="upload-wide-1" class="upload-btn">点击上传图片</label>
-                <input type="file" id="upload-wide-1" class="file-upload" accept="image/*">
-            </div>
-
-            <div class="control-group" data-tpl="three">
-                <label for="input-cap-1">小标题一</label>
-                <textarea id="input-cap-1" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
-            </div>
-
-            <div class="control-group" data-tpl="three">
-                <label>图片二 (1440×600)</label>
-                <label for="upload-wide-2" class="upload-btn">点击上传图片</label>
-                <input type="file" id="upload-wide-2" class="file-upload" accept="image/*">
-            </div>
-
-            <div class="control-group" data-tpl="three">
-                <label for="input-cap-2">小标题二</label>
-                <textarea id="input-cap-2" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
-            </div>
-
-            <div class="control-group" data-tpl="three">
-                <label>图片三 (1440×600)</label>
-                <label for="upload-wide-3" class="upload-btn">点击上传图片</label>
-                <input type="file" id="upload-wide-3" class="file-upload" accept="image/*">
-            </div>
-
-            <div class="control-group" data-tpl="three">
-                <label for="input-cap-3">小标题三</label>
-                <textarea id="input-cap-3" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
+            <div class="img-cap-pair" data-tpl="three">
+                <div class="control-group">
+                    <label>图片三 (1440×600)</label>
+                    <label for="upload-wide-3" class="upload-btn">点击上传图片</label>
+                    <input type="file" id="upload-wide-3" class="file-upload" accept="image/*">
+                </div>
+                <div class="control-group">
+                    <label for="input-cap-3">小标题三</label>
+                    <textarea id="input-cap-3" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
+                </div>
             </div>
         </section>
 
-        <!-- 区块三：样式与安全区（外观微调 + 参考线开关） -->
+        <!-- 区块三：字体与样式（外观微调；安全区开关已移到右侧预览栏顶部） -->
         <section class="panel-block">
-            <h3 class="panel-block-title">样式与安全区</h3>
+            <h3 class="panel-block-title">字体与样式</h3>
 
             <div class="control-group">
                 <label for="font-select">手写字体</label>
@@ -947,10 +1089,12 @@
                 <details class="lmt-details">
                     <summary>样式自定义</summary>
                     <div class="lmt-style-grid">
+                        <div class="lmt-style-group-title">文字</div>
                         <label>标题颜色<input type="color" id="style-color-title" value="#14181f"></label>
                         <label>标题字号<input type="range" id="style-size-title" min="16" max="40" step="1" value="24"></label>
                         <label>文案颜色<input type="color" id="style-color-summary" value="#39404f"></label>
                         <label>文案字号<input type="range" id="style-size-summary" min="9" max="22" step="1" value="13"></label>
+                        <div class="lmt-style-group-title">图形</div>
                         <label>关键词颜色<input type="color" id="style-color-keywords" value="#4a5566"></label>
                         <label>关键词字号<input type="range" id="style-size-keywords" min="9" max="22" step="1" value="12"></label>
                         <label>图片圆角<input type="range" id="style-radius" min="0" max="30" step="1" value="10"></label>
@@ -962,15 +1106,13 @@
                     <input type="text" id="style-name-input" placeholder="我的模板名称（如：暖色调）">
                     <div class="lmt-btn-row">
                         <button type="button" class="btn-ghost" id="style-save-btn">存为我的模板</button>
-                        <button type="button" class="btn-ghost" id="style-reset-btn">恢复默认样式</button>
+                    </div>
+                    <div class="lmt-btn-row is-split">
+                        <button type="button" class="btn-link" id="style-reset-btn">恢复默认样式</button>
                         <button type="button" class="btn-danger" id="style-delete-btn">删除我的模板</button>
                     </div>
                 </details>
             </div>
-
-            <label class="toggle-safe-zone">
-                <input type="checkbox" id="toggle-safe" checked=""> 显示安全区辅助线
-            </label>
         </section>
 
         <!-- 区块四：高级工具（低频操作，默认收起，需要时再展开） -->
@@ -1025,34 +1167,31 @@
                 </div>
 
                 <div class="control-group">
-                    <div class="lmt-btn-row">
-                        <button type="button" class="btn-ghost" id="prefs-reset-btn">恢复默认</button>
+                    <p class="lmt-field-help">恢复默认会清空草稿箱、样式偏好与常用文案库中的全部本地数据。</p>
+                    <div class="lmt-btn-row is-split">
+                        <button type="button" class="btn-link" id="prefs-reset-btn">恢复全部默认设置</button>
                     </div>
                     <div class="lmt-tip" id="tool-msg" role="status" aria-live="polite"></div>
                 </div>
             </div>
         </details>
 
-        <!-- 区块五：预览与输出（原「输出」与右侧「预览区」归并为同一区块） -->
-        <section class="panel-block">
-            <h3 class="panel-block-title">预览与输出</h3>
-
-            <div class="control-group">
-                <label for="export-size">导出尺寸</label>
-                <select id="export-size">
-                    <option value="2.88">1080 × 1920（平台推荐）</option>
-                    <option value="4" selected>1500 × 2668（4× 高清）</option>
-                </select>
-            </div>
-
-            <div class="fit-note" id="fit-note" role="status" aria-live="polite"></div>
+        <!-- 常驻底栏：导出尺寸与「导出为图片」贴住面板底部，
+             出图不必再滚到面板末尾；长度提示也挪到这里，导出前就地可见 -->
+        <div class="panel-footer">
             <div class="overflow-warn" id="overflow-warn" role="status" aria-live="polite">
                 内容过长：字号已缩到最小仍超出安全区，请精简文案后再导出。
             </div>
-
-            <button class="btn-primary" id="export-btn">导出为图片</button>
+            <div class="fit-note" id="fit-note" role="status" aria-live="polite"></div>
+            <div class="panel-footer-row">
+                <select id="export-size" aria-label="导出尺寸" title="导出尺寸">
+                    <option value="2.88">1080 × 1920（平台推荐）</option>
+                    <option value="4" selected>1500 × 2668（4× 高清）</option>
+                </select>
+                <button class="btn-primary" id="export-btn">导出为图片</button>
+            </div>
             <div class="export-msg" id="export-msg" role="status" aria-live="polite"></div>
-        </section>
+        </div>
     </div>
 
     <!-- 右侧预览区 -->
@@ -1060,6 +1199,9 @@
         <div class="preview-head">
             <span class="preview-head-title">实时预览</span>
             <span class="preview-head-hint" id="preview-head-hint">画布 375 × 667（按所选尺寸导出高清图）</span>
+            <label class="toggle-safe-zone">
+                <input type="checkbox" id="toggle-safe" checked=""> 显示安全区辅助线
+            </label>
         </div>
         <div class="preview-stage">
         <div class="canvas-wrapper web-font" id="canvas-wrapper">
