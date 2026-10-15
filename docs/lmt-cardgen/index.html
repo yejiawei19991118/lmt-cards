@@ -401,9 +401,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
     function normalize(code) { return String(code == null ? '' : code).toUpperCase().replace(/[^0-9A-Z]/g, ''); }
 
+    // 卡密结果按机器码缓存：双 SHA-256 是纯 JS 实现，同一机器码在「渲染 / 导出 / 上传 / 对照在线清单」
+    // 各条路径上会被反复重算，大台账下是主要卡顿来源；缓存后每条机器码只算一次。
+    var cardCache = {};
     function makeCard(mc) {
-        var mac = hmacSha256Hex(LICENSE_SECRET, normalize(mc));
-        return group(base32Encode(hexToBytes(mac), 20), 4);
+        var key = normalize(mc);
+        if (key in cardCache) return cardCache[key];
+        var mac = hmacSha256Hex(LICENSE_SECRET, key);
+        var card = group(base32Encode(hexToBytes(mac), 20), 4);
+        cardCache[key] = card;
+        return card;
     }
 
     // 清单签名：对「更新日期 + 归一化白名单 + 归一化吊销名单」做 HMAC-SHA256，随清单一同上传。
@@ -493,7 +500,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var n = normalize(fields[0]);
         if (n.length !== 16) return null;
         var rest = fields.slice(1);
-        if (rest.length && normalize(rest[0]).length === 20) rest.shift(); // 丢掉卡密列
+        // 丢掉卡密列（兼容带卡密的 CSV 行）。只在该列确实是卡密时才丢：
+        //   · 后面还有列 → 就是「机器码,卡密,备注」的三列格式，直接丢；
+        //   · 它是最后一列 → 与本机器码重算出的卡密比对，完全一致才认定是卡密列。
+        // 否则「恰好 20 位纯字母数字」的备注会被误当卡密静默丢弃。
+        if (rest.length && normalize(rest[0]).length === 20 &&
+            (rest.length > 1 || normalize(rest[0]) === normalize(makeCard(n)))) {
+            rest.shift();
+        }
         // 丢掉首尾的空列（如模板里的卡密列为空、或 CSV 行尾多出逗号）
         while (rest.length && !String(rest[0]).trim()) rest.shift();
         while (rest.length && !String(rest[rest.length - 1]).trim()) rest.pop();
@@ -640,9 +654,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (!seen[card]) { seen[card] = true; cards.push(card); }
         });
         var revoked = [];
+        // 归一化后去重：吊销框里手抄多遍 / 分隔符写法不同会得到同一张卡密，
+        // 不去重会让清单 JSON 与签名里出现重复项、统计虚高。
+        var revSeen = {};
         revokeList.value.split(/\r?\n/).forEach(function (line) {
             var n = normalize(line);
-            if (n) revoked.push(group(n, 4));
+            if (n && !revSeen[n]) { revSeen[n] = true; revoked.push(group(n, 4)); }
         });
         // 用本地日期而非 toISOString()（UTC）：东八区在 08:00 之前 UTC 仍是前一天，
         // 会导致清单里的「更新于」日期比实际早一天，容易让人误判清单是否为最新。
@@ -1077,8 +1094,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(String(str)))); }
     function base64ToUtf8(b64) { return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, '')))); }
 
-    // 上传前与远端清单合并：白名单取并集、吊销名单取并集（归一化去重后重新分组 + 重签名）。
+    // 上传前与远端清单合并：白名单取并集（归一化去重后重新分组 + 重签名），
     // 目的：本机没记录的卡密（例如另一台机器加的）不会被覆盖删除，避免误锁用户。
+    // 吊销名单则以「本机吊销框」为准，不与远端取并集：否则把某项从吊销框删掉再上传，
+    // 会被远端的旧记录并回来，用户无法用本工具解除吊销（撤销只能通过重新生成清单来完成）。
     function mergeWithRemote(local, remote) {
         var cardSeen = {}, cards = [];
         function addCard(code) {
@@ -1097,7 +1116,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             revoked.push(group(n, 4));
         }
         (local.revoked || []).forEach(addRev);
-        ((remote && remote.revoked) || []).forEach(addRev);
         var updated = local.updated;
         return { updated: updated, cards: cards, revoked: revoked, sig: manifestSignature(updated, cards, revoked) };
     }
@@ -1230,6 +1248,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function render() {
         out.textContent = '';
         pairs = computePairs();
+        // 用 DocumentFragment 一次性插入：逐行 appendChild 到已挂载的 out 会触发多次重排，
+        // 台账上千条时首屏渲染明显阻塞，且监听器与节点逐次挂载更慢。
+        var frag = document.createDocumentFragment();
         pairs.forEach(function (p) {
             var card = p.card;
 
@@ -1273,18 +1294,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 item.appendChild(badge);
             }
             item.appendChild(btn);
-            out.appendChild(item);
+            frag.appendChild(item);
         });
 
         if (pairs.length === 0) {
             var empty = document.createElement('div');
             empty.className = 'empty';
             empty.textContent = '暂无结果，请先粘贴机器码。';
-            out.appendChild(empty);
+            frag.appendChild(empty);
             outTitle.textContent = '生成结果';
         } else {
             outTitle.textContent = '生成结果（' + pairs.length + ' 条）';
         }
+        out.appendChild(frag);
         buildManifest();
     }
 
@@ -1293,17 +1315,25 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) render();
     });
     mcList.addEventListener('input', scheduleSave);
-    revokeList.addEventListener('input', function () { buildManifest(); saveRevoke(); });
+    // 吊销框与台账框一致加 300ms 防抖：否则每敲一个字符都要全量重建清单并重算签名，长名单下输入明显卡顿。
+    var revokeTimer = null;
+    revokeList.addEventListener('input', function () {
+        if (revokeTimer) clearTimeout(revokeTimer);
+        revokeTimer = setTimeout(function () { revokeTimer = 0; buildManifest(); saveRevoke(); }, 300);
+    });
     document.getElementById('copy-manifest').addEventListener('click', function () {
-        buildManifest(); // 台账输入是防抖更新的，复制前再重算一次，确保清单与当前台账一致
+        buildManifest(); // 台账/吊销框输入是防抖更新的，复制前再重算一次，确保清单与当前输入一致
         copyWithFeedback(manifestOut.value, document.getElementById('copy-manifest'), '已复制清单');
     });
     document.getElementById('copy-manifest-url').addEventListener('click', function () {
         copyWithFeedback(MANIFEST_URL, document.getElementById('copy-manifest-url'), '已复制地址');
     });
     copyAllBtn.addEventListener('click', function () {
-        if (pairs.length === 0) { flashButton(copyAllBtn, '无结果'); return; }
-        var text = pairs.map(function (p) { return group(p.mc, 4) + '\t' + p.card + (p.note ? '\t' + p.note : ''); }).join('\n');
+        // 台账输入是防抖更新的、pairs 也只是「上次点生成卡密」的结果：复制前按当前台账重算一次，
+        // 否则改了台账又没点「生成卡密」时会复制到过期卡密（与 copy-manifest 的处理保持一致）。
+        var fresh = computePairs();
+        if (fresh.length === 0) { flashButton(copyAllBtn, '无结果'); return; }
+        var text = fresh.map(function (p) { return group(p.mc, 4) + '\t' + p.card + (p.note ? '\t' + p.note : ''); }).join('\n');
         copyWithFeedback(text, copyAllBtn, '已复制全部');
     });
     document.getElementById('export-btn').addEventListener('click', function () {
