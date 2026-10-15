@@ -2,22 +2,22 @@
   "updated": "2026-10-15",
   "apps": {
     "lmt-layout": {
-      "versionCode": 13,
-      "versionName": "1.12",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.12/lmt-layout-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=13", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=13"],
-      "sha256": "6f9bbbd8423a5a747ea8e573942d966aaa21ad0b32456c27737bc3c4063f90a8",
-      "size": 123122,
-      "notes": "GitHub Actions 自动发布（apk-v1.12）"
+      "versionCode": 14,
+      "versionName": "1.13",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.13/lmt-layout-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=14", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=14"],
+      "sha256": "b48157b0fca7c267def40a8b70511c9bea9dc4d21cbee2eb89e8b8e2a802a484",
+      "size": 123602,
+      "notes": "GitHub Actions 自动发布（apk-v1.13）"
     },
     "lmt-cardgen": {
-      "versionCode": 13,
-      "versionName": "1.12",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.12/lmt-cardgen-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=13", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=13"],
-      "sha256": "b675b60f6fb81353d42a7aa9dd22864acfaaff5a2116b134740629dbe4bba6ce",
+      "versionCode": 14,
+      "versionName": "1.13",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.13/lmt-cardgen-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=14", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=14"],
+      "sha256": "ebedc3d01b7b035b1bbb18391a2f9740e56af1245666fb9873f1a69c4e039ea0",
       "size": 70563,
-      "notes": "GitHub Actions 自动发布（apk-v1.12）"
+      "notes": "GitHub Actions 自动发布（apk-v1.13）"
     }
   }
 }
