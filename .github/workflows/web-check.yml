@@ -27,12 +27,31 @@ name: web-check
 on:
   push:
     branches: [main]
+    # 发版流程（auto-release.yml）会把 update.json / docs/update.json / docs/apk/** / cards.json 这类
+    # 生成物推回 main。它们与源码校验无关，若触发本工作流，等于每次发版都白跑一轮 4 个作业
+    # （含一次 Android SDK 构建）。故只在源码/测试/脚本/工作流这些真正影响校验的路径上触发。
+    paths-ignore:
+      - 'update.json'
+      - 'docs/update.json'
+      - 'docs/apk/**'
+      - 'cards.json'
   pull_request:
+    paths-ignore:
+      - 'update.json'
+      - 'docs/update.json'
+      - 'docs/apk/**'
+      - 'cards.json'
   # 定时兜底：只在 android 私有仓库单边改共享核心（或改安卓外壳）时，本仓库不会有 push 事件，
   # 只能靠每天一次的定时任务把这种「静默不同步」捞出来（另一个方向由 push 即时触发）。
   schedule:
     - cron: '23 2 * * *' # 每天 UTC 02:23（北京时间 10:23）
   workflow_dispatch:
+
+# 同一分支上连推多次时，取消尚未跑完的旧一轮：校验只关心最新一次提交的状态，
+# 旧一轮的结果既无意义又占并发（尤其 android-unit-tests 要冷启动 Gradle）。
+concurrency:
+  group: web-check-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   sw-hash:
@@ -131,7 +150,12 @@ jobs:
         run: echo "安卓副本待同步，跳过安卓副本实测：同步后的实测由 auto-release.yml 在发版前完成。"
 
   # 安卓更新模块的纯 JVM 单元测试（两个应用模块共用 shared/ 源码，只在私有仓库里，故一并在这里跑）。
+  #
+  # 只在「非 push」路径上跑：push 到 main 时，同一份 UpdaterTest 已由 auto-release.yml 以
+  # release.ps1 -WithTests 并入 assembleRelease 那一次 Gradle 调用跑过（且那种情况才真的动过安卓源码）。
+  # 这里再跑一遍纯属重复的 Gradle 冷启动；而在 PR / 定时 / 手动触发下本工作流会跑，覆盖不缺席。
   android-unit-tests:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - name: 检出 android（私有工程，只读部署密钥）

@@ -9,19 +9,25 @@
 # 说明：
 #   · 版本号以仓库内 update.json 为准（App 端就是拿它与已装版本比较）：versionCode = 清单当前值 +1，
 #     versionName 取 -Version（缺省则把清单当前版本名末位 +1）。
-#     版本经 Gradle 属性注入构建，不回写 android/version.properties，CI 无需写私有仓库。
+#     版本经 Gradle 属性注入构建；构建后把新版本回写 android/version.properties，使其与 update.json 始终一致。
+#     否则本机直接 assembleRelease 会回退读到该文件里的旧版本号，产出的包 versionCode 低于设备上已装版本，
+#     安装器直接拒绝（用户只看到「应用未安装」而不知原因）。
 #   · 同一脚本在 GitHub Actions（tag apk-v* 触发，见 .github/workflows/release.yml）与本机均可运行：
 #     本机工具链路径仅在存在时覆盖环境，构建命令按平台选 gradlew.bat / ./gradlew。
-#   · APK 作为 GitHub Release 资产上传，不写入 git 历史，避免仓库膨胀。
+#   · APK 既是 GitHub Release 资产，也复制一份到 docs/apk/ 作为镜像源：主链（GitHub release）在国内网络
+#     常不可达，App 会回退到 jsDelivr / GitHub Pages 上的这份镜像——故 APK 是有意进入 git 历史的。
+#     同名文件每版原地覆盖，仓库只在首次入库时增长一次，不会逐版累积。
 #   · 更新清单 lmt-cards/update.json 提交到仓库，并同步一份到 docs/update.json（GitHub Pages 承载）。
-#     App 启动时逐个读取 raw / Pages / jsDelivr 三个来源，取 versionCode 最大的一条，
+#     App 启动时并发读取 raw / Pages / jsDelivr 三个来源，取 versionCode 最大的一条，
 #     避免任一来源的 CDN 缓存停留在旧版本时把新清单挡在后面。
 
 param(
     [string]$Version = '',
     [string[]]$App = @('lmt-layout', 'lmt-cardgen'),
     [string]$Notes = '',
-    [switch]$DryRun
+    [switch]$DryRun,
+    # 与构建并入同一次 Gradle 调用跑单测：省掉一次 Gradle 冷启动（CI 上尤其明显）。
+    [switch]$WithTests
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,6 +44,8 @@ $JdkHome = 'C:\Users\Administrator\jdk\jdk-17.0.20.1+1'
 $GitDir = 'C:\Users\Administrator\tools\git\cmd'
 $GhDir = 'C:\Users\Administrator\tools\gh'
 # cards.json 的签名密钥（须与 index.html / 卡密生成器里的 LICENSE_SECRET 一致），仅用于发版后校验签名未被 rebase 破坏。
+# 注意：这不是「服务端密钥」——客户端 index.html 里内置同一份，签名只是让清单难以被随手改的威慑，
+# 不是可保密的能力（任何人查看静态页源码即可拿到）。此处保留明文只为发版校验，不改变这一设计。
 $LicenseSecret = 'aca0d140848ed9718184e7341d3c6ed7ff68283b50574258'
 
 $AllApps = @('lmt-layout', 'lmt-cardgen')
@@ -185,6 +193,25 @@ $newCode = [int]$distinctCodes[0]
 $tag = "apk-v$Version"
 Write-Info "Release tag：$tag"
 
+# 回写 android/version.properties：与 update.json 保持单一事实来源（本机/离线 assembleRelease 会回退读它）。
+# 两个应用共用同一份 versionCode/versionName（Gradle 版本属性是全局的），故统一写入。
+if ($DryRun) {
+    Write-Info "[DryRun] 跳过回写 $verFile"
+} else {
+    $verBuilder = New-Object System.Text.StringBuilder
+    [void]$verBuilder.AppendLine('# 版本号集中配置：两个应用各自的 versionCode / versionName 只需在此维护。')
+    [void]$verBuilder.AppendLine('# 与 lmt-cards/update.json 保持同步（两者是同一份事实）：发版脚本 tools/release.ps1 在构建时')
+    [void]$verBuilder.AppendLine('# 以 update.json 的 versionCode +1 为准，并把新版本回写到这里，避免本机直接 assembleRelease')
+    [void]$verBuilder.AppendLine('# 时回退读到旧版本号、产出的包 versionCode 低于设备上已装版本而装不上。')
+    [void]$verBuilder.AppendLine('# CI 发版仍按 -PlmtVersionCode / -PlmtVersionName 注入（优先级高于本文件）。')
+    foreach ($a in $AllApps) {
+        [void]$verBuilder.AppendLine("$a.versionCode=$newCode")
+        [void]$verBuilder.AppendLine("$a.versionName=$Version")
+    }
+    [System.IO.File]::WriteAllText($verFile, $verBuilder.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+    Write-Info "已回写 version.properties（两个应用 → $Version / code $newCode）"
+}
+
 # ===== 2/7 双份源码升版（sw.js 的 CACHE 版本 + @index-hash） =====
 Write-Step "2/7 双份源码一致性 / SW 升版"
 if ($DryRun) {
@@ -204,6 +231,9 @@ if ($DryRun) {
 # ===== 3/7 构建 release APK =====
 Write-Step "3/7 构建 release APK"
 $gradleTasks = @()
+# 单测与构建并入同一次 Gradle 调用（-WithTests）：省掉一次 Gradle 冷启动，也避免 CI 里
+# 「先 ./gradlew test 再 assembleRelease」那种重复的配置阶段开销。
+if ($WithTests) { $gradleTasks += 'test' }
 foreach ($a in $App) { $gradleTasks += ":$a`:assembleRelease" }
 if ($DryRun) {
     Write-Info "[DryRun] 跳过 gradle $($gradleTasks -join ' ') -PlmtVersionCode=$newCode -PlmtVersionName=$Version"
@@ -212,7 +242,7 @@ if ($DryRun) {
     if ($env:OS -eq 'Windows_NT') { $gradlew = Join-Path $androidDir 'gradlew.bat' } else { $gradlew = Join-Path $androidDir 'gradlew' }
     Push-Location $androidDir
     try {
-        # 用数组展开传参：Gradle 需要每个任务各占一个参数；版本按本次发版指定，不回写 version.properties
+        # 用数组展开传参：Gradle 需要每个任务各占一个参数；版本按本次发版经 -P 注入（优先级高于已回写的 version.properties）
         Invoke-Native { & $gradlew @gradleTasks --console=plain "-PlmtVersionCode=$newCode" "-PlmtVersionName=$Version" } "Gradle 构建失败"
     } finally {
         Pop-Location
@@ -255,10 +285,12 @@ foreach ($a in $App) {
         versionCode = $newCodes[$a]
         versionName = $Version
         url         = "https://github.com/$GitHubRepo/releases/download/$tag/$a-release.apk"
-        # 主链（GitHub release）在国内网络常不可达，App 会按顺序探测这些镜像并回退
+        # 主链（GitHub release）在国内网络常不可达，App 会按顺序探测这些镜像并回退。
+        # 镜像文件名固定、每版原地覆盖，CDN 缓存可能拿着旧字节；带 ?v=<versionCode> 后每次发版都是新 URL，
+        # 从根上避免「新 versionCode 配旧字节」导致 App 侧 sha256 校验失败、报「下载失败」。
         mirrors     = @(
-            "https://cdn.jsdelivr.net/gh/$GitHubRepo@main/$ApkMirrorDir/$a-release.apk"
-            "$PagesBase/apk/$a-release.apk"
+            "https://cdn.jsdelivr.net/gh/$GitHubRepo@main/$ApkMirrorDir/$a-release.apk?v=$($newCodes[$a])"
+            "$PagesBase/apk/$a-release.apk?v=$($newCodes[$a])"
         )
         sha256      = $entries[$a].sha256
         size        = $entries[$a].size

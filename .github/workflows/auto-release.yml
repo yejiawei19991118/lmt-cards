@@ -4,10 +4,15 @@ name: auto-release
 # → 自动发布 Release 与更新清单 → 自动 push 回两个仓库 → 自动刷新并逐源校验 CDN 缓存。
 #
 # 触发：main 分支收到 push（即「PWA 端任何变化」）。
-# 门控：只有「共享核心」真的变了才发版。PWA 专属外壳（sw.js 的缓存版本、PWA head meta 等）改动不会
-#       影响安卓副本，因此只跑测试、明确跳过发版，日志里会写明原因。
-#       判定方式是观察 -Sync 之后安卓工作区是否有改动——它由同步基线（android/lmt-cards-sync.json）
-#       驱动，是「共享核心变没变」的唯一事实源，不在 YAML 里重复实现一遍哈希逻辑。
+# 门控分两条路径：
+#   · 共享核心真的变了 → 走完整发版（同步安卓副本 → 构建 APK → Release → 更新清单 → 推送）。
+#     判定方式是观察 -Sync 之后安卓工作区是否有改动——它由同步基线（android/lmt-cards-sync.json）
+#     驱动，是「共享核心变没变」的唯一事实源，不在 YAML 里重复实现一遍哈希逻辑。
+#   · 只改了 PWA 专属外壳（@shell:pwa-* 片段、PWA head meta 等）→ 不进安卓、也不发版，但必须先跑
+#     tools/web-sync.ps1 -Bump 升 sw.js 的缓存版本、更新 @index-hash 并提交，否则已装 PWA
+#     （尤其 iOS 主屏 App）会一直命中旧预缓存，用户「刷新也看不到新界面」，CI 的 sw-hash 校验也会报红。
+#     故这里在门控之前无条件跑一次 -Bump（幂等：仅在 index.html 归一化内容变化时才升版），
+#     再按「安卓是否有改动」决定走发版还是仅提交 sw.js。
 #
 # 顺序上刻意把「推送安卓副本」放在发版之后：若构建或发布失败，安卓工作区仍是脏的，
 # 重跑时会重新识别为「待同步」并重试发版，不会出现「源码已同步、APK 却没发出去」的空档。
@@ -67,19 +72,29 @@ jobs:
         #   · 只是 PWA 侧更新了 → 按块名原位替换，重写安卓的 index.html 并更新基线。
         run: pwsh -NoProfile -File lmt-cards/tools/web-sync.ps1 -Sync
 
+      - name: 依据 index.html 变化升 SW 缓存版本
+        # 放在门控之前、且无条件执行：-Bump 是幂等的（只有 docs/<app>/index.html 的归一化内容变了才升版），
+        # 这样「只改了 PWA 专属外壳、不进安卓」的改动也能被升版，避免用户长期停在旧界面。
+        run: pwsh -NoProfile -File lmt-cards/tools/web-sync.ps1 -Bump
+
       - name: 判断共享核心是否变化
         id: gate
         run: |
           set -euo pipefail
           changed=$(git -C android status --porcelain)
+          docs_changed=$(git -C lmt-cards status --porcelain -- docs)
           if [ -z "$changed" ]; then
-            echo "共享核心未变化：本次推送只动了 PWA 专属外壳（sw.js 缓存版本 / head meta 等），安卓副本无需更新，跳过发版。"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "共享核心未变化：本次推送只动了 PWA 专属外壳（sw.js 缓存版本 / head meta 等），安卓副本无需更新。"
           else
             echo "共享核心已变化，将同步并发布新 APK："
             echo "$changed"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+          if [ -n "$docs_changed" ]; then
+            echo "PWA 侧（docs/）有改动，需随本次一并提交："
+            echo "$docs_changed"
+          fi
+          [ -n "$changed" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+          [ -n "$docs_changed" ] && echo "docs_changed=true" >> "$GITHUB_OUTPUT" || echo "docs_changed=false" >> "$GITHUB_OUTPUT"
 
       - name: 无头 Chromium 跑交互测试（安卓 assets 副本）
         if: steps.gate.outputs.changed == 'true'
@@ -89,15 +104,6 @@ jobs:
           pwsh -NoProfile -File tests/run.ps1
           -LayoutTarget ../../android/lmt-layout/src/main/assets/index.html
           -CardgenTarget ../../android/lmt-cardgen/src/main/assets/index.html
-
-      - name: 安卓单元测试
-        if: steps.gate.outputs.changed == 'true'
-        working-directory: android
-        # 与 web-check 一致：不额外安装 Android SDK，runner 镜像自带即可。
-        run: |
-          set -euo pipefail
-          chmod +x gradlew
-          ./gradlew test --no-daemon --console=plain
 
       - name: 还原 release 签名
         if: steps.gate.outputs.changed == 'true'
@@ -123,8 +129,10 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x android/gradlew
-          # 版本号由 release.ps1 以 update.json 的 versionCode +1 推算，无需人工指定，也不回写私有仓库。
-          pwsh lmt-cards/tools/release.ps1 \
+          # 版本号由 release.ps1 以 update.json 的 versionCode +1 推算，无需人工指定；
+          # 构建后它会把新版本回写 android/version.properties，并在下面随安卓副本一并提交。
+          # -WithTests 让单测与 assembleRelease 并入同一次 Gradle 调用，省一次冷启动。
+          pwsh lmt-cards/tools/release.ps1 -WithTests \
             -Notes "自动发版：共享核心随 lmt-cards ${GITHUB_SHA:0:8} 更新"
 
       - name: 提交并推送安卓副本
@@ -136,10 +144,28 @@ jobs:
           git remote set-url origin git@github.com:yejiawei19991118/lmt-android.git
           git config user.email 'lmt-release-bot@users.noreply.github.com'
           git config user.name 'lmt-release-bot'
-          git add lmt-layout/src/main/assets/index.html lmt-cardgen/src/main/assets/index.html lmt-cards-sync.json
+          # version.properties 由 release.ps1 回写（与 update.json 同步），必须一并提交，
+          # 否则本机/离线构建仍会回退读到旧版本号而装不上。
+          git add lmt-layout/src/main/assets/index.html lmt-cardgen/src/main/assets/index.html lmt-cards-sync.json version.properties
           git commit -m "chore(sync): 从 lmt-cards ${GITHUB_SHA:0:8} 同步共享核心"
+          # 与 release.ps1 一致先 rebase 再推：安卓副本可能被别的提交/机器改动过，直接 push 会非快进被拒。
+          git pull --rebase --autostash
           git push origin HEAD:main
 
+      - name: 提交并推送 SW 缓存版本（仅 PWA 专属外壳变化时）
+        # 只改了 PWA 外壳时不发版，但 sw.js 的升版必须落地，否则用户长期停在旧界面。
+        # 提交信息以 chore(release): 开头，使下一次运行命中 job 级 if 而被整体跳过（本步骤自己推送的提交）。
+        if: steps.gate.outputs.changed == 'false' && steps.gate.outputs.docs_changed == 'true'
+        working-directory: lmt-cards
+        run: |
+          set -euo pipefail
+          git config user.email 'lmt-release-bot@users.noreply.github.com'
+          git config user.name 'lmt-release-bot'
+          git add docs
+          git commit -m "chore(release): 升 SW 缓存版本（PWA 专属外壳变更，不进安卓副本）"
+          git pull --rebase --autostash
+          git push origin main
+
       - name: 未变化时的说明
-        if: steps.gate.outputs.changed == 'false'
-        run: echo "本次无需同步与发版：安卓副本与 PWA 共享核心本来就一致。"
+        if: steps.gate.outputs.changed == 'false' && steps.gate.outputs.docs_changed != 'true'
+        run: echo "本次无需同步与发版：安卓副本与 PWA 共享核心本来就一致，SW 缓存版本也无需升版。"
