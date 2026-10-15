@@ -38,6 +38,21 @@
             --safe-left: 46.457px;    /* 20 + 0.7cm  */
             --safe-right: 53.543px;   /* 80 - 0.7cm  */
             --safe-bottom: 93.543px;  /* 120 - 0.7cm */
+
+            /* ===== 预览区可自定义样式（供「模板自定义 / 我的模板」覆盖）=====
+               默认值与今天的实际渲染像素完全一致；叠加方式是在预览根节点上用
+               setProperty 覆盖这一族变量，未覆盖时行为与改动前逐像素相同。 */
+            --tpl-bg: #ffffff;              /* 预览底色（画布背景） */
+            --tpl-title-color: #14181f;     /* 主标题颜色 */
+            --tpl-title-size: 24px;         /* 主标题字号（仍乘以 --fit） */
+            --tpl-title-spacing: 2px;       /* 主标题字距（仍乘以 --fit） */
+            --tpl-summary-size: 13px;       /* 顶部文案 / 小标题字号（仍乘以 --fit） */
+            --tpl-summary-color: #39404f;   /* 顶部文案 / 小标题颜色 */
+            --tpl-copy-size: 12px;          /* 关键词行字号（仍乘以 --fit） */
+            --tpl-copy-color: #4a5566;      /* 关键词行颜色 */
+            --tpl-subtitle-size: 20px;      /* 副标题字号（仍乘以 --fit） */
+            --tpl-subtitle-color: #14181f;  /* 副标题颜色 */
+            --tpl-radius: 10px;             /* 图片/截图框圆角 */
         }
         /* 移动端：禁止 iOS/安卓按屏幕宽度自动放大字号，避免固定像素排版被撑变形 */
         html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -213,7 +228,7 @@
             position: relative;
             width: 375px; /* 手机宽度 */
             height: 667px; /* 手机高度 (9:16) */
-            background-color: var(--bg-color);
+            background-color: var(--tpl-bg);
             box-shadow: 0 14px 36px rgba(24, 33, 51, .18);
             overflow: hidden; /* 防止任何元素溢出画布 */
             flex-shrink: 0; /* 不因空间不足被 flex 压缩尺寸 */
@@ -256,21 +271,21 @@
         
         /* 顶部总结文案：整体在安全区内水平居中，但每行文字保持左对齐（右侧自然参差） */
         .header-summary {
-            font-size: calc(13px * var(--fit));
+            font-size: calc(var(--tpl-summary-size) * var(--fit));
             line-height: 1.55;
             width: fit-content;
             max-width: 100%;
             align-self: center;
             text-align: left;
-            color: #39404f;
+            color: var(--tpl-summary-color);
         }
         
         .main-title {
-            font-size: calc(24px * var(--fit));
+            font-size: calc(var(--tpl-title-size) * var(--fit));
             font-weight: bold;
-            letter-spacing: calc(2px * var(--fit));
+            letter-spacing: calc(var(--tpl-title-spacing) * var(--fit));
             text-align: center;
-            color: #14181f;
+            color: var(--tpl-title-color);
         }
         
         .image-row {
@@ -291,7 +306,7 @@
             width: 48%;
             aspect-ratio: 1 / 1;
             background-color: #f4f6f9;
-            border-radius: 10px;
+            border-radius: var(--tpl-radius);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -311,20 +326,20 @@
             display: flex;
             justify-content: space-around;
             width: 100%;
-            font-size: calc(12px * var(--fit));
+            font-size: calc(var(--tpl-copy-size) * var(--fit));
             font-weight: bold;
             letter-spacing: calc(.3px * var(--fit));
-            color: #4a5566;
+            color: var(--tpl-copy-color);
             text-align: center;
             white-space: pre-line;
         }
         
         .sub-title {
-            font-size: calc(20px * var(--fit));
+            font-size: calc(var(--tpl-subtitle-size) * var(--fit));
             font-weight: bold;
             letter-spacing: calc(2px * var(--fit));
             text-align: center;
-            color: #14181f;
+            color: var(--tpl-subtitle-color);
         }
         
         /* 底部购买截图区域（并排两张，3:4，contain 完整显示不裁剪）
@@ -342,7 +357,7 @@
             aspect-ratio: 3 / 4;
             background-color: #fbfcfe;
             border: 1px solid #e3e8ef;
-            border-radius: 10px;
+            border-radius: var(--tpl-radius);
             overflow: hidden;
             display: flex;
             justify-content: center;
@@ -389,7 +404,7 @@
             width: 100%;
             aspect-ratio: 1440 / 600;
             background-color: #f4f6f9;
-            border-radius: 10px;
+            border-radius: var(--tpl-radius);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -404,13 +419,13 @@
         }
         .wide-caption {
             /* 小标题：字号与顶部总结文案一致（13px × --fit）、常规字重、支持换行；整体靠右、各行文字居中 */
-            font-size: calc(13px * var(--fit));
+            font-size: calc(var(--tpl-summary-size) * var(--fit));
             line-height: 1.55;
             width: fit-content;
             max-width: 100%;
             margin: 6px 0 0 auto;
             text-align: center;
-            color: #39404f;
+            color: var(--tpl-summary-color);
             white-space: pre-wrap;
         }
 
@@ -599,6 +614,53 @@
         }
         .img-preview-card p { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
 
+        /* ===== 新增功能（草稿箱 / 批量出图 / 模板自定义 / 文案库）样式 ===== */
+        /* 按钮组：等宽并排，窄屏自动换行，避免新增按钮把面板挤变形 */
+        .lmt-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .lmt-btn-row > button, .lmt-btn-row > .upload-btn { flex: 1 1 0; min-width: 0; margin: 0; }
+        /* 内联提示：默认不占位，仅有内容时才显示（与 .export-msg 同一套路） */
+        .lmt-tip { display: none; font-size: 12px; line-height: 1.55; color: var(--text-sub); }
+        .lmt-tip.show { display: block; }
+        /* 批量任务勾选列表：限高可滚动，任务变多也不会把面板撑长 */
+        .lmt-batch-list {
+            max-height: 168px; overflow-y: auto; box-sizing: border-box;
+            border: 1px solid #e8ecf3; border-radius: 9px; padding: 6px 10px; background: #f7f9fc;
+        }
+        .lmt-batch-list label {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px; font-weight: 400; color: var(--text-main); padding: 4px 0; cursor: pointer;
+        }
+        .lmt-batch-list label input { accent-color: var(--accent); margin: 0; }
+        .lmt-batch-list label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lmt-batch-list .lmt-group-title { font-size: 12px; font-weight: 600; color: var(--text-sub); margin: 4px 0 2px; }
+        /* 「样式自定义」折叠区 */
+        .lmt-details { border: 1px solid #e8ecf3; border-radius: 10px; background: #f7f9fc; padding: 10px 12px; }
+        .lmt-details > summary { font-size: 12.5px; font-weight: 600; color: var(--text-sub); cursor: pointer; }
+        .lmt-style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+        .lmt-style-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-sub); }
+        .lmt-style-grid input[type="color"] { width: 100%; height: 30px; padding: 2px; cursor: pointer; }
+        .lmt-style-grid input[type="range"] { width: 100%; accent-color: var(--accent); }
+        .lmt-details input[type="text"] {
+            width: 100%; box-sizing: border-box; padding: 9px 11px; margin-bottom: 8px;
+            border: 1px solid #dbe1ea; border-radius: 9px; font-size: 14px; font-family: inherit;
+            background: #fbfcfe; color: var(--text-main);
+        }
+        /* 自绘「输入名称」浮层（不用 prompt/alert：安卓 WebView 可能不接管系统弹窗） */
+        .lmt-modal-mask {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 100000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px; box-sizing: border-box; background: rgba(15, 23, 42, .45);
+        }
+        .lmt-modal-card {
+            width: 380px; max-width: 100%; box-sizing: border-box;
+            background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 18px 48px rgba(24, 33, 51, .24);
+        }
+        .lmt-modal-card h3 { margin: 0 0 10px; font-size: 16px; }
+        .lmt-modal-card input[type="text"] {
+            width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #dbe1ea;
+            border-radius: 9px; font-size: 14px; font-family: inherit; background: #fbfcfe; color: var(--text-main);
+        }
+
         /* 弹层打开时锁定背景滚动，避免移动端手指在浮层上滑动时背景跟着一起滚 */
         body.modal-open { overflow: hidden; }
         /* 弹层入场：轻微上浮 + 淡入，给出「这是新出现的一层」的反馈 */
@@ -606,7 +668,7 @@
             from { opacity: 0; transform: translateY(8px) scale(.98); }
             to { opacity: 1; transform: none; }
         }
-        .manual-copy-card, .img-preview-card, .license-card { animation: lmt-pop-in .18s ease-out both; }
+        .manual-copy-card, .img-preview-card, .license-card, .lmt-modal-card { animation: lmt-pop-in .18s ease-out both; }
         /* 无障碍：系统开启「减少动态效果」时，去掉所有过渡与动画（保留状态变化，仅取消动效） */
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
@@ -664,6 +726,33 @@
     <!-- 左侧控制面板 -->
     <div class="control-panel">
         <h2>内容编辑</h2>
+
+        <!-- 方案草稿：把当前内容/图片/样式整体存为一份可复用的方案 -->
+        <div class="control-group">
+            <label for="draft-select">方案草稿</label>
+            <select id="draft-select"><option value="">— 载入草稿 —</option></select>
+            <div class="lmt-btn-row">
+                <button type="button" class="btn-ghost" id="draft-save-btn">保存草稿</button>
+                <button type="button" class="btn-ghost" id="draft-delete-btn">删除草稿</button>
+            </div>
+            <div class="lmt-btn-row">
+                <label for="draft-import-file" class="upload-btn" id="draft-import-btn">导入草稿</label>
+                <input type="file" id="draft-import-file" class="file-upload" accept="application/json,.json">
+                <button type="button" class="btn-ghost" id="draft-export-btn">导出草稿</button>
+            </div>
+            <div class="lmt-tip" id="draft-msg" role="status" aria-live="polite"></div>
+        </div>
+
+        <!-- 批量出图：勾选若干草稿/常用文案，逐张渲染后打包成一个 ZIP -->
+        <div class="control-group">
+            <label>批量出图任务</label>
+            <div class="lmt-batch-list" id="batch-list"></div>
+            <div class="lmt-btn-row">
+                <button type="button" class="btn-primary" id="batch-btn">批量出图</button>
+                <button type="button" class="btn-ghost" id="batch-cancel-btn" hidden>取消</button>
+            </div>
+            <div class="lmt-tip" id="batch-tip" role="status" aria-live="polite"></div>
+        </div>
 
         <div class="control-group">
             <label for="template-select">排版模板</label>
@@ -756,6 +845,56 @@
         <div class="control-group" data-tpl="three">
             <label for="input-cap-3">小标题三</label>
             <textarea id="input-cap-3" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
+        </div>
+
+        <!-- 模板自定义：颜色/字号即时覆盖预览，可存为「我的模板」 -->
+        <div class="control-group">
+            <details class="lmt-details">
+                <summary>样式自定义</summary>
+                <div class="lmt-style-grid">
+                    <label>标题颜色<input type="color" id="style-color-title" value="#14181f"></label>
+                    <label>标题字号<input type="range" id="style-size-title" min="16" max="40" step="1" value="24"></label>
+                    <label>文案颜色<input type="color" id="style-color-summary" value="#39404f"></label>
+                    <label>文案字号<input type="range" id="style-size-summary" min="9" max="22" step="1" value="13"></label>
+                    <label>关键词颜色<input type="color" id="style-color-copy" value="#4a5566"></label>
+                    <label>关键词字号<input type="range" id="style-size-copy" min="9" max="22" step="1" value="12"></label>
+                    <label>图片圆角<input type="range" id="style-radius" min="0" max="30" step="1" value="10"></label>
+                    <label>预览底色<input type="color" id="style-color-bg" value="#ffffff"></label>
+                </div>
+                <input type="text" id="style-name-input" placeholder="我的模板名称（如：暖色调）">
+                <div class="lmt-btn-row">
+                    <button type="button" class="btn-ghost" id="style-save-btn">存为我的模板</button>
+                    <button type="button" class="btn-ghost" id="style-reset-btn">恢复默认样式</button>
+                    <button type="button" class="btn-ghost" id="style-delete-btn">删除我的模板</button>
+                </div>
+            </details>
+        </div>
+
+        <!-- 常用文案库：把常写的文案存成片段，按字段一键插入 -->
+        <div class="control-group">
+            <label for="snippet-select">常用文案库</label>
+            <select id="snippet-select"><option value="">— 选择文案片段 —</option></select>
+            <select id="snippet-field-select">
+                <option value="summary">顶部文案</option>
+                <option value="title">主标题</option>
+                <option value="keywords">关键词</option>
+                <option value="subtitle">副标题</option>
+                <option value="cap1">小标题一</option>
+                <option value="cap2">小标题二</option>
+                <option value="cap3">小标题三</option>
+            </select>
+            <div class="lmt-btn-row">
+                <button type="button" class="btn-ghost" id="snippet-save-btn">存为片段</button>
+                <button type="button" class="btn-ghost" id="snippet-insert-btn">插入</button>
+                <button type="button" class="btn-ghost" id="snippet-delete-btn">删除片段</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="lmt-btn-row">
+                <button type="button" class="btn-ghost" id="prefs-reset-btn">恢复默认</button>
+            </div>
+            <div class="lmt-tip" id="tool-msg" role="status" aria-live="polite"></div>
         </div>
 
         <label class="toggle-safe-zone">
@@ -1717,6 +1856,66 @@
             return { dx: (boxW - dw) / 2, dy: (boxH - dh) / 2, dw: dw, dh: dh };
         }
 
+        // 把已解码的 <img> 裁切/裁角后绘制进目标预览框（草稿恢复与批量出图都要复用）。
+        // 之所以抽成独立函数而非内联在 onload 里：草稿/批量恢复图片时手上只有 dataURL，
+        // 需要一个「给我图片和目标框就能画上去」的稳定入口，避免三处各写一遍裁切逻辑。
+        // 返回 true 表示绘制成功，false 表示图片无效（尺寸为 0）。
+        function paintPhoto(targetElement, mode, img) {
+            if (!img || !img.width || !img.height) return false;
+            const tw = BOX_SIZE[mode][0], th = BOX_SIZE[mode][1];
+            const canvas = document.createElement('canvas');
+            canvas.width = tw;
+            canvas.height = th;
+            const ctx = canvas.getContext('2d');
+            // 圆角半径与 CSS 保持一致(10px × EXPORT_SCALE)，直接烘焙进位图。
+            // 这样即使 html2canvas 不裁剪 <canvas> 子元素的 border-radius，
+            // 导出图的圆角也一定正确（圆角外为透明，露出白色导出背景）。
+            ctx.beginPath();
+            if (mode === 'notch') {
+                // 缺角图：包围盒 1440×600。
+                //  1) 顶部整宽保留 1440×160，缺口从其下方开始；
+                //  2) 截掉右边 790×165（即 x 650~1440、y 160~325）；
+                //  3) 截掉右下角 800×175（即 x 640~1440、y 425~600）。
+                const yTop = th * (160 / 600);      // 顶部整宽保留条高度
+                const xRight1 = tw * (650 / 1440);  // 上缺口左边界（右边截掉 790）
+                const yRight1 = th * (325 / 600);   // 上缺口下边界（160 + 165）
+                const xRight2 = tw * (640 / 1440);  // 下缺口左边界（右下截掉 800）
+                const yRight2 = th * (425 / 600);   // 下缺口上边界（600 − 175）
+                ctx.moveTo(0, 0);
+                ctx.lineTo(tw, 0);
+                ctx.lineTo(tw, yTop);
+                ctx.lineTo(xRight1, yTop);
+                ctx.lineTo(xRight1, yRight1);
+                ctx.lineTo(tw, yRight1);
+                ctx.lineTo(tw, yRight2);
+                ctx.lineTo(xRight2, yRight2);
+                ctx.lineTo(xRight2, th);
+                ctx.lineTo(0, th);
+            } else {
+                const r = 10 * EXPORT_SCALE;
+                ctx.moveTo(r, 0);
+                ctx.arcTo(tw, 0, tw, th, r);
+                ctx.arcTo(tw, th, 0, th, r);
+                ctx.arcTo(0, th, 0, 0, r);
+                ctx.arcTo(0, 0, tw, 0, r);
+            }
+            ctx.closePath();
+            ctx.clip();
+            if (mode === 'contain') {
+                // 完整显示整张图，多余部分留白
+                ctx.fillStyle = '#fbfcfe';
+                ctx.fillRect(0, 0, tw, th);
+            }
+            // 等比绘制矩形由纯函数统一计算，保证不拉伸
+            const rect = computeDrawRect(img.width, img.height, tw, th, mode);
+            ctx.drawImage(img, rect.dx, rect.dy, rect.dw, rect.dh);
+            canvas.className = 'preview-photo';
+            targetElement.textContent = '';
+            targetElement.classList.add('has-photo');
+            targetElement.appendChild(canvas);
+            return true;
+        }
+
         function handleImageUpload(inputElement, targetElement, mode) {
             const label = document.querySelector('label[for="' + inputElement.id + '"]');
             // 每次选择自增令牌：连续快速更换图片时，较早一次的解码可能较晚完成，
@@ -1752,57 +1951,7 @@
                             if (label) { label.textContent = '图片尺寸异常，请换一张'; label.classList.remove('done'); }
                             return;
                         }
-                        const tw = BOX_SIZE[mode][0], th = BOX_SIZE[mode][1];
-                        const canvas = document.createElement('canvas');
-                        canvas.width = tw;
-                        canvas.height = th;
-                        const ctx = canvas.getContext('2d');
-                        // 圆角半径与 CSS 保持一致(10px × EXPORT_SCALE)，直接烘焙进位图。
-                        // 这样即使 html2canvas 不裁剪 <canvas> 子元素的 border-radius，
-                        // 导出图的圆角也一定正确（圆角外为透明，露出白色导出背景）。
-                        ctx.beginPath();
-                        if (mode === 'notch') {
-                            // 缺角图：包围盒 1440×600。
-                            //  1) 顶部整宽保留 1440×160，缺口从其下方开始；
-                            //  2) 截掉右边 790×165（即 x 650~1440、y 160~325）；
-                            //  3) 截掉右下角 800×175（即 x 640~1440、y 425~600）。
-                            const yTop = th * (160 / 600);      // 顶部整宽保留条高度
-                            const xRight1 = tw * (650 / 1440);  // 上缺口左边界（右边截掉 790）
-                            const yRight1 = th * (325 / 600);   // 上缺口下边界（160 + 165）
-                            const xRight2 = tw * (640 / 1440);  // 下缺口左边界（右下截掉 800）
-                            const yRight2 = th * (425 / 600);   // 下缺口上边界（600 − 175）
-                            ctx.moveTo(0, 0);
-                            ctx.lineTo(tw, 0);
-                            ctx.lineTo(tw, yTop);
-                            ctx.lineTo(xRight1, yTop);
-                            ctx.lineTo(xRight1, yRight1);
-                            ctx.lineTo(tw, yRight1);
-                            ctx.lineTo(tw, yRight2);
-                            ctx.lineTo(xRight2, yRight2);
-                            ctx.lineTo(xRight2, th);
-                            ctx.lineTo(0, th);
-                        } else {
-                            const r = 10 * EXPORT_SCALE;
-                            ctx.moveTo(r, 0);
-                            ctx.arcTo(tw, 0, tw, th, r);
-                            ctx.arcTo(tw, th, 0, th, r);
-                            ctx.arcTo(0, th, 0, 0, r);
-                            ctx.arcTo(0, 0, tw, 0, r);
-                        }
-                        ctx.closePath();
-                        ctx.clip();
-                        if (mode === 'contain') {
-                            // 完整显示整张图，多余部分留白
-                            ctx.fillStyle = '#fbfcfe';
-                            ctx.fillRect(0, 0, tw, th);
-                        }
-                        // 等比绘制矩形由纯函数统一计算，保证不拉伸
-                        const rect = computeDrawRect(img.width, img.height, tw, th, mode);
-                        ctx.drawImage(img, rect.dx, rect.dy, rect.dw, rect.dh);
-                        canvas.className = 'preview-photo';
-                        targetElement.textContent = '';
-                        targetElement.classList.add('has-photo');
-                        targetElement.appendChild(canvas);
+                        paintPhoto(targetElement, mode, img);
                         if (label) {
                             label.textContent = '已上传：' + file.name;
                             label.classList.add('done');
@@ -1828,7 +1977,9 @@
             exportTarget.dataset.activeTpl = name; // 供 CSS 区分模板（如三图竖排的加粗总结文案）
             checkContentFit();
         }
-        templateSelect.addEventListener('change', (e) => applyTemplate(e.target.value));
+        // 「我的模板」也是模板下拉里的一项（optgroup）；选中时由 onTemplateSelectChange 解析出
+        // 底层模板与样式（该函数是声明式的，会被提升，故此处先引用、后定义没问题）。
+        templateSelect.addEventListener('change', (e) => onTemplateSelectChange(e.target.value));
 
         // 3. 安全区开关
         toggleSafe.addEventListener('change', (e) => {
@@ -1895,6 +2046,9 @@
                 }, 'image/png');
             } catch (err) { fail(); }
         });
+        // 安卓外壳把原生落盘能力注入到这里（见下方 @shell:android-save 块）；PWA 侧该变量恒为 null，
+        // 新增的导出（草稿 JSON / 批量 ZIP）统一走 tryNativeSave：拿不到桥时回退 <a download>。
+        let nativeSaveDataUrl = null; // (dataUrl, fileName, mime) => boolean，由安卓外壳注入
         // @shell:android-save
         // @shell:end
         const showImagePreview = (dataUrl, fileName, onClose) => {
@@ -2015,10 +2169,981 @@
             }
         });
 
+        // ===== 新增功能①~④：草稿箱 / 批量出图 / 模板自定义 / 记忆与文案库 =====
+        // 全部逻辑只写在 PWA 共享核心区（@shell 块之外），安卓副本仅通过 @shell:android-save
+        // 注入原生落盘与「打开所在位置」能力，两端的业务行为因此天然一致。
+
+        // ---- localStorage 键名与容量守卫阈值 ----
+        const DRAFT_KEY = 'lmt_drafts_v1';       // 草稿箱（多方案保存）
+        const TPL_KEY = 'lmt_my_templates_v1';   // 「我的模板」
+        const PREFS_KEY = 'lmt_layout_prefs_v1'; // 上次内容/样式记忆
+        const SNIPPET_KEY = 'lmt_snippets_v1';   // 常用文案库
+        // 单次 localStorage 写入的安全上限：超过 4MB 时浏览器多会抛 QuotaExceededError，
+        // 提前用长度估算拦一道，让「丢弃图片再存」的降级路径能先于异常发生。
+        const DRAFT_MAX_BYTES = 4 * 1024 * 1024;
+
+        // ---- 新增 UI 元素 ----
+        const draftSelect = document.getElementById('draft-select');
+        const draftSaveBtn = document.getElementById('draft-save-btn');
+        const draftDeleteBtn = document.getElementById('draft-delete-btn');
+        const draftExportBtn = document.getElementById('draft-export-btn');
+        const draftImportFile = document.getElementById('draft-import-file');
+        const draftMsg = document.getElementById('draft-msg');
+        const batchList = document.getElementById('batch-list');
+        const batchBtn = document.getElementById('batch-btn');
+        const batchCancelBtn = document.getElementById('batch-cancel-btn');
+        const batchTip = document.getElementById('batch-tip');
+        const styleColorTitle = document.getElementById('style-color-title');
+        const styleSizeTitle = document.getElementById('style-size-title');
+        const styleColorSummary = document.getElementById('style-color-summary');
+        const styleSizeSummary = document.getElementById('style-size-summary');
+        const styleColorCopy = document.getElementById('style-color-copy');
+        const styleSizeCopy = document.getElementById('style-size-copy');
+        const styleRadius = document.getElementById('style-radius');
+        const styleColorBg = document.getElementById('style-color-bg');
+        const styleNameInput = document.getElementById('style-name-input');
+        const styleSaveBtn = document.getElementById('style-save-btn');
+        const styleResetBtn = document.getElementById('style-reset-btn');
+        const styleDeleteBtn = document.getElementById('style-delete-btn');
+        const snippetSelect = document.getElementById('snippet-select');
+        const snippetFieldSelect = document.getElementById('snippet-field-select');
+        const snippetSaveBtn = document.getElementById('snippet-save-btn');
+        const snippetInsertBtn = document.getElementById('snippet-insert-btn');
+        const snippetDeleteBtn = document.getElementById('snippet-delete-btn');
+        const prefsResetBtn = document.getElementById('prefs-reset-btn');
+        const toolMsg = document.getElementById('tool-msg');
+
+        // ---- 字段/图片/样式的元数据表：新增功能全部按「表驱动」复用，避免到处写死 ----
+        const FIELD_INPUTS = {
+            summary: inputSummary, title: inputTitle, keywords: inputKeywords, subtitle: inputSubtitle,
+            cap1: inputCap1, cap2: inputCap2, cap3: inputCap3
+        };
+        const FIELD_LABELS = {
+            summary: '顶部文案', title: '主标题', keywords: '关键词', subtitle: '副标题',
+            cap1: '小标题一', cap2: '小标题二', cap3: '小标题三'
+        };
+        // [预览目标元素, 裁切模式]，与 handleImageUpload 的注册表一一对应
+        const IMG_TARGETS = {
+            left: [previewImgLeft, 'cover'], right: [previewImgRight, 'cover'],
+            shotLeft: [previewScreenshotLeft, 'contain'], shotRight: [previewScreenshotRight, 'contain'],
+            wide1: [previewWide1, 'notch'], wide2: [previewWide2, 'notch'], wide3: [previewWide3, 'notch']
+        };
+        // 空状态占位文案：清空图片时要把框恢复成「可继续上传」的提示态
+        const PHOTO_PLACEHOLDER = {
+            left: '左图 (1:1)', right: '右图 (1:1)',
+            shotLeft: '左截图 (3:4)', shotRight: '右截图 (3:4)',
+            wide1: '图片一 (1440×600)', wide2: '图片二 (1440×600)', wide3: '图片三 (1440×600)'
+        };
+        // three 模板专属字段：在 window 模板下是隐藏的，插入/出图时需先切模板
+        const THREE_ONLY_FIELDS = { cap1: true, cap2: true, cap3: true };
+
+        // 样式键 → CSS 变量名（变量定义在 :root，默认值=今天渲染出的实际值）
+        const STYLE_VARS = {
+            titleColor: '--tpl-title-color', titleSize: '--tpl-title-size',
+            summaryColor: '--tpl-summary-color', summarySize: '--tpl-summary-size',
+            copyColor: '--tpl-copy-color', copySize: '--tpl-copy-size',
+            radius: '--tpl-radius', bg: '--tpl-bg'
+        };
+        // 数值型样式需要带单位写进变量
+        const STYLE_UNITS = { titleSize: 'px', summarySize: 'px', copySize: 'px', radius: 'px' };
+        // 样式键 → 对应的控件元素（折叠区里的输入）
+        const STYLE_INPUTS = {
+            titleColor: styleColorTitle, titleSize: styleSizeTitle,
+            summaryColor: styleColorSummary, summarySize: styleSizeSummary,
+            copyColor: styleColorCopy, copySize: styleSizeCopy,
+            radius: styleRadius, bg: styleColorBg
+        };
+        // 默认样式：必须与 :root 里今天的实际取值逐字一致，否则「首次无自定义」会看出差异
+        const DEFAULT_STYLE = {
+            titleColor: '#14181f', titleSize: 24, summaryColor: '#39404f', summarySize: 13,
+            copyColor: '#4a5566', copySize: 12, radius: 10, bg: '#ffffff'
+        };
+
+        // ---- 通用小工具 ----
+        // 统一的轻提示：只写文案 + 切 show，避免各处重复拼 class
+        function setMsg(el, text) {
+            if (!el) return;
+            el.textContent = text || '';
+            el.classList.toggle('show', !!text);
+        }
+        function readJSON(key, fallback) {
+            try {
+                const raw = localStorage.getItem(key);
+                if (!raw) return fallback;
+                const obj = JSON.parse(raw);
+                return (obj && typeof obj === 'object') ? obj : fallback;
+            } catch (e) { return fallback; }
+        }
+        function writeJSON(key, obj) {
+            try { localStorage.setItem(key, JSON.stringify(obj)); return true; }
+            catch (e) { return false; }
+        }
+        // 时间戳（YYYYMMDD_HHmm），用于批量 ZIP 文件名
+        function tsName() {
+            const d = new Date();
+            const p = (n) => String(n).padStart(2, '0');
+            return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+        }
+        // 默认名称：不依赖 toLocaleString（无头/不同区域设置下结果不稳定）
+        function defaultName(prefix) {
+            const d = new Date();
+            const p = (n) => String(n).padStart(2, '0');
+            return prefix + ' ' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+        }
+        // 文件名/名称净化：去掉文件系统非法字符，截断到限定长度
+        function sanitizeName(name, max) {
+            let s = String(name == null ? '' : name).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim();
+            if (!s) s = '未命名';
+            if (max && s.length > max) s = s.slice(0, max);
+            return s;
+        }
+
+        // ---- base64 / UTF-8 互转（原生落盘桥与 ZIP 打包都要用） ----
+        function bytesToBase64(bytes) {
+            let s = '';
+            const CHUNK = 0x8000; // 分块拼接，避免 String.fromCharCode 参数过多导致栈溢出
+            for (let i = 0; i < bytes.length; i += CHUNK) {
+                s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+            }
+            return btoa(s);
+        }
+        function utf8ToBytes(str) { return new TextEncoder().encode(str); }
+        function dataUrlToBytes(dataUrl) {
+            const idx = dataUrl.indexOf(',');
+            const b64 = idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+            const bin = atob(b64);
+            const out = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+            return out;
+        }
+        // 画布 → PNG 字节：优先 toBlob（异步、不阻塞主线程），失败才回退 toDataURL
+        function canvasToPngBytes(canvas) {
+            const viaDataUrl = () => dataUrlToBytes(canvas.toDataURL('image/png'));
+            return new Promise((resolve, reject) => {
+                if (typeof canvas.toBlob !== 'function') {
+                    try { resolve(viaDataUrl()); } catch (e) { reject(e); }
+                    return;
+                }
+                canvas.toBlob((blob) => {
+                    if (!blob) { try { resolve(viaDataUrl()); } catch (e) { reject(e); } return; }
+                    const fr = new FileReader();
+                    fr.onload = () => resolve(new Uint8Array(fr.result));
+                    fr.onerror = () => reject(fr.error || new Error('读取图片数据失败'));
+                    fr.readAsArrayBuffer(blob);
+                }, 'image/png');
+            });
+        }
+
+        // ---- 自研 ZIP（store 模式，零第三方依赖） ----
+        // 用查表法算 CRC32：反射多项式 0xEDB88320，与标准 ZIP 完全一致
+        const CRC32_TABLE = (function () {
+            const t = new Uint32Array(256);
+            for (let n = 0; n < 256; n++) {
+                let c = n;
+                for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                t[n] = c >>> 0;
+            }
+            return t;
+        })();
+        function crc32(bytes) {
+            let c = 0xFFFFFFFF;
+            for (let i = 0; i < bytes.length; i++) c = CRC32_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+            return (c ^ 0xFFFFFFFF) >>> 0;
+        }
+        // 纯函数：把 [{name, bytes}] 打成 store 模式的 ZIP（不做压缩）。
+        // 说明：本用例单张 PNG 远小于 4GB、文件数远小于 65535，因此不实现 Zip64；
+        // 若日后要打包超大文件，需要额外的 Zip64 记录（EOCD64 / 扩展字段）。
+        function zipStore(files) {
+            const enc = new TextEncoder();
+            const u16 = (n) => [n & 0xFF, (n >>> 8) & 0xFF];
+            const u32 = (n) => [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF];
+            const now = new Date();
+            // DOS 时间/日期：秒按 2 秒粒度（bit0~4 存 秒/2）
+            const dosTime = ((now.getHours() & 31) << 11) | ((now.getMinutes() & 63) << 5) | ((Math.floor(now.getSeconds() / 2)) & 31);
+            const dosDate = ((((now.getFullYear() - 1980) & 127)) << 9) | (((now.getMonth() + 1) & 15) << 5) | (now.getDate() & 31);
+            const locals = [];   // 本地文件头 + 文件名 + 数据
+            const centrals = []; // 中央目录记录 + 文件名
+            let offset = 0;
+            files.forEach((f) => {
+                const nameBytes = enc.encode(f.name);
+                const data = f.bytes;
+                const crc = crc32(data);
+                const lh = [];
+                lh.push.apply(lh, u32(0x04034b50)); // 本地文件头签名
+                lh.push.apply(lh, u16(20));         // 解压所需版本 2.0
+                lh.push.apply(lh, u16(0x0800));     // 通用位标记 bit11：文件名用 UTF-8
+                lh.push.apply(lh, u16(0));          // 压缩方式 0 = store（不压缩）
+                lh.push.apply(lh, u16(dosTime));
+                lh.push.apply(lh, u16(dosDate));
+                lh.push.apply(lh, u32(crc));
+                lh.push.apply(lh, u32(data.length));// 压缩后大小（store 模式下=原始大小）
+                lh.push.apply(lh, u32(data.length));// 原始大小
+                lh.push.apply(lh, u16(nameBytes.length));
+                lh.push.apply(lh, u16(0));          // 扩展字段长度
+                const localHeader = Uint8Array.from(lh);
+
+                const c = [];
+                c.push.apply(c, u32(0x02014b50));   // 中央目录记录签名
+                c.push.apply(c, u16(20));           // 创建版本
+                c.push.apply(c, u16(20));           // 解压所需版本
+                c.push.apply(c, u16(0x0800));       // 通用位标记（同本地头）
+                c.push.apply(c, u16(0));            // 压缩方式
+                c.push.apply(c, u16(dosTime));
+                c.push.apply(c, u16(dosDate));
+                c.push.apply(c, u32(crc));
+                c.push.apply(c, u32(data.length));
+                c.push.apply(c, u32(data.length));
+                c.push.apply(c, u16(nameBytes.length));
+                c.push.apply(c, u16(0));            // 扩展字段长度
+                c.push.apply(c, u16(0));            // 注释长度
+                c.push.apply(c, u16(0));            // 起始磁盘号
+                c.push.apply(c, u16(0));            // 内部属性
+                c.push.apply(c, u32(0));            // 外部属性
+                c.push.apply(c, u32(offset));       // 本地文件头相对偏移
+                const centralRec = Uint8Array.from(c);
+
+                locals.push(localHeader, nameBytes, data);
+                centrals.push({ rec: centralRec, nameBytes: nameBytes });
+                offset += localHeader.length + nameBytes.length + data.length;
+            });
+            // 中央目录必须从「所有本地记录结束处」开始，offset 正好累计到此
+            let centralSize = 0;
+            centrals.forEach((e) => { centralSize += e.rec.length + e.nameBytes.length; });
+            const centralStart = offset;
+            const eocdArr = [];
+            eocdArr.push.apply(eocdArr, u32(0x06054b50)); // EOCD 签名
+            eocdArr.push.apply(eocdArr, u16(0));          // 当前磁盘号
+            eocdArr.push.apply(eocdArr, u16(0));          // 中央目录起始磁盘号
+            eocdArr.push.apply(eocdArr, u16(files.length));
+            eocdArr.push.apply(eocdArr, u16(files.length));
+            eocdArr.push.apply(eocdArr, u32(centralSize));
+            eocdArr.push.apply(eocdArr, u32(centralStart));
+            eocdArr.push.apply(eocdArr, u16(0));          // 注释长度
+            const eocd = Uint8Array.from(eocdArr);
+
+            const total = offset + centralSize + eocd.length;
+            const out = new Uint8Array(total);
+            let p = 0;
+            locals.forEach((ch) => { out.set(ch, p); p += ch.length; });
+            centrals.forEach((e) => { out.set(e.rec, p); p += e.rec.length; out.set(e.nameBytes, p); p += e.nameBytes.length; });
+            out.set(eocd, p);
+            return out;
+        }
+        // 便捷包装：直接给出可下载的 Blob（type: application/zip）
+        function zipBlob(files) {
+            return new Blob([zipStore(files)], { type: 'application/zip' });
+        }
+
+        // ---- 落盘：优先走安卓原生桥，拿不到就回退浏览器下载 ----
+        function tryNativeSave(dataUrl, fileName, mime) {
+            if (typeof nativeSaveDataUrl !== 'function') return false;
+            try { return nativeSaveDataUrl(dataUrl, fileName, mime) === true; }
+            catch (e) { return false; }
+        }
+        function saveBytes(b, fileName, mime) {
+            if (tryNativeSave('data:' + mime + ';base64,' + bytesToBase64(b), fileName, mime)) return true;
+            const url = URL.createObjectURL(new Blob([b], { type: mime }));
+            triggerDownload(url, fileName);
+            // 触屏设备额外弹浮层供长按保存（与图片导出一致，避免「点了没反应」）
+            if (isTouchPrimary()) { showImagePreview(url, fileName, () => { try { URL.revokeObjectURL(url); } catch (e) {} }); }
+            else setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 8000);
+            return true;
+        }
+        function saveText(text, fileName, mime) {
+            return saveBytes(utf8ToBytes(text), fileName, mime);
+        }
+
+        // ---- 内容/图片/样式 的快照与还原（草稿箱、批量出图共用） ----
+        function captureFields() {
+            const f = {};
+            Object.keys(FIELD_INPUTS).forEach((k) => { f[k] = FIELD_INPUTS[k].value; });
+            return f;
+        }
+        function captureImgs() {
+            const imgs = {};
+            Object.keys(IMG_TARGETS).forEach((k) => {
+                const cv = IMG_TARGETS[k][0].querySelector('canvas.preview-photo');
+                if (cv) { try { imgs[k] = cv.toDataURL('image/png'); } catch (e) {} }
+            });
+            return imgs;
+        }
+        // 由输入框回灌预览（载入草稿/恢复记忆时不能只改输入框，否则预览还是旧的）
+        function syncFieldPreview() {
+            previewSummary.innerHTML = escapeHtml(inputSummary.value).replace(/\n/g, '<br>');
+            previewTitle.textContent = inputTitle.value;
+            previewKeywords.textContent = inputKeywords.value;
+            previewSubtitle.textContent = inputSubtitle.value;
+            previewCap1.textContent = inputCap1.value;
+            previewCap2.textContent = inputCap2.value;
+            previewCap3.textContent = inputCap3.value;
+        }
+        function clearPhoto(key) {
+            const info = IMG_TARGETS[key];
+            if (!info) return;
+            info[0].textContent = PHOTO_PLACEHOLDER[key];
+            info[0].classList.remove('has-photo');
+        }
+        // 把 dataURL 还原进预览框：复用 paintPhoto，保证裁切/圆角与手动上传逐像素一致
+        function restorePhoto(key, dataUrl) {
+            const info = IMG_TARGETS[key];
+            if (!info) return;
+            if (!dataUrl) { clearPhoto(key); return; }
+            const img = new Image();
+            img.onload = () => { paintPhoto(info[0], info[1], img); };
+            img.src = dataUrl;
+        }
+        function applySnapshot(snap) {
+            if (!snap) return;
+            if (snap.fields) {
+                Object.keys(FIELD_INPUTS).forEach((k) => {
+                    if (typeof snap.fields[k] === 'string') FIELD_INPUTS[k].value = snap.fields[k];
+                });
+                syncFieldPreview();
+            }
+            if (snap.imgs) {
+                Object.keys(IMG_TARGETS).forEach((k) => {
+                    if (snap.imgs[k]) restorePhoto(k, snap.imgs[k]);
+                    else clearPhoto(k);
+                });
+            }
+            if (snap.style) { applyCustomStyle(snap.style); }
+            syncStyleControls();
+            checkContentFit();
+        }
+
+        // ---- 样式自定义（③） ----
+        // 全部变量都写在 canvasWrapper 上：canvasWrapper 是 exportTarget 的祖先，
+        // 变量经继承即可覆盖整个预览区；--tpl-bg 作用于 canvasWrapper 自身也能生效。
+        function applyCustomStyle(style) {
+            if (!style) return;
+            Object.keys(STYLE_VARS).forEach((k) => {
+                if (style[k] == null) return;
+                const v = STYLE_UNITS[k] ? (style[k] + STYLE_UNITS[k]) : style[k];
+                canvasWrapper.style.setProperty(STYLE_VARS[k], v);
+            });
+            checkContentFit();
+        }
+        function resetCustomStyle() {
+            Object.keys(STYLE_VARS).forEach((k) => canvasWrapper.style.removeProperty(STYLE_VARS[k]));
+            checkContentFit();
+        }
+        // 读取当前生效样式：canvasWrapper 上的自定义变量优先，未设置则回落到 :root 默认值
+        function readCurrentStyle() {
+            const cs = getComputedStyle(canvasWrapper);
+            const val = (name) => (cs.getPropertyValue(name) || '').trim();
+            const num = (name, d) => { const m = parseFloat(val(name)); return (isNaN(m) ? d : m); };
+            return {
+                titleColor: val(STYLE_VARS.titleColor) || DEFAULT_STYLE.titleColor,
+                titleSize: num(STYLE_VARS.titleSize, DEFAULT_STYLE.titleSize),
+                summaryColor: val(STYLE_VARS.summaryColor) || DEFAULT_STYLE.summaryColor,
+                summarySize: num(STYLE_VARS.summarySize, DEFAULT_STYLE.summarySize),
+                copyColor: val(STYLE_VARS.copyColor) || DEFAULT_STYLE.copyColor,
+                copySize: num(STYLE_VARS.copySize, DEFAULT_STYLE.copySize),
+                radius: num(STYLE_VARS.radius, DEFAULT_STYLE.radius),
+                bg: val(STYLE_VARS.bg) || DEFAULT_STYLE.bg
+            };
+        }
+        function collectStyleFromControls() {
+            return {
+                titleColor: STYLE_INPUTS.titleColor.value,
+                titleSize: parseFloat(STYLE_INPUTS.titleSize.value),
+                summaryColor: STYLE_INPUTS.summaryColor.value,
+                summarySize: parseFloat(STYLE_INPUTS.summarySize.value),
+                copyColor: STYLE_INPUTS.copyColor.value,
+                copySize: parseFloat(STYLE_INPUTS.copySize.value),
+                radius: parseFloat(STYLE_INPUTS.radius.value),
+                bg: STYLE_INPUTS.bg.value
+            };
+        }
+        function syncStyleControls() {
+            const s = readCurrentStyle();
+            STYLE_INPUTS.titleColor.value = s.titleColor;
+            STYLE_INPUTS.titleSize.value = String(s.titleSize);
+            STYLE_INPUTS.summaryColor.value = s.summaryColor;
+            STYLE_INPUTS.summarySize.value = String(s.summarySize);
+            STYLE_INPUTS.copyColor.value = s.copyColor;
+            STYLE_INPUTS.copySize.value = String(s.copySize);
+            STYLE_INPUTS.radius.value = String(s.radius);
+            STYLE_INPUTS.bg.value = s.bg;
+        }
+
+        // 「我的模板」：既可以作为模板下拉里的一项，也保存了对应的样式
+        function listMyTemplates() {
+            const d = readJSON(TPL_KEY, { v: 1, items: [] });
+            return Array.isArray(d.items) ? d.items : [];
+        }
+        function persistMyTemplates(items) { return writeJSON(TPL_KEY, { v: 1, items: items }); }
+        function myTemplateById(id) { return listMyTemplates().filter((t) => t.id === id)[0] || null; }
+        function saveMyTemplate(name, base, style) {
+            const item = {
+                id: 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                name: sanitizeName(name || defaultName('我的模板'), 16),
+                base: (base === 'three') ? 'three' : 'window',
+                style: style || collectStyleFromControls()
+            };
+            if (!persistMyTemplates(listMyTemplates().concat([item]))) {
+                setMsg(toolMsg, '保存模板失败：本地存储空间不足');
+                return null;
+            }
+            refreshMyTemplateOptions();
+            return item;
+        }
+        function deleteMyTemplate(id) {
+            persistMyTemplates(listMyTemplates().filter((t) => t.id !== id));
+            refreshMyTemplateOptions();
+            // 当前正选中的就是被删的模板：回落到内置橱窗模板，避免下拉停在失效值上
+            if (templateSelect.value === id) { selectTemplateValue('window'); onTemplateSelectChange('window'); }
+            return true;
+        }
+        function refreshMyTemplateOptions() {
+            const old = templateSelect.querySelector('optgroup[data-mine]');
+            if (old) old.remove(); // 先移除旧的，避免追加成重复分组
+            const items = listMyTemplates();
+            if (!items.length) return;
+            const group = document.createElement('optgroup');
+            group.label = '我的模板';
+            group.dataset.mine = '1';
+            items.forEach((t) => {
+                const o = document.createElement('option');
+                o.value = t.id;
+                o.textContent = t.name;
+                group.appendChild(o);
+            });
+            templateSelect.appendChild(group);
+        }
+        // 把下拉值安全地落到一个真实存在的选项上（模板可能已被删除）
+        function selectTemplateValue(v) {
+            const has = Array.prototype.some.call(templateSelect.options, (o) => o.value === v);
+            templateSelect.value = has ? v : 'window';
+            return templateSelect.value;
+        }
+        // 模板切换的统一入口：选中「我的模板」时叠加其样式，切回内置模板时清掉自定义样式
+        function onTemplateSelectChange(value) {
+            const my = myTemplateById(value);
+            if (my) {
+                applyTemplate(my.base);
+                applyCustomStyle(my.style);
+                syncStyleControls();
+            } else {
+                resetCustomStyle();
+                syncStyleControls();
+                applyTemplate(value);
+            }
+        }
+
+        // ---- 草稿箱（①） ----
+        function listDrafts() {
+            const d = readJSON(DRAFT_KEY, { v: 1, items: [] });
+            return Array.isArray(d.items) ? d.items : [];
+        }
+        function persistDrafts(items) {
+            // 写入前先按 JSON 长度估算：超过阈值直接判定为「太大」，走丢弃图片的降级路径
+            let text = '';
+            try { text = JSON.stringify({ v: 1, items: items }); } catch (e) { return false; }
+            if (text.length > DRAFT_MAX_BYTES) return false;
+            try { localStorage.setItem(DRAFT_KEY, text); return true; }
+            catch (e) { return false; }
+        }
+        function saveDraft(name) {
+            const item = {
+                id: 'd_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                name: sanitizeName(name || defaultName('草稿'), 24),
+                tpl: templateSelect.value,
+                savedAt: Date.now(),
+                fields: captureFields(),
+                imgs: captureImgs(),
+                style: collectStyleFromControls()
+            };
+            let items = listDrafts().concat([item]);
+            // 守卫①：连图片一起存；写不下就丢图片再存（文案与样式始终保住）
+            if (persistDrafts(items)) {
+                refreshDraftOptions();
+                setMsg(draftMsg, '已保存草稿：' + item.name);
+                return { ok: true, withImgs: true, name: item.name };
+            }
+            item.imgs = {};
+            if (persistDrafts(items)) {
+                refreshDraftOptions();
+                setMsg(draftMsg, '草稿过大，已仅保存文案与样式（未含图片）');
+                return { ok: true, withImgs: false, name: item.name };
+            }
+            // 守卫②：仍失败（配额被别的键占满）→ 降级为只保留最新 1 份重试
+            items = [item];
+            if (persistDrafts(items)) {
+                refreshDraftOptions();
+                setMsg(draftMsg, '草稿过大，已仅保留最新 1 份草稿（未含图片）');
+                return { ok: true, withImgs: false, name: item.name };
+            }
+            setMsg(draftMsg, '保存草稿失败：本地存储空间不足');
+            return { ok: false };
+        }
+        function loadDraft(id) {
+            const d = listDrafts().filter((x) => x.id === id)[0];
+            if (!d) return false;
+            if (d.tpl) {
+                selectTemplateValue(d.tpl);
+                onTemplateSelectChange(templateSelect.value);
+            }
+            applySnapshot(d);
+            return true;
+        }
+        function deleteDraft(id) {
+            persistDrafts(listDrafts().filter((x) => x.id !== id));
+            refreshDraftOptions();
+            return true;
+        }
+        function exportDrafts() {
+            const name = '排版草稿_' + tsName() + '.json';
+            saveText(JSON.stringify({ v: 1, items: listDrafts() }, null, 2), name, 'application/json');
+            setMsg(draftMsg, '已导出草稿文件：' + name);
+            return true;
+        }
+        function importDrafts(json) {
+            let data;
+            try { data = (typeof json === 'string') ? JSON.parse(json) : json; }
+            catch (e) { setMsg(draftMsg, '导入失败：文件不是有效的 JSON'); return false; }
+            const items = (data && Array.isArray(data.items)) ? data.items : null;
+            if (!items) { setMsg(draftMsg, '导入失败：文件里没有草稿内容'); return false; }
+            const cleaned = [];
+            items.forEach((it) => {
+                if (!it || typeof it !== 'object') return;
+                cleaned.push({
+                    id: 'i_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                    name: sanitizeName(it.name || '导入草稿', 24),
+                    tpl: typeof it.tpl === 'string' ? it.tpl : 'window',
+                    savedAt: Date.now(),
+                    fields: (it.fields && typeof it.fields === 'object') ? it.fields : {},
+                    imgs: (it.imgs && typeof it.imgs === 'object') ? it.imgs : {},
+                    style: (it.style && typeof it.style === 'object') ? it.style : null
+                });
+            });
+            if (!cleaned.length) { setMsg(draftMsg, '导入失败：没有可用的草稿条目'); return false; }
+            if (!persistDrafts(listDrafts().concat(cleaned)) && !persistDrafts(cleaned)) {
+                setMsg(draftMsg, '导入失败：本地存储空间不足（可先删除部分草稿）');
+                return false;
+            }
+            refreshDraftOptions();
+            setMsg(draftMsg, '已导入 ' + cleaned.length + ' 份草稿');
+            return true;
+        }
+        function refreshDraftOptions() {
+            const items = listDrafts();
+            const prev = draftSelect.value;
+            draftSelect.textContent = '';
+            const ph = document.createElement('option');
+            ph.value = '';
+            ph.textContent = '— 载入草稿 —';
+            draftSelect.appendChild(ph);
+            items.forEach((it) => {
+                const o = document.createElement('option');
+                o.value = it.id;
+                o.textContent = it.name;
+                draftSelect.appendChild(o);
+            });
+            if (Array.prototype.some.call(draftSelect.options, (o) => o.value === prev)) draftSelect.value = prev;
+            refreshBatchList();
+        }
+
+        // ---- 常用文案库（④） ----
+        function listSnippets() {
+            const d = readJSON(SNIPPET_KEY, { v: 1, items: [] });
+            return Array.isArray(d.items) ? d.items : [];
+        }
+        function persistSnippets(items) { return writeJSON(SNIPPET_KEY, { v: 1, items: items }); }
+        function saveSnippet(field, text) {
+            if (!text || !String(text).trim()) return false;
+            const item = {
+                id: 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                text: String(text),
+                field: FIELD_INPUTS[field] ? field : 'summary'
+            };
+            if (!persistSnippets(listSnippets().concat([item]))) return false;
+            refreshSnippetOptions();
+            return true;
+        }
+        function deleteSnippet(id) {
+            persistSnippets(listSnippets().filter((s) => s.id !== id));
+            refreshSnippetOptions();
+            return true;
+        }
+        function insertSnippet(id) {
+            const s = listSnippets().filter((x) => x.id === id)[0];
+            if (!s) return false;
+            // three 专属字段在 window 模板下是隐藏的：先切到 three 再写，
+            // 否则用户看不到结果，会以为「点了没反应」。
+            if (THREE_ONLY_FIELDS[s.field] && (exportTarget.dataset.activeTpl !== 'three')) {
+                selectTemplateValue('three');
+                templateSelect.value = 'three';
+                onTemplateSelectChange('three');
+            }
+            const input = FIELD_INPUTS[s.field];
+            if (!input) return false;
+            input.value = s.text;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            syncFieldPreview();
+            scheduleSavePrefs();
+            return true;
+        }
+        function refreshSnippetOptions() {
+            const items = listSnippets();
+            const prev = snippetSelect.value;
+            snippetSelect.textContent = '';
+            const ph = document.createElement('option');
+            ph.value = '';
+            ph.textContent = '— 选择文案片段 —';
+            snippetSelect.appendChild(ph);
+            items.forEach((s) => {
+                const o = document.createElement('option');
+                o.value = s.id;
+                o.textContent = (FIELD_LABELS[s.field] || s.field) + '：' + s.text.replace(/\s+/g, ' ').slice(0, 12);
+                snippetSelect.appendChild(o);
+            });
+            if (Array.prototype.some.call(snippetSelect.options, (o) => o.value === prev)) snippetSelect.value = prev;
+            refreshBatchList();
+        }
+
+        // ---- 记忆上次内容/样式（④） ----
+        let prefsTimer = 0;
+        function savePrefs() {
+            if (prefsTimer) { clearTimeout(prefsTimer); prefsTimer = 0; }
+            try {
+                localStorage.setItem(PREFS_KEY, JSON.stringify({
+                    v: 1,
+                    tpl: templateSelect.value,
+                    fontFamily: fontSelect.value,
+                    fields: captureFields(),
+                    style: collectStyleFromControls(),
+                    safe: toggleSafe.checked,
+                    savedAt: Date.now()
+                }));
+            } catch (e) { /* 记忆属于「有则更好」：写不进去也不影响主流程 */ }
+        }
+        // 输入防抖：每敲一个字都写 localStorage 既慢又伤寿命，500ms 静默后再落一次
+        function scheduleSavePrefs() {
+            if (prefsTimer) clearTimeout(prefsTimer);
+            prefsTimer = setTimeout(() => { prefsTimer = 0; savePrefs(); }, 500);
+        }
+        function loadPrefs() {
+            const p = readJSON(PREFS_KEY, null);
+            if (!p) return false; // 首次使用：保持现有默认值（示例文案、默认模板与样式都不动）
+            if (typeof p.fontFamily === 'string' &&
+                Array.prototype.some.call(fontSelect.options, (o) => o.value === p.fontFamily)) {
+                fontSelect.value = p.fontFamily;
+                applyHandwritingFont(fontSelect.selectedOptions[0]);
+            }
+            if (typeof p.tpl === 'string') {
+                selectTemplateValue(p.tpl);
+                onTemplateSelectChange(templateSelect.value);
+            }
+            if (p.fields) {
+                Object.keys(FIELD_INPUTS).forEach((k) => {
+                    if (typeof p.fields[k] === 'string') FIELD_INPUTS[k].value = p.fields[k];
+                });
+                syncFieldPreview();
+            }
+            if (p.style) applyCustomStyle(p.style);
+            syncStyleControls();
+            if (typeof p.safe === 'boolean') {
+                toggleSafe.checked = p.safe;
+                safeZone.classList.toggle('active', p.safe);
+            }
+            checkContentFit();
+            return true;
+        }
+        function resetPrefs() {
+            if (prefsTimer) { clearTimeout(prefsTimer); prefsTimer = 0; }
+            try { localStorage.removeItem(PREFS_KEY); } catch (e) {}
+            Object.keys(FIELD_INPUTS).forEach((k) => { FIELD_INPUTS[k].value = ''; });
+            Object.keys(IMG_TARGETS).forEach((k) => clearPhoto(k));
+            resetCustomStyle();
+            selectTemplateValue('window');
+            templateSelect.value = 'window';
+            applyTemplate('window');
+            fontSelect.selectedIndex = 0;
+            applyHandwritingFont(fontSelect.selectedOptions[0]);
+            toggleSafe.checked = true;
+            safeZone.classList.add('active');
+            syncFieldPreview();
+            syncStyleControls();
+            checkContentFit();
+            setMsg(toolMsg, '已恢复默认设置');
+            return true;
+        }
+
+        // ---- 批量出图（②） ----
+        let batchRunning = false; // 批量期间禁用导出，避免并发导出互相抢画布
+        let batchCancel = false;
+        // 任务清单 = 全部草稿 + 全部文案片段
+        function buildBatchTasks() {
+            const tasks = [];
+            listDrafts().forEach((d) => tasks.push({ kind: 'draft', id: d.id, name: d.name }));
+            listSnippets().forEach((s) => tasks.push({
+                kind: 'snippet', id: s.id,
+                name: (FIELD_LABELS[s.field] || s.field) + '-' + s.text.replace(/\s+/g, ' ').slice(0, 8)
+            }));
+            return tasks;
+        }
+        function refreshBatchList() {
+            const tasks = buildBatchTasks();
+            const prevChecked = {};
+            batchList.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
+                prevChecked[cb.dataset.kind + ':' + cb.dataset.id] = true;
+            });
+            batchList.textContent = '';
+            if (!tasks.length) {
+                const empty = document.createElement('div');
+                empty.className = 'lmt-group-title';
+                empty.textContent = '暂无可出图任务：请先保存草稿，或把常写文案存为片段。';
+                batchList.appendChild(empty);
+                return;
+            }
+            // 大列表用 DocumentFragment 一次性挂载，避免逐条 append 触发多次重排
+            const frag = document.createDocumentFragment();
+            tasks.forEach((t) => {
+                const label = document.createElement('label');
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.dataset.kind = t.kind;
+                cb.dataset.id = t.id;
+                cb.dataset.name = t.name;
+                if (prevChecked[t.kind + ':' + t.id]) cb.checked = true;
+                const span = document.createElement('span');
+                span.textContent = (t.kind === 'draft' ? '草稿：' : '片段：') + t.name;
+                label.appendChild(cb);
+                label.appendChild(span);
+                frag.appendChild(label);
+            });
+            batchList.appendChild(frag);
+        }
+        // 渲染单个任务：先把界面切到该任务的状态，再截图取字节
+        async function renderBatchTask(task, baseSnap) {
+            if (task.kind === 'draft') {
+                const d = listDrafts().filter((x) => x.id === task.id)[0];
+                if (!d) return null;
+                if (d.tpl) { selectTemplateValue(d.tpl); onTemplateSelectChange(templateSelect.value); }
+                applySnapshot(d);
+            } else {
+                const s = listSnippets().filter((x) => x.id === task.id)[0];
+                if (!s) return null;
+                applySnapshot(baseSnap); // 片段任务：以批量开始前的界面为底，只叠加这一段文本
+                if (THREE_ONLY_FIELDS[s.field] && (exportTarget.dataset.activeTpl !== 'three')) {
+                    selectTemplateValue('three');
+                    templateSelect.value = 'three';
+                    onTemplateSelectChange('three');
+                }
+                const input = FIELD_INPUTS[s.field];
+                if (input) input.value = s.text;
+                syncFieldPreview();
+            }
+            exportBtn.disabled = true; // applySnapshot 会重算可用性，这里再压一次，防止批量途中被点
+            // 等字体就绪，否则导出图会回退成系统字体
+            if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
+            const canvas = await html2canvas(canvasWrapper, {
+                scale: EXPORT_SCALE,
+                backgroundColor: '#ffffff',
+                logging: false,
+                width: 375,
+                height: 667
+            });
+            const bytes = await canvasToPngBytes(canvas);
+            return { name: task.name, bytes: bytes };
+        }
+        batchBtn.addEventListener('click', async () => {
+            if (batchRunning) return;
+            const checked = Array.prototype.slice.call(batchList.querySelectorAll('input[type="checkbox"]:checked'));
+            if (!checked.length) { setMsg(batchTip, '请先勾选要出图的任务'); return; }
+            const tasks = checked.map((cb) => ({ kind: cb.dataset.kind, id: cb.dataset.id, name: cb.dataset.name }));
+            // 记录批量前的完整界面状态：无论成功、失败还是取消，结束时都必须逐字还原
+            const beforeSnap = {
+                tpl: templateSelect.value,
+                fields: captureFields(),
+                imgs: captureImgs(),
+                style: readCurrentStyle(),
+                font: fontSelect.value,
+                safe: toggleSafe.checked
+            };
+            batchRunning = true;
+            batchCancel = false;
+            batchBtn.disabled = true;
+            exportBtn.disabled = true;
+            batchCancelBtn.hidden = false;
+            const files = [];
+            try {
+                for (let i = 0; i < tasks.length; i++) {
+                    if (batchCancel) break;
+                    setMsg(batchTip, '正在出图 ' + (i + 1) + '/' + tasks.length + '：' + tasks[i].name);
+                    // 逐个 await：每张都让出主线程一拍，避免长任务把界面卡死
+                    const r = await renderBatchTask(tasks[i], { fields: beforeSnap.fields, imgs: beforeSnap.imgs, style: beforeSnap.style });
+                    if (r) files.push({ name: '排版图_' + sanitizeName(r.name, 24) + '_' + (i + 1) + '.png', bytes: r.bytes });
+                    await new Promise((res) => setTimeout(res, 0));
+                }
+                if (files.length) {
+                    const zipName = '批量排版图_' + tsName() + '.zip';
+                    saveBytes(zipStore(files), zipName, 'application/zip');
+                    setMsg(batchTip, (batchCancel ? '已取消，仍导出已完成的 ' : '批量出图完成，共 ')
+                        + files.length + ' 张，已导出 ' + zipName);
+                } else {
+                    setMsg(batchTip, '已取消，未生成任何图片');
+                }
+            } catch (err) {
+                setMsg(batchTip, '批量出图失败：' + ((err && err.message) || err || '未知错误'));
+            } finally {
+                // 恢复界面：模板、字段、图片、样式、字体、安全区逐项还原
+                selectTemplateValue(beforeSnap.tpl);
+                onTemplateSelectChange(templateSelect.value);
+                applySnapshot({ fields: beforeSnap.fields, imgs: beforeSnap.imgs, style: beforeSnap.style });
+                if (Array.prototype.some.call(fontSelect.options, (o) => o.value === beforeSnap.font)) {
+                    fontSelect.value = beforeSnap.font;
+                    applyHandwritingFont(fontSelect.selectedOptions[0]);
+                }
+                toggleSafe.checked = beforeSnap.safe;
+                safeZone.classList.toggle('active', beforeSnap.safe);
+                batchRunning = false;
+                batchBtn.disabled = false;
+                batchCancelBtn.hidden = true;
+                checkContentFit(); // 由适配结果决定导出按钮是否可用
+            }
+        });
+        batchCancelBtn.addEventListener('click', () => { batchCancel = true; setMsg(batchTip, '正在取消…'); });
+
+        // ---- 自绘名称浮层（不用 prompt/alert：安卓 WebView 常不接管系统弹窗） ----
+        function promptName(title, defaultValue) {
+            return new Promise((resolve) => {
+                const mask = document.createElement('div');
+                mask.className = 'lmt-modal-mask';
+                mask.setAttribute('role', 'dialog');
+                mask.setAttribute('aria-modal', 'true');
+                const card = document.createElement('div');
+                card.className = 'lmt-modal-card';
+                const h = document.createElement('h3');
+                h.textContent = title;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = defaultValue || '';
+                input.maxLength = 24;
+                const row = document.createElement('div');
+                row.className = 'lmt-btn-row';
+                const ok = document.createElement('button');
+                ok.type = 'button';
+                ok.className = 'btn-primary';
+                ok.textContent = '确定';
+                const cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.className = 'btn-ghost';
+                cancel.textContent = '取消';
+                let done = false, offEsc = null;
+                // 统一出口：解绑 ESC、恢复背景滚动、移除浮层，并把结果回给调用方
+                const finish = (val) => {
+                    if (done) return;
+                    done = true;
+                    if (offEsc) offEsc();
+                    window.__license.unlockScroll();
+                    mask.remove();
+                    resolve(val);
+                };
+                ok.addEventListener('click', () => finish((input.value || '').trim() || defaultValue || ''));
+                cancel.addEventListener('click', () => finish(null));
+                mask.addEventListener('click', (e) => { if (e.target === mask) finish(null); });
+                row.appendChild(ok);
+                row.appendChild(cancel);
+                card.appendChild(h);
+                card.appendChild(input);
+                card.appendChild(row);
+                mask.appendChild(card);
+                document.body.appendChild(mask);
+                window.__license.lockScroll();
+                offEsc = window.__license.onEsc(() => finish(null));
+                input.focus();
+                input.select();
+            });
+        }
+
+        // ---- 新增控件的监听 ----
+        draftSaveBtn.addEventListener('click', async () => {
+            const name = await promptName('保存草稿', defaultName('草稿'));
+            if (name == null) return;
+            saveDraft(name);
+        });
+        draftDeleteBtn.addEventListener('click', () => {
+            if (!draftSelect.value) { setMsg(draftMsg, '请先在下拉框选择要删除的草稿'); return; }
+            deleteDraft(draftSelect.value);
+            setMsg(draftMsg, '已删除草稿');
+        });
+        draftExportBtn.addEventListener('click', () => exportDrafts());
+        draftSelect.addEventListener('change', () => {
+            const id = draftSelect.value;
+            if (!id) return;
+            setMsg(draftMsg, loadDraft(id) ? '已载入草稿' : '该草稿已不存在');
+        });
+        draftImportFile.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            e.target.value = ''; // 清空后才能再次选择同一文件
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => importDrafts(String(reader.result));
+            reader.onerror = () => setMsg(draftMsg, '读取文件失败，请重试');
+            reader.readAsText(file);
+        });
+
+        Object.keys(STYLE_INPUTS).forEach((k) => {
+            STYLE_INPUTS[k].addEventListener('input', () => {
+                applyCustomStyle(collectStyleFromControls());
+                scheduleSavePrefs();
+            });
+        });
+        styleSaveBtn.addEventListener('click', () => {
+            const myNow = myTemplateById(templateSelect.value);
+            // 当前底层是哪个内置模板：优先取「我的模板」的 base，否则按下拉值判断
+            const base = myNow ? myNow.base : (templateSelect.value === 'three' ? 'three' : 'window');
+            const t = saveMyTemplate((styleNameInput.value || '').trim(), base, collectStyleFromControls());
+            if (!t) return;
+            selectTemplateValue(t.id);
+            onTemplateSelectChange(t.id);
+            styleNameInput.value = '';
+            savePrefs();
+            setMsg(toolMsg, '已存为「我的模板」：' + t.name);
+        });
+        styleResetBtn.addEventListener('click', () => {
+            resetCustomStyle();
+            syncStyleControls();
+            savePrefs();
+            setMsg(toolMsg, '已恢复默认样式');
+        });
+        styleDeleteBtn.addEventListener('click', () => {
+            const myNow = myTemplateById(templateSelect.value);
+            if (!myNow) { setMsg(toolMsg, '当前未选中「我的模板」，无需删除'); return; }
+            deleteMyTemplate(myNow.id);
+            savePrefs();
+            setMsg(toolMsg, '已删除我的模板');
+        });
+
+        snippetSaveBtn.addEventListener('click', () => {
+            const field = snippetFieldSelect.value;
+            const text = FIELD_INPUTS[field] ? FIELD_INPUTS[field].value : '';
+            if (!text.trim()) {
+                setMsg(toolMsg, '当前「' + (FIELD_LABELS[field] || field) + '」为空，没有可存内容');
+                return;
+            }
+            setMsg(toolMsg, saveSnippet(field, text) ? '已存为文案片段' : '保存片段失败：本地存储空间不足');
+        });
+        snippetInsertBtn.addEventListener('click', () => {
+            if (!snippetSelect.value) { setMsg(toolMsg, '请先选择文案片段'); return; }
+            setMsg(toolMsg, insertSnippet(snippetSelect.value) ? '已插入片段' : '插入失败：该片段已不存在');
+        });
+        snippetDeleteBtn.addEventListener('click', () => {
+            if (!snippetSelect.value) { setMsg(toolMsg, '请先选择要删除的片段'); return; }
+            deleteSnippet(snippetSelect.value);
+            setMsg(toolMsg, '已删除片段');
+        });
+        prefsResetBtn.addEventListener('click', () => resetPrefs());
+
         // 5. 内容变化后重新检查是否超出安全区
         const panel = document.querySelector('.control-panel');
         panel.addEventListener('input', scheduleFit);
         panel.addEventListener('change', checkContentFit);
+        // 任何输入/切换都顺带更新「上次内容」记忆（输入防抖 500ms，选择类立即写入）
+        panel.addEventListener('input', scheduleSavePrefs);
+        panel.addEventListener('change', savePrefs);
         window.addEventListener('load', checkContentFit);
         if (document.fonts && document.fonts.ready) {
             document.fonts.ready.then(checkContentFit);
@@ -2027,11 +3152,30 @@
         // 首次加载：应用默认选中的字体（在线字体按需加载）
         applyHandwritingFont(fontSelect.selectedOptions[0]);
 
-        // 首次加载：应用默认模板（橱窗排版）
+        // 首次加载：先补全「我的模板」选项，再应用默认模板（否则恢复记忆时选不到我的模板）
+        refreshMyTemplateOptions();
         applyTemplate(templateSelect.value);
 
+        // 初始化新增功能的列表与控件，最后恢复「上次内容」（无记录则保持默认，不动示例文案）
+        refreshDraftOptions();
+        refreshSnippetOptions();
+        refreshBatchList();
+        syncStyleControls();
+        loadPrefs();
+
         // 暴露纯函数与测试钩子，供仓库 tests/harness.html 里的 iframe 直接复用
-        window.__layoutTool = { escapeHtml: escapeHtml, computeDrawRect: computeDrawRect, isMobileUA: isMobileUA, isTouchPrimary: isTouchPrimary };
+        window.__layoutTool = {
+            escapeHtml: escapeHtml, computeDrawRect: computeDrawRect, isMobileUA: isMobileUA, isTouchPrimary: isTouchPrimary,
+            // 批量出图/草稿箱相关的纯函数与导出入口
+            zipStore: zipStore, zipBlob: zipBlob, crc32: crc32, paintPhoto: paintPhoto,
+            captureFields: captureFields, captureImgs: captureImgs,
+            saveDraft: saveDraft, loadDraft: loadDraft, listDrafts: listDrafts, deleteDraft: deleteDraft,
+            exportDrafts: exportDrafts, importDrafts: importDrafts,
+            applyCustomStyle: applyCustomStyle, resetCustomStyle: resetCustomStyle,
+            saveMyTemplate: saveMyTemplate, listMyTemplates: listMyTemplates, deleteMyTemplate: deleteMyTemplate,
+            savePrefs: savePrefs, loadPrefs: loadPrefs, resetPrefs: resetPrefs,
+            saveSnippet: saveSnippet, listSnippets: listSnippets, insertSnippet: insertSnippet, deleteSnippet: deleteSnippet
+        };
     }
 
     // 启动：先校验卡密（未激活则显示授权门），激活成功后再初始化主程序

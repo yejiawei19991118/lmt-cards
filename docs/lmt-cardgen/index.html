@@ -159,6 +159,18 @@
             animation-iteration-count: 1 !important;
         }
     }
+    /* ===== 新增：有效期徽标 / 结果勾选框 / 差异报告（class 一律 lmt- 前缀） ===== */
+    .lmt-exp-badge {
+        font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+        flex: 0 0 auto; white-space: nowrap; color: #0b5cad; background: #e8f1fe;
+    }
+    .lmt-exp-badge.is-expired { color: #b42318; background: #fef3f2; border: 1px solid #fecdca; }
+    .lmt-check { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; cursor: pointer; }
+    .diff-report {
+        margin-top: 8px; border: 1px solid #e8ecf3; border-radius: 10px; padding: 10px 12px;
+        background: #fbfcfe; font-size: 12.5px; color: var(--text-sub); line-height: 1.7;
+    }
+    .diff-report .lmt-diff-ok { color: #0f7b3f; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -199,15 +211,31 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
 
         <div class="row">
             <button type="button" class="btn btn-ghost" id="deliver-btn">复制交付文案</button>
+            <button type="button" class="btn btn-ghost" id="deliver-img-btn">生成交付图</button>
             <button type="button" class="btn btn-ghost" id="backup-btn">备份台账</button>
             <button type="button" class="btn btn-ghost" id="restore-btn">恢复备份</button>
             <button type="button" class="btn btn-ghost" id="online-check-btn">对照线上清单</button>
         </div>
+        <div class="row">
+            <button type="button" class="btn btn-ghost" id="snapshot-btn">下载最近快照</button>
+            <button type="button" class="btn btn-ghost" id="snapshot-restore-btn">恢复最近快照</button>
+        </div>
+        <div class="ledger-tip" id="snapshot-tip" role="status" aria-live="polite">尚未生成快照</div>
         <div class="ledger-tip" id="online-tip" role="status" aria-live="polite"></div>
+        <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
         <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
 
         <div class="out">
             <h2 id="out-title">生成结果（2 条）</h2>
+            <div class="row">
+                <input type="text" id="filter-input" placeholder="筛选：按备注 / 机器码 / 卡密" spellcheck="false" style="flex:1 1 200px;">
+                <button type="button" class="btn btn-ghost" id="select-all-btn">全选</button>
+                <button type="button" class="btn btn-ghost" id="renew-btn">续期</button>
+            </div>
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="revoke-filtered-btn">吊销筛选结果</button>
+                <button type="button" class="btn btn-ghost" id="deliver-filtered-btn">复制筛选话术</button>
+            </div>
             <div id="out"><div class="item"><span class="mc">D3J7-RC4Y-93VV-W61D</span><span class="arrow">→</span><span class="card-code">H7S0-6M3M-GMA1-Y7T2-VNRM</span><span class="note">菜头</span><button type="button" class="btn btn-ghost">复制卡密</button></div><div class="item"><span class="mc">WF31-AKW0-G0W5-HT1K</span><span class="arrow">→</span><span class="card-code">QDGK-CP94-AF9N-GPCG-C3C6</span><span class="note">菜头</span><button type="button" class="btn btn-ghost">复制卡密</button></div></div>
         </div>
 
@@ -224,6 +252,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 <button type="button" class="btn btn-primary" id="upload-btn">上传到 GitHub</button>
                 <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（台账变化后自动提交）</label>
             </div>
+            <div class="row">
+                <button type="button" class="btn btn-primary" id="publish-btn">一键发布</button>
+            </div>
+            <div class="ledger-tip" id="receipt-tip" role="status" aria-live="polite"></div>
             <label for="gh-token" style="margin-top:14px;">GitHub 令牌（细粒度 PAT，仅需本仓库的 Contents 读写权限；只保存在本机）</label>
             <input type="password" id="gh-token" placeholder="粘贴令牌后点「保存令牌」" spellcheck="false" autocomplete="off">
             <div class="row">
@@ -268,8 +300,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 「上传到 GitHub」用到的常量与本地存储键。
     // 令牌只保存在本机 localStorage，绝不写入清单、绝不上传到别处、绝不打印到控制台。
     var GH_API = 'https://api.github.com';
-    var UPLOAD_TOKEN_KEY = 'lmt_gh_token_v1';
+    // 令牌键迁到 v2：值改为 {v:1,t,at}（记录保存时间以便判定 30 天过期）；
+    // 旧键 lmt_gh_token_v1 在前缀合法时迁移一次后删除（见 getToken）。
+    var UPLOAD_TOKEN_KEY = 'lmt_gh_token_v2';
+    var UPLOAD_TOKEN_LEGACY_KEY = 'lmt_gh_token_v1';
     var AUTO_UPLOAD_KEY = 'lmt_gh_auto_v1';
+    // 上传回执 / 台账快照：独立的本机 localStorage 键，互不影响既有键。
+    var UPLOAD_RECEIPT_KEY = 'lmt_last_upload_v1';
+    var SNAPSHOT_KEY = 'lmt_ledger_snapshots_v1';
 
     // 「登录校验」常量：只存随机盐 + 哈希，不在源码里保存明文账号密码。
     // 校验用与本页其余算法同款的 HMAC-SHA256（纯 JS 实现，Android WebView 的 file:// 环境亦可用）。
@@ -416,6 +454,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 清单签名：对「更新日期 + 归一化白名单 + 归一化吊销名单」做 HMAC-SHA256，随清单一同上传。
     // 主程序拉取后会重算比对，避免 cards.json 被随手篡改（两侧算法必须逐字一致，见 lmt-layout 的 manifestSignature）。
     // 先归一化（去分隔符、转大写）再签名：签名只绑定卡密内容，不受分组写法影响。
+    // 注意：卡密有效期 exp 刻意不参与签名——载荷仍只有「更新日期 + 白名单 + 吊销名单」。
+    // 这是双向兼容设计：旧版主程序不认识 exp 也能验签通过；新版读 exp 时旧清单缺省视为无有效期，
+    // 因此给老清单补 exp 或去掉 exp 都不会让主程序验签失败。
     function manifestSignature(updated, cards, revoked) {
         var payload = String(updated == null ? '' : updated) + '\n' +
             cards.map(normalize).join(',') + '\n' +
@@ -485,9 +526,46 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return out;
     }
 
-    // 解析一行台账：机器码，后面可选「,备注」。
+    // 解析有效期列：接受 YYYY-MM-DD / YYYY/M/D / YYYYMMDD，统一归一化为 YYYY-MM-DD；无法识别返回空串。
+    function parseExpiry(value) {
+        var s = String(value == null ? '' : value).trim();
+        var m = /^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/.exec(s);
+        if (!m) m = /^(\d{4})(\d{2})(\d{2})$/.exec(s);
+        if (!m) return '';
+        var y = +m[1], mo = +m[2], d = +m[3];
+        if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        return y + '-' + pad(mo) + '-' + pad(d);
+    }
+
+    // 在有效期上加 / 减月份：先落到目标月 1 号再加月，最后按目标月最后一天夹紧日，
+    // 避免 1/31 加一月变成 3/3 这类溢出。exp 为空时从今天起算；返回 YYYY-MM-DD。
+    function addMonths(exp, months) {
+        months = parseInt(months, 10) || 0;
+        var base, m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(exp == null ? '' : exp));
+        base = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date();
+        var day = base.getDate();
+        base.setDate(1);
+        base.setMonth(base.getMonth() + months);
+        var lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+        base.setDate(Math.min(day, lastDay));
+        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        return base.getFullYear() + '-' + pad(base.getMonth() + 1) + '-' + pad(base.getDate());
+    }
+
+    // 是否已过期：与本地「今天」比较，YYYY-MM-DD 的字典序即时序。
+    function isExpired(exp) {
+        if (!exp) return false;
+        var d = new Date();
+        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        var today = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+        return String(exp) < today;
+    }
+
+    // 解析一行台账：机器码，后面可选「,备注」，末尾可选「,有效期」。
     // 兼容带卡密的 CSV 行（机器码,卡密,备注）：紧跟机器码那一列的卡密（20 位）会被自动丢弃。
-    // 返回 { key: 无分隔符机器码, mc: 分组显示, note: 备注 }；无法识别返回 null。
+    // 返回 { key: 无分隔符机器码, mc: 分组显示, note: 备注, exp: 有效期 }；无法识别返回 null。
+    // exp 为「不可枚举」字段，见下方说明。
     function parseEntry(line) {
         var s = String(line == null ? '' : line).trim();
         if (!s) return null;
@@ -511,7 +589,18 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         // 丢掉首尾的空列（如模板里的卡密列为空、或 CSV 行尾多出逗号）
         while (rest.length && !String(rest[0]).trim()) rest.shift();
         while (rest.length && !String(rest[rest.length - 1]).trim()) rest.pop();
-        return { key: n, mc: group(n, 4), note: rest.join(',').trim() };
+        // 有效期：从字段右侧起找第一个日期列（YYYY-MM-DD / YYYY/M/D / YYYYMMDD），
+        // 命中就抽出该列作为有效期；其余列仍按现状合并为备注；识别不到则 exp 为空串。
+        var exp = '';
+        for (var j = rest.length - 1; j >= 0; j--) {
+            var d = parseExpiry(rest[j]);
+            if (d) { exp = d; rest.splice(j, 1); break; }
+        }
+        var entry = { key: n, mc: group(n, 4), note: rest.join(',').trim() };
+        // exp 以「不可枚举」方式挂载：既让台账 / 清单能读取有效期，
+        // 又不改变 parseEntry 既有返回结构的枚举与序列化结果，避免影响旧调用方与结构比对。
+        Object.defineProperty(entry, 'exp', { value: exp, enumerable: false, writable: true, configurable: true });
+        return entry;
     }
 
     // 引号感知地拆成「逻辑行」：备注里含换行时导出会写成 "首行\n次行"，
@@ -580,7 +669,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 调用方一旦就地改动（排序、补备注）就会污染缓存，影响后续统计与清单。
     function uniqueEntries(text) { return analyzeLedger(text).entries.slice(); }
 
-    function entryLine(e) { return e.note ? (e.mc + ',' + csvCell(e.note)) : e.mc; }
+    // 台账行输出：有有效期时写「机器码,备注,有效期」（备注 CSV 转义；备注为空时写 mc,,有效期 保住列位）。
+    function entryLine(e) {
+        if (e.exp) return e.mc + ',' + (e.note ? csvCell(e.note) : '') + ',' + e.exp;
+        return e.note ? (e.mc + ',' + csvCell(e.note)) : e.mc;
+    }
 
     // 兼容旧调用：返回去重后的机器码数组
     function extractMc(text) { return uniqueEntries(text).map(function (e) { return e.mc; }); }
@@ -590,7 +683,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var seen = {}, order = [];
         function add(e) {
             var prev = seen[e.key];
-            if (prev) { if (!prev.note && e.note) prev.note = e.note; return; }
+            if (prev) {
+                if (!prev.note && e.note) prev.note = e.note;
+                if (!prev.exp && e.exp) prev.exp = e.exp;
+                return;
+            }
             seen[e.key] = e; order.push(e);
         }
         parseEntries(existingText).forEach(add);
@@ -606,6 +703,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         updateLedgerTip();
         buildManifest(); // 台账变化后同步刷新在线清单 JSON，避免用户复制到过期清单
         scheduleAutoUpload(); // 开了「自动上传」时，台账变化后防抖提交
+        scheduleSnapshot(); // 台账变化后防抖生成一份本机快照（见功能①）
+        updateReceiptTip(); // 台账变化可能造成「待重传」，同步刷新回执提示
     }
 
     // 已吊销卡密清单同样自动保存：否则刷新页面就会丢失吊销记录，
@@ -616,6 +715,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function saveRevoke() {
         try { localStorage.setItem(REVOKE_KEY, revokeList.value); } catch (e) {}
         scheduleAutoUpload(); // 开了「自动上传」时，吊销名单变化后防抖提交
+        scheduleSnapshot(); // 吊销框变化也触发一次快照
+        updateReceiptTip(); // 吊销名单变化可能造成「待重传」
     }
 
     // ---------- 界面逻辑 ----------
@@ -646,12 +747,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function buildManifestObj() {
         var seen = {};
         var cards = [];
+        var expMap = {}; // 归一化卡密 → 有效期（只收录有有效期的卡密）
         // 直接依据「当前台账文本」重算卡密，而不是复用上一次 render() 的结果（pairs）：
         // 否则用户新粘了机器码但还没点「生成卡密」时，复制到的在线清单仍是旧的，
         // 新用户的卡密不在白名单里、无法激活，且不易察觉。
         uniqueEntries(mcList.value).forEach(function (e) {
             var card = makeCard(e.key);
             if (!seen[card]) { seen[card] = true; cards.push(card); }
+            if (e.exp) expMap[normalize(card)] = e.exp;
         });
         var revoked = [];
         // 归一化后去重：吊销框里手抄多遍 / 分隔符写法不同会得到同一张卡密，
@@ -668,7 +771,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var updated = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
         // sig 覆盖「更新日期 + 白名单 + 吊销名单」；主程序验签不通过会拒绝该清单。
         var sig = manifestSignature(updated, cards, revoked);
-        return { updated: updated, cards: cards, revoked: revoked, sig: sig };
+        var obj = { updated: updated, cards: cards, revoked: revoked };
+        // exp 为可选字段（归一化卡密 → 日期），仅在存在带有效期的卡密时出现；刻意不参与签名。
+        if (Object.keys(expMap).length) obj.exp = expMap;
+        obj.sig = sig;
+        return obj;
     }
 
     // 生成在线清单 JSON 文本（含白名单 + 吊销名单），供上传到静态空间；返回该文本。
@@ -873,6 +980,553 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // @shell:android-save
     // @shell:end
 
+    // 交付图落盘：安卓外壳走原生桥（相册/下载目录），其余浏览器走 <a download>。
+    // 与 tryNativeSave 同款 typeof 判定，保证本函数在两种副本里逐字一致，可留在共享核心中。
+    function tryNativeSaveBase64(name, mime, base64) {
+        if (typeof nativeSaveBase64 !== 'function') return false;
+        try { return nativeSaveBase64(name, mime, base64) === true; } catch (e) { return false; }
+    }
+
+    // ================= 交付二维码与交付图 =================
+    // 为什么自研：本应用坚持零第三方依赖（离线可用、一次编译成功率优先），二维码只能自己画。
+    // 规格：QR Model 2 / byte 模式 / 纠错等级 L / 版本 1..10 自动选版（v10-L 上限 271 字节），
+    // 足够容纳「激活页 URL + 卡密 + 机器码」这类约 105 字节的内容。
+    var QRLIB = (function () {
+        /* ---------------- GF(256)（本原多项式 0x11D） ---------------- */
+        var EXP = new Array(512), LOG = new Array(256);
+        (function () {
+            var x = 1;
+            for (var i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; }
+            for (var j = 255; j < 512; j++) EXP[j] = EXP[j - 255];
+        }());
+        function gmul(a, b) { return (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]]; }
+
+        // 生成多项式 ∏(x+α^i), i=0..n-1，系数降幂，gen[0] 恒为 1。
+        // 注意根是 α^0 起的连续 n 个：写成 α^1 起会导致纠错码全错。
+        var genCache = {};
+        function genPoly(n) {
+            if (genCache[n]) return genCache[n];
+            var p = [1];
+            for (var i = 0; i < n; i++) {
+                var np = p.concat([0]);
+                for (var j = 0; j < p.length; j++) np[j + 1] ^= gmul(p[j], EXP[i]);
+                p = np;
+            }
+            genCache[n] = p;
+            return p;
+        }
+        function rsEncode(data, ecLen) {
+            var gen = genPoly(ecLen);
+            var res = new Array(ecLen), i;
+            for (i = 0; i < ecLen; i++) res[i] = 0;
+            for (var d = 0; d < data.length; d++) {
+                var f = data[d] ^ res[0];
+                for (i = 0; i < ecLen - 1; i++) res[i] = res[i + 1];
+                res[ecLen - 1] = 0;
+                if (f !== 0) for (i = 0; i < ecLen; i++) res[i] ^= gmul(gen[i + 1], f);
+            }
+            return res;
+        }
+        // 校验多项式在 α^0..α^(ecLen-1) 处全为零；用于回读自检（RS 正确性的独立判据）。
+        function syndromesZero(cw, ecLen) {
+            for (var i = 0; i < ecLen; i++) {
+                var s = 0;
+                for (var j = 0; j < cw.length; j++) s = gmul(s, EXP[i]) ^ cw[j];
+                if (s !== 0) return false;
+            }
+            return true;
+        }
+
+        /* 版本表（ECC L）：[总码字, 每块纠错码字, 第1组块数, 第1组数据码字, 第2组块数, 第2组数据码字, 对齐图形中心] */
+        var VER = {
+            1:  [26, 7, 1, 19, 0, 0, []],
+            2:  [44, 10, 1, 34, 0, 0, [6, 18]],
+            3:  [70, 15, 1, 55, 0, 0, [6, 22]],
+            4:  [100, 20, 1, 80, 0, 0, [6, 26]],
+            5:  [134, 26, 1, 108, 0, 0, [6, 30]],
+            6:  [172, 18, 2, 68, 0, 0, [6, 34]],
+            7:  [196, 20, 2, 78, 0, 0, [6, 22, 38]],
+            8:  [242, 24, 2, 97, 0, 0, [6, 24, 42]],
+            9:  [292, 30, 2, 116, 0, 0, [6, 26, 46]],
+            10: [346, 18, 2, 68, 2, 69, [6, 28, 50]]
+        };
+        function dataCW(version) { var v = VER[version]; return v[2] * v[3] + v[4] * v[5]; }
+        function pickVersion(byteLen) {
+            for (var v = 1; v <= 10; v++) {
+                if (4 + (v >= 10 ? 16 : 8) + byteLen * 8 <= dataCW(v) * 8) return v;
+            }
+            return 0;
+        }
+        function sizeOf(version) { return version * 4 + 17; }
+
+        /* ---------------- 格式信息 / 版本信息（BCH 编码 + 固定异或掩码） ---------------- */
+        function bch15_5(d) {
+            var v = d << 10;
+            for (var i = 4; i >= 0; i--) if (v & (1 << (i + 10))) v ^= (0x537 << i);
+            return (((d << 10) | v) ^ 0x5412) & 0x7fff;
+        }
+        function bch18_6(ver) {
+            var x = ver << 12;
+            for (var i = 5; i >= 0; i--) if (x & (1 << (i + 12))) x ^= (0x1f25 << i);
+            return ((ver << 12) | x) & 0x3ffff;
+        }
+        function bitAt(x, i) { return (x >>> i) & 1; }
+
+        /* ---------------- 数据编码 ---------------- */
+        function qUtf8(str) {
+            var out = [];
+            for (var i = 0; i < str.length; i++) {
+                var c = str.charCodeAt(i);
+                if (c < 0x80) out.push(c);
+                else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+                else if (c >= 0xd800 && c <= 0xdbff && i + 1 < str.length &&
+                         str.charCodeAt(i + 1) >= 0xdc00 && str.charCodeAt(i + 1) <= 0xdfff) {
+                    var cp = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(i + 1) - 0xdc00);
+                    out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+                    i++;
+                } else out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+            }
+            return out;
+        }
+        function qUtf8Decode(bytes) {
+            var s = '';
+            for (var i = 0; i < bytes.length; i++) {
+                var c = bytes[i];
+                if (c < 0x80) s += String.fromCharCode(c);
+                else if (c < 0xe0) s += String.fromCharCode(((c & 31) << 6) | (bytes[++i] & 63));
+                else if (c < 0xf0) s += String.fromCharCode(((c & 15) << 12) | ((bytes[++i] & 63) << 6) | (bytes[++i] & 63));
+                else {
+                    var cp = ((c & 7) << 18) | ((bytes[++i] & 63) << 12) | ((bytes[++i] & 63) << 6) | (bytes[++i] & 63);
+                    cp -= 0x10000;
+                    s += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 1023));
+                }
+            }
+            return s;
+        }
+        function pushBits(list, val, len) { for (var i = len - 1; i >= 0; i--) list.push((val >>> i) & 1); }
+        function toDataCodewords(bytes, version) {
+            var bits = [], total = dataCW(version) * 8;
+            pushBits(bits, 4, 4);
+            pushBits(bits, bytes.length, version >= 10 ? 16 : 8);
+            for (var i = 0; i < bytes.length; i++) pushBits(bits, bytes[i], 8);
+            pushBits(bits, 0, Math.min(4, total - bits.length));   // 终止符
+            while (bits.length % 8 !== 0) bits.push(0);            // 补齐整字节
+            var pad = [0xec, 0x11], k = 0;
+            while (bits.length < total) pushBits(bits, pad[k++ % 2], 8);
+            var out = [];
+            for (var o = 0; o < bits.length; o += 8) {
+                var b = 0;
+                for (var j = 0; j < 8; j++) b = (b << 1) | bits[o + j];
+                out.push(b);
+            }
+            return out;
+        }
+        function splitBlocks(version, dcw) {
+            var v = VER[version], pos = 0, blocks = [], i;
+            for (i = 0; i < v[2]; i++) { blocks.push(dcw.slice(pos, pos + v[3])); pos += v[3]; }
+            for (i = 0; i < v[4]; i++) { blocks.push(dcw.slice(pos, pos + v[5])); pos += v[5]; }
+            return blocks;
+        }
+        // 按码字位置交错（短块处跳过），再接纠错码字
+        function interleave(version, blocks) {
+            var v = VER[version], ecLen = v[1], maxD = Math.max(v[3], v[5]), out = [], k, bi;
+            for (k = 0; k < maxD; k++) {
+                for (bi = 0; bi < blocks.length; bi++) if (k < blocks[bi].length) out.push(blocks[bi][k]);
+            }
+            var ecc = blocks.map(function (b) { return rsEncode(b, ecLen); });
+            for (k = 0; k < ecLen; k++) for (bi = 0; bi < ecc.length; bi++) out.push(ecc[bi][k]);
+            return out;
+        }
+
+        /* ---------------- 矩阵构建 ---------------- */
+        function build(version, codewords) {
+            var size = sizeOf(version), m = [], fn = [], x, y, i;
+            for (y = 0; y < size; y++) {
+                m.push(new Array(size)); fn.push(new Array(size));
+                for (x = 0; x < size; x++) { m[y][x] = false; fn[y][x] = false; }
+            }
+            function setFn(cx, cy, dark) {
+                if (cx < 0 || cy < 0 || cx >= size || cy >= size) return;
+                m[cy][cx] = !!dark; fn[cy][cx] = true;
+            }
+            function drawFinder(cx, cy) {
+                for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) {
+                    var dist = Math.max(Math.abs(dx), Math.abs(dy));
+                    setFn(cx + dx, cy + dy, dist !== 2 && dist !== 4);   // dist2 内白环、dist4 分隔符为亮
+                }
+            }
+            function drawAlign(cx, cy) {
+                for (var dy = -2; dy <= 2; dy++) for (var dx = -2; dx <= 2; dx++) {
+                    setFn(cx + dx, cy + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+                }
+            }
+            function drawFormat(mask) {
+                var bits = bch15_5(8 | mask);   // 纠错等级 L = 01
+                for (i = 0; i <= 5; i++) setFn(8, i, bitAt(bits, i));
+                setFn(8, 7, bitAt(bits, 6));
+                setFn(8, 8, bitAt(bits, 7));
+                setFn(7, 8, bitAt(bits, 8));
+                for (i = 9; i < 15; i++) setFn(14 - i, 8, bitAt(bits, i));
+                for (i = 0; i < 8; i++) setFn(size - 1 - i, 8, bitAt(bits, i));
+                for (i = 8; i < 15; i++) setFn(8, size - 15 + i, bitAt(bits, i));
+                setFn(8, size - 8, true);       // 恒定暗模块
+            }
+
+            for (i = 0; i < size; i++) { setFn(6, i, i % 2 === 0); setFn(i, 6, i % 2 === 0); }
+            drawFinder(3, 3); drawFinder(size - 4, 3); drawFinder(3, size - 4);
+            var ap = VER[version][6], a, b;
+            for (a = 0; a < ap.length; a++) for (b = 0; b < ap.length; b++) {
+                if ((a === 0 && b === 0) || (a === 0 && b === ap.length - 1) || (a === ap.length - 1 && b === 0)) continue;
+                drawAlign(ap[a], ap[b]);
+            }
+            drawFormat(0);                      // 先按掩码 0 占位，数据放完后再按选定掩码重画
+            if (version >= 7) {
+                var vb = bch18_6(version);
+                for (i = 0; i < 18; i++) {
+                    var dark = bitAt(vb, i) === 1;
+                    var ca = size - 11 + (i % 3), cb = Math.floor(i / 3);
+                    setFn(ca, cb, dark); setFn(cb, ca, dark);
+                }
+            }
+
+            // 数据放置：右下起，两列一组蛇形上行，跳过第 6 列
+            var idx = 0, total = codewords.length * 8;
+            for (var right = size - 1; right >= 1; right -= 2) {
+                if (right === 6) right = 5;
+                for (var vert = 0; vert < size; vert++) {
+                    for (var j = 0; j < 2; j++) {
+                        var cx = right - j;
+                        var up = ((right + 1) & 2) === 0;
+                        var cy = up ? size - 1 - vert : vert;
+                        if (!fn[cy][cx] && idx < total) {
+                            m[cy][cx] = ((codewords[idx >>> 3] >>> (7 - (idx & 7))) & 1) === 1;
+                            idx++;
+                        }
+                    }
+                }
+            }
+
+            function maskHit(mask, mx, my) {
+                switch (mask) {
+                    case 0: return (mx + my) % 2 === 0;
+                    case 1: return my % 2 === 0;
+                    case 2: return mx % 3 === 0;
+                    case 3: return (mx + my) % 3 === 0;
+                    case 4: return (Math.floor(mx / 3) + Math.floor(my / 2)) % 2 === 0;
+                    case 5: return (mx * my) % 2 + (mx * my) % 3 === 0;
+                    case 6: return ((mx * my) % 2 + (mx * my) % 3) % 2 === 0;
+                    case 7: return (((mx + my) % 2) + (mx * my) % 3) % 2 === 0;
+                }
+                return false;
+            }
+            function applyMask(mask) {
+                for (var yy = 0; yy < size; yy++) for (var xx = 0; xx < size; xx++) {
+                    if (!fn[yy][xx] && maskHit(mask, xx, yy)) m[yy][xx] = !m[yy][xx];
+                }
+            }
+            // 四类罚分（连续同色 / 2×2 同色块 / 类定位图形 / 明暗失衡），择优取最小
+            function penalty() {
+                var p = 0, xx, yy, run, i3;
+                for (yy = 0; yy < size; yy++) {
+                    run = 1;
+                    for (xx = 1; xx < size; xx++) {
+                        if (m[yy][xx] === m[yy][xx - 1]) run++;
+                        else { if (run >= 5) p += 3 + (run - 5); run = 1; }
+                    }
+                    if (run >= 5) p += 3 + (run - 5);
+                }
+                for (xx = 0; xx < size; xx++) {
+                    run = 1;
+                    for (yy = 1; yy < size; yy++) {
+                        if (m[yy][xx] === m[yy - 1][xx]) run++;
+                        else { if (run >= 5) p += 3 + (run - 5); run = 1; }
+                    }
+                    if (run >= 5) p += 3 + (run - 5);
+                }
+                for (yy = 0; yy < size - 1; yy++) for (xx = 0; xx < size - 1; xx++) {
+                    var c = m[yy][xx];
+                    if (c === m[yy][xx + 1] && c === m[yy + 1][xx] && c === m[yy + 1][xx + 1]) p += 3;
+                }
+                var P1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0];
+                var P2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+                for (yy = 0; yy < size; yy++) for (xx = 0; xx <= size - 11; xx++) {
+                    var h1 = true, h2 = true;
+                    for (i3 = 0; i3 < 11; i3++) {
+                        var hv = m[yy][xx + i3] ? 1 : 0;
+                        if (hv !== P1[i3]) h1 = false;
+                        if (hv !== P2[i3]) h2 = false;
+                    }
+                    if (h1) p += 40;
+                    if (h2) p += 40;
+                }
+                for (xx = 0; xx < size; xx++) for (yy = 0; yy <= size - 11; yy++) {
+                    var v1 = true, v2 = true;
+                    for (i3 = 0; i3 < 11; i3++) {
+                        var vv = m[yy + i3][xx] ? 1 : 0;
+                        if (vv !== P1[i3]) v1 = false;
+                        if (vv !== P2[i3]) v2 = false;
+                    }
+                    if (v1) p += 40;
+                    if (v2) p += 40;
+                }
+                var dark = 0;
+                for (yy = 0; yy < size; yy++) for (xx = 0; xx < size; xx++) if (m[yy][xx]) dark++;
+                p += Math.floor(Math.abs(dark * 100 / (size * size) - 50) / 5) * 10;
+                return p;
+            }
+
+            var best = 0, bestP = Infinity;
+            for (var mk = 0; mk < 8; mk++) {
+                applyMask(mk);
+                var pn = penalty();
+                applyMask(mk);          // 撤销，保证下一轮从「已放置数据」的干净状态开始
+                if (pn < bestP) { bestP = pn; best = mk; }
+            }
+            applyMask(best);
+            drawFormat(best);
+            return { version: version, size: size, modules: m, fn: fn, mask: best, penalty: bestP };
+        }
+
+        function encode(text) {
+            var bytes = qUtf8(String(text));
+            var version = pickVersion(bytes.length);
+            if (!version) throw new Error('内容过长：' + bytes.length + ' 字节超出 v10-L 容量');
+            return build(version, interleave(version, splitBlocks(version, toDataCodewords(bytes, version))));
+        }
+
+        // 回读解码：只为自检存在（读格式信息 → 撤掩码 → 反交错 → RS 校验 → 还原文本）
+        function decode(qr) {
+            var size = qr.size, m = qr.modules, fn = qr.fn, i;
+            var fmt = 0;
+            for (i = 0; i < 8; i++) fmt |= (m[8][size - 1 - i] ? 1 : 0) << i;
+            for (i = 8; i < 15; i++) fmt |= (m[size - 15 + i][8] ? 1 : 0) << i;
+            var mask = -1;
+            for (var mk = 0; mk < 8; mk++) if (fmt === bch15_5(8 | mk)) { mask = mk; break; }
+            if (mask < 0) throw new Error('格式信息无法回读');
+            function hit(mx, my) {
+                switch (mask) {
+                    case 0: return (mx + my) % 2 === 0;
+                    case 1: return my % 2 === 0;
+                    case 2: return mx % 3 === 0;
+                    case 3: return (mx + my) % 3 === 0;
+                    case 4: return (Math.floor(mx / 3) + Math.floor(my / 2)) % 2 === 0;
+                    case 5: return (mx * my) % 2 + (mx * my) % 3 === 0;
+                    case 6: return ((mx * my) % 2 + (mx * my) % 3) % 2 === 0;
+                    case 7: return (((mx + my) % 2) + (mx * my) % 3) % 2 === 0;
+                }
+                return false;
+            }
+            var bits = [];
+            for (var right = size - 1; right >= 1; right -= 2) {
+                if (right === 6) right = 5;
+                for (var vert = 0; vert < size; vert++) {
+                    for (var j = 0; j < 2; j++) {
+                        var cx = right - j;
+                        var up = ((right + 1) & 2) === 0;
+                        var cy = up ? size - 1 - vert : vert;
+                        if (!fn[cy][cx]) {
+                            var v = m[cy][cx];
+                            if (hit(cx, cy)) v = !v;
+                            bits.push(v ? 1 : 0);
+                        }
+                    }
+                }
+            }
+            var stream = [];
+            for (i = 0; i + 8 <= bits.length; i += 8) {
+                var b = 0;
+                for (var j2 = 0; j2 < 8; j2++) b = (b << 1) | bits[i + j2];
+                stream.push(b);
+            }
+            var ver = qr.version, vv = VER[ver], ecLen = vv[1], b1 = vv[2], d1 = vv[3], nb = vv[2] + vv[4];
+            var blocks = [], pos = 0, k, bi;
+            for (bi = 0; bi < nb; bi++) blocks.push([]);
+            var maxD = Math.max(d1, vv[5]);
+            for (k = 0; k < maxD; k++) for (bi = 0; bi < nb; bi++) {
+                if (k < (bi < b1 ? d1 : vv[5])) blocks[bi].push(stream[pos++]);
+            }
+            for (k = 0; k < ecLen; k++) for (bi = 0; bi < nb; bi++) blocks[bi].push(stream[pos++]);
+            for (bi = 0; bi < nb; bi++) {
+                if (!syndromesZero(blocks[bi], ecLen)) throw new Error('第 ' + bi + ' 块 RS 校验不为零');
+            }
+            var allBits = [];
+            for (bi = 0; bi < nb; bi++) for (i = 0; i < (bi < b1 ? d1 : vv[5]); i++) pushBits(allBits, blocks[bi][i], 8);
+            var mode = (allBits[0] << 3) | (allBits[1] << 2) | (allBits[2] << 1) | allBits[3];
+            if (mode !== 4) throw new Error('模式不是 byte(4)，实际 ' + mode);
+            var ccLen = (ver >= 10 ? 16 : 8), len = 0;
+            for (i = 0; i < ccLen; i++) len = (len << 1) | allBits[4 + i];
+            var off = 4 + ccLen, payload = [];
+            for (i = 0; i < len; i++) {
+                var byte = 0;
+                for (var t = 0; t < 8; t++) byte = (byte << 1) | allBits[off + i * 8 + t];
+                payload.push(byte);
+            }
+            return { version: ver, size: size, mask: mask, text: qUtf8Decode(payload) };
+        }
+
+        // 自检：格式/版本信息的公开标准值 + 生成多项式指数 + 编码回读一致性 + 容量边界。
+        // 任何一项不成立都说明编码器被改坏了，返回的 fails 数组供自动化测试直接断言。
+        function selfTest() {
+            var fails = [], i;
+            function ok(c, name) { if (!c) fails.push(name); }
+            var FMT = [0x77c4, 0x72f3, 0x7daa, 0x789d, 0x662f, 0x6318, 0x6c41, 0x6976];
+            for (i = 0; i < 8; i++) ok(bch15_5(8 | i) === FMT[i], '格式信息 mask' + i + ' 实际 0x' + bch15_5(8 | i).toString(16));
+            var VIO = { 7: 0x07c94, 8: 0x085bc, 9: 0x09a99, 10: 0x0a4d3 };
+            for (i = 7; i <= 10; i++) ok(bch18_6(i) === VIO[i], '版本信息 v' + i + ' 实际 0x' + bch18_6(i).toString(16));
+            var G7 = [87, 229, 146, 149, 238, 102, 21], G10 = [251, 67, 46, 61, 118, 70, 64, 94, 32, 45];
+            var p7 = genPoly(7), p10 = genPoly(10);
+            for (i = 0; i < 7; i++) ok(LOG[p7[i + 1]] === G7[i], 'n=7 生成多项式第 ' + (i + 1) + ' 项指数 ' + LOG[p7[i + 1]]);
+            for (i = 0; i < 10; i++) ok(LOG[p10[i + 1]] === G10[i], 'n=10 生成多项式第 ' + (i + 1) + ' 项指数 ' + LOG[p10[i + 1]]);
+            var samples = [
+                'A',
+                'HELLO WORLD',
+                'https://yejiawei19991118.github.io/lmt-cards/activate.html#c=ABCD-EFGH-IJKL-MNOP-QRST&m=1234-5678-9ABC-DEFG',
+                '卡密交付：中文内容也要能编码 ✓',
+                'https://yejiawei19991118.github.io/lmt-cards/activate.html#c=ABCD-EFGH-IJKL-MNOP-QRST&m=1234-5678-9ABC-DEFG&note=' + new Array(37).join('填')
+            ];
+            for (i = 0; i < samples.length; i++) {
+                var qr, back;
+                try { qr = encode(samples[i]); } catch (e) { fails.push('样本' + i + ' 编码异常：' + e.message); continue; }
+                try { back = decode(qr); } catch (e) { fails.push('样本' + i + ' 回读异常：' + e.message); continue; }
+                ok(back.text === samples[i], '样本' + i + ' 回读文本不一致');
+                ok(back.mask === qr.mask, '样本' + i + ' 掩码回读不一致');
+                ok(qr.size === sizeOf(qr.version), '样本' + i + ' 尺寸公式不符');
+                ok(qr.modules[3][3] === true && qr.modules[3][5] === false &&
+                   qr.modules[3][6] === true && qr.modules[3][7] === false, '样本' + i + ' 左上定位图形异常');
+                ok(qr.modules[qr.size - 8][8] === true, '样本' + i + ' 恒定暗模块丢失');
+                for (var t = 8; t <= qr.size - 9; t++) {
+                    if (qr.modules[6][t] !== (t % 2 === 0) || qr.modules[t][6] !== (t % 2 === 0)) {
+                        fails.push('样本' + i + ' 时序图形第 ' + t + ' 位不交替');
+                        break;
+                    }
+                }
+            }
+            ok(pickVersion(106) === 5, 'v5 容量边界应为 106 字节，实际 ' + pickVersion(106));
+            ok(pickVersion(107) === 6, '107 字节应进位到 v6，实际 v' + pickVersion(107));
+            ok(pickVersion(9999) === 0, '超长内容应被拒绝');
+            return { fails: fails };
+        }
+
+        return { encode: encode, decode: decode, selfTest: selfTest, pickVersion: pickVersion };
+    }());
+
+    // 客户扫码落地页（docs/activate.html）地址：hash 片段不发给服务器、不进 Referer，静态页零后端即可承载。
+    var ACTIVATE_BASE = 'https://yejiawei19991118.github.io/lmt-cards/activate.html';
+    function activateUrl(card, mc) {
+        return ACTIVATE_BASE + '#c=' + normalize(card) + '&m=' + normalize(mc);
+    }
+
+    // ---------- 交付图（Canvas 2D 手绘，含二维码） ----------
+    var IMG_W = 720, IMG_HEAD = 96, IMG_BLOCK = 236, IMG_PAD = 28, IMG_MAX = 20;
+    var IMG_SANS = '-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif';
+    var IMG_MONO = 'ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace';
+
+    // 把二维码画进画布：四周留 4 个模块静区，扫码器才有足够的定位余量。
+    function drawQrTo(g, qr, x, y, box) {
+        var n = qr.size + 8;
+        var cell = Math.max(1, Math.floor(box / n));
+        var side = cell * n;
+        var ox = x + Math.floor((box - side) / 2), oy = y + Math.floor((box - side) / 2);
+        g.fillStyle = '#ffffff';
+        g.fillRect(ox, oy, side, side);
+        g.fillStyle = '#101418';
+        for (var r = 0; r < qr.size; r++) {
+            for (var c = 0; c < qr.size; c++) {
+                if (qr.modules[r][c]) g.fillRect(ox + (c + 4) * cell, oy + (r + 4) * cell, cell, cell);
+            }
+        }
+    }
+
+    // 多张交付图合成一张长图：勾选多条时一次落盘，避免浏览器连开多个下载。
+    function buildDeliverImage(list) {
+        var items = (list || []).slice(0, IMG_MAX);
+        if (!items.length) return null;
+        var canvas = document.createElement('canvas');
+        canvas.width = IMG_W;
+        canvas.height = IMG_HEAD + items.length * IMG_BLOCK + IMG_PAD;
+        var g = canvas.getContext('2d');
+        g.fillStyle = '#ffffff';
+        g.fillRect(0, 0, canvas.width, canvas.height);
+        g.fillStyle = '#1f2430';
+        g.font = '600 30px ' + IMG_SANS;
+        g.fillText('卡密交付', 40, 52);
+        g.fillStyle = '#5b6472';
+        g.font = '400 17px ' + IMG_SANS;
+        g.fillText('扫码打开激活页；也可把图中的卡密与机器码直接发给客户', 40, 80);
+
+        items.forEach(function (p, i) {
+            var top = IMG_HEAD + i * IMG_BLOCK;
+            g.strokeStyle = '#e3e8ef';
+            g.lineWidth = 1;
+            g.beginPath();
+            g.moveTo(40, top); g.lineTo(IMG_W - 40, top);
+            g.stroke();
+
+            try { drawQrTo(g, QRLIB.encode(activateUrl(p.card, p.mc)), 40, top + 26, 184); }
+            catch (e) { /* 备注过长导致超出 v10-L 容量时跳过二维码，其余信息照常出图 */ }
+
+            var x = 252, y = top + 52;
+            if (p.note) {
+                g.fillStyle = '#1f2430';
+                g.font = '600 24px ' + IMG_SANS;
+                g.fillText(String(p.note), x, y);
+                y += 36;
+            }
+            g.fillStyle = '#5b6472';
+            g.font = '400 18px ' + IMG_SANS;
+            g.fillText('机器码', x, y);
+            g.fillStyle = '#1f2430';
+            g.font = '400 20px ' + IMG_MONO;
+            g.fillText(group(p.mc, 4), x + 84, y);
+            y += 42;
+            g.fillStyle = '#5b6472';
+            g.font = '400 18px ' + IMG_SANS;
+            g.fillText('卡密', x, y);
+            g.fillStyle = '#1f2430';
+            g.font = '600 22px ' + IMG_MONO;
+            g.fillText(p.card, x + 84, y);
+            y += 40;
+            g.fillStyle = '#5b6472';
+            g.font = '400 18px ' + IMG_SANS;
+            g.fillText('有效期', x, y);
+            g.fillStyle = '#1f2430';
+            g.font = '400 20px ' + IMG_MONO;
+            g.fillText(p.exp ? String(p.exp) : '长期有效', x + 84, y);
+        });
+        return canvas;
+    }
+
+    function deliverImageName() {
+        var d = new Date();
+        function p(x) { return (x < 10 ? '0' : '') + x; }
+        return 'lmt-deliver-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' +
+            p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.png';
+    }
+
+    // 交付图目标：优先取勾选项；没有勾选就按当前筛选结果出图。
+    function deliverImageTargets() {
+        var all = computePairs();
+        var checked = checkedCards();
+        if (!checked.length) return filterEntries(all);
+        var set = {};
+        checked.forEach(function (c) { var n = normalize(c); if (n) set[n] = true; });
+        return all.filter(function (p) { return set[normalize(p.card)] === true; });
+    }
+
+    function saveCanvasPng(canvas, name) {
+        var dataUrl = canvas.toDataURL('image/png');
+        var comma = dataUrl.indexOf(',');
+        var base64 = comma >= 0 ? dataUrl.slice(comma + 1) : '';
+        if (base64 && tryNativeSaveBase64(name, 'image/png', base64)) return 'native';   // 安卓外壳：相册/下载目录
+        var a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return 'download';
+    }
+
     // CSV 单元格转义：只要包含 splitFields 认得的任一分隔符（半角/全角逗号、分号、制表符）
     // 或引号/换行，就用双引号包裹并把内部引号翻倍。否则导出的备注在重新导入时会被当成多列，
     // 导致「张三，李四」被静默改写成「张三,李四」这类往返数据损坏。
@@ -881,11 +1535,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return /["\t,;\r\n，；]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
     }
 
-    // 导出台账为 CSV（机器码,卡密,备注），带 BOM 便于 Excel 正确识别中文
+    // 导出台账为 CSV（机器码,卡密,备注,有效期），带 BOM 便于 Excel 正确识别中文
     function buildLedgerCsv() {
         var ps = computePairs(); // 只用当前台账重算卡密，避免像旧实现那样整表重排 DOM
-        var rows = [['机器码', '卡密', '备注']];
-        ps.forEach(function (p) { rows.push([group(p.mc, 4), p.card, p.note || '']); });
+        var rows = [['机器码', '卡密', '备注', '有效期']];
+        ps.forEach(function (p) { rows.push([group(p.mc, 4), p.card, p.note || '', p.exp || '']); });
         return '\uFEFF' + rows.map(function (r) {
             return r.map(csvCell).join(',');
         }).join('\r\n');
@@ -939,9 +1593,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return '\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
     }
 
-    // 交付文案：一段可直接发给用户的文字，机器码与卡密一目了然（有备注时以备注作标题）。
-    function buildDeliverText() {
-        var ps = computePairs(); // 纯计算，无需重排结果列表 DOM
+    // 交付文案（可指定列表）：一段可直接发给用户的文字，机器码与卡密一目了然（有备注时以备注作标题）。
+    // 抽成 buildDeliverTextFor(list) 后，交付按钮与「复制筛选话术」共用同一份生成逻辑。
+    function buildDeliverTextFor(list) {
+        var ps = list || [];
         if (!ps.length) return '';
         return ps.map(function (p) {
             var lines = [];
@@ -950,6 +1605,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             lines.push('卡密：' + p.card);
             return lines.join('\n');
         }).join('\n\n');
+    }
+    function buildDeliverText() {
+        return buildDeliverTextFor(computePairs()); // 纯计算，无需重排结果列表 DOM
     }
 
     // 台账备份：把台账原文与吊销清单一起存成 JSON，换机 / 清缓存后可完整恢复。
@@ -988,6 +1646,351 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         saveRevoke();
         render();
         return { added: extractMc(mcList.value).length - before };
+    }
+
+    // ---------- 台账快照自动备份（功能①） ----------
+    // 台账 / 吊销框变化后防抖约 5s，把当前台账 CSV 快照写入本机；最多 5 份、同一天覆盖当天那份。
+    // 用途：误清空 / 误覆盖台账时，能找回最近几天的内容（下载留存或合并回台账）。
+    var snapshotTimer = null;
+    var snapshotTipOnceSent = false;
+    function todayLocal() {
+        var d = new Date();
+        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+    function formatLocalTime(iso) {
+        var d = new Date(String(iso || ''));
+        if (isNaN(d.getTime())) return String(iso || '');
+        var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+            pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+    function buildSnapshotRecord(csv) {
+        return { at: new Date().toISOString(), csv: String(csv == null ? '' : csv) };
+    }
+    function loadSnapshots() {
+        try {
+            var raw = localStorage.getItem(SNAPSHOT_KEY);
+            if (!raw) return { v: 1, items: [] };
+            var data = JSON.parse(raw);
+            if (!data || !Array.isArray(data.items)) return { v: 1, items: [] };
+            return { v: 1, items: data.items };
+        } catch (e) { return { v: 1, items: [] }; }
+    }
+    function writeSnapshots(store) {
+        try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(store)); return true; }
+        catch (err) {
+            // 配额不足：降级为「只留最新 1 份」重试；仍失败则交由调用方提示。
+            if (err && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)) {
+                try {
+                    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ v: 1, items: store.items.slice(-1) }));
+                    return true;
+                } catch (e2) { return false; }
+            }
+            return false;
+        }
+    }
+    function updateSnapshotTip() {
+        var tip = document.getElementById('snapshot-tip');
+        if (!tip) return;
+        var items = loadSnapshots().items;
+        if (!items.length) { tip.textContent = '尚未生成快照'; return; }
+        tip.textContent = '最近快照：' + formatLocalTime(items[items.length - 1].at) + ' · 共 ' + items.length + ' 份';
+    }
+    function saveSnapshot() {
+        if (!String(mcList.value || '').trim()) return; // 空台账不生成快照
+        var csv = buildLedgerCsv();
+        if (csv.length > 200 * 1024) { // 单份 >200KB 跳过并提示一次
+            if (!snapshotTipOnceSent) {
+                snapshotTipOnceSent = true;
+                setUploadTip('台账快照过大（超过 200KB），已跳过本次快照。');
+            }
+            return;
+        }
+        var day = todayLocal();
+        var store = loadSnapshots();
+        store.items = store.items.filter(function (it) {
+            var d = new Date(String(it.at || ''));
+            if (isNaN(d.getTime())) return true;
+            var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+            var k = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+            return k !== day; // 同一天的那份被替换
+        });
+        store.items.push(buildSnapshotRecord(csv));
+        while (store.items.length > 5) store.items.shift(); // 最多 5 份
+        if (!writeSnapshots(store)) { setUploadTip('台账快照保存失败（本机存储空间不足）。'); return; }
+        updateSnapshotTip();
+    }
+    function scheduleSnapshot() {
+        if (snapshotTimer) clearTimeout(snapshotTimer);
+        snapshotTimer = setTimeout(function () { snapshotTimer = null; saveSnapshot(); }, 5000);
+    }
+    function latestSnapshot() {
+        var items = loadSnapshots().items;
+        return items.length ? items[items.length - 1] : null;
+    }
+    function restoreLatestSnapshot() {
+        var last = latestSnapshot();
+        if (!last) return null;
+        var before = extractMc(mcList.value).length;
+        mcList.value = mergeCodes(mcList.value, last.csv || '');
+        saveLedger();
+        render();
+        return { added: extractMc(mcList.value).length - before, at: last.at };
+    }
+
+    // ---------- 上传回执 / 待重传标记（功能②） ----------
+    function getUploadReceipt() {
+        try {
+            var raw = localStorage.getItem(UPLOAD_RECEIPT_KEY);
+            if (!raw) return null;
+            var d = JSON.parse(raw);
+            return (d && typeof d === 'object') ? d : null;
+        } catch (e) { return null; }
+    }
+    function setUploadReceipt(obj) {
+        try {
+            if (obj) localStorage.setItem(UPLOAD_RECEIPT_KEY, JSON.stringify(obj));
+            else localStorage.removeItem(UPLOAD_RECEIPT_KEY);
+        } catch (e) {}
+    }
+    // 归一化清单内容（白名单 / 吊销 / 有效期，排序去重，不含更新日期）用于「待重传」比较。
+    function manifestFingerprint(obj) {
+        var o = obj || {};
+        function normList(arr) {
+            return (arr || []).map(function (c) { return normalize(typeof c === 'string' ? c : (c && c.card)); }).filter(Boolean).sort();
+        }
+        var exp = o.exp || {};
+        var expPairs = Object.keys(exp).sort().map(function (k) { return k + '=' + exp[k]; });
+        return JSON.stringify({ c: normList(o.cards), r: normList(o.revoked), e: expPairs });
+    }
+    function pendingUploadCount() {
+        var rec = getUploadReceipt();
+        if (!rec || !rec.json) return 0;
+        var old;
+        try { old = JSON.parse(rec.json); } catch (e) { return 0; }
+        var cur = buildManifestObj();
+        function setOf(arr) {
+            var s = {};
+            (arr || []).forEach(function (c) { var n = normalize(typeof c === 'string' ? c : (c && c.card)); if (n) s[n] = true; });
+            return s;
+        }
+        var aC = setOf(cur.cards), bC = setOf(old.cards), aR = setOf(cur.revoked), bR = setOf(old.revoked);
+        var n = 0;
+        Object.keys(aC).forEach(function (k) { if (!bC[k]) n++; });
+        Object.keys(bC).forEach(function (k) { if (!aC[k]) n++; });
+        Object.keys(aR).forEach(function (k) { if (!bR[k]) n++; });
+        Object.keys(bR).forEach(function (k) { if (!aR[k]) n++; });
+        return n;
+    }
+    // 待重传 = 当前 buildManifestObj() 与回执里的清单「归一化后」不同。
+    function isPendingUpload() {
+        var rec = getUploadReceipt();
+        if (!rec || !rec.json) return false;
+        var old;
+        try { old = JSON.parse(rec.json); } catch (e) { return false; }
+        return manifestFingerprint(buildManifestObj()) !== manifestFingerprint(old);
+    }
+    function updateReceiptTip() {
+        var tip = document.getElementById('receipt-tip');
+        if (!tip) return;
+        var rec = getUploadReceipt();
+        if (!rec || !rec.at) { tip.textContent = '尚无上传回执。'; return; }
+        tip.textContent = '上次上传：' + formatLocalTime(rec.at) + ' · 清单指纹 ' + (rec.sig || '——') + ' · ' +
+            (isPendingUpload() ? ('待重传 ' + pendingUploadCount() + ' 项') : '已同步');
+    }
+    // 记录一次成功上传的回执；lastUploadedJson 持久化于回执的 json 字段，页面重开后据此还原。
+    function recordUploadReceipt(text) {
+        var json = String(text == null ? '' : text);
+        var parsed = null;
+        try { parsed = JSON.parse(json); } catch (e) {}
+        setUploadReceipt({
+            at: new Date().toISOString(),
+            sig: parsed && parsed.sig ? String(parsed.sig).slice(0, 12) : '',
+            cards: parsed && parsed.cards ? parsed.cards.length : 0,
+            revoked: parsed && parsed.revoked ? parsed.revoked.length : 0,
+            json: json
+        });
+        lastUploadedJson = json;
+        updateReceiptTip();
+    }
+
+    // ---------- 清单差异报告（功能⑦） ----------
+    // 返回结构化差异对象；renderDiffReport 负责渲染到 #diff-report。
+    function buildDiffReport(local, remote) {
+        remote = remote || {};
+        function norm(c) { return normalize(typeof c === 'string' ? c : (c && c.card)); }
+        var localCards = {}, mcByCard = {};
+        (local.cards || []).forEach(function (c) { var n = norm(c); if (n) localCards[n] = true; });
+        uniqueEntries(mcList.value).forEach(function (e) {
+            mcByCard[normalize(makeCard(e.key))] = { mc: group(e.key, 4), note: e.note || '' };
+        });
+        var remoteCards = {}, remoteRevoked = {};
+        (remote.cards || []).forEach(function (c) { var n = norm(c); if (n) remoteCards[n] = true; });
+        (remote.revoked || []).forEach(function (c) { var n = norm(c); if (n) remoteRevoked[n] = true; });
+        var localRevoked = {};
+        String(revokeList.value || '').split(/\r?\n/).forEach(function (line) { var n = normalize(line); if (n) localRevoked[n] = true; });
+        var notUploaded = [], extraOnline = [];
+        Object.keys(localCards).forEach(function (n) { if (!remoteCards[n]) notUploaded.push(mcByCard[n] || { mc: group(n, 4), note: '' }); });
+        Object.keys(remoteCards).forEach(function (n) { if (!localCards[n]) extraOnline.push(group(n, 4)); });
+        var revokedButWhitelisted = 0, onlineRevokedLocalKept = 0;
+        Object.keys(localRevoked).forEach(function (n) { if (remoteCards[n]) revokedButWhitelisted++; });
+        Object.keys(remoteRevoked).forEach(function (n) { if (localCards[n]) onlineRevokedLocalKept++; });
+        return {
+            updated: remote.updated || '',
+            signed: !!remote.sig,
+            remoteCards: Object.keys(remoteCards).length,
+            remoteRevoked: Object.keys(remoteRevoked).length,
+            notUploaded: notUploaded,
+            extraOnline: extraOnline,
+            revokedButWhitelisted: revokedButWhitelisted,
+            onlineRevokedLocalKept: onlineRevokedLocalKept,
+            consistent: notUploaded.length === 0 && extraOnline.length === 0 &&
+                revokedButWhitelisted === 0 && onlineRevokedLocalKept === 0
+        };
+    }
+    function renderDiffReport(report) {
+        var box = document.getElementById('diff-report');
+        if (!box) return;
+        if (!report) { box.style.display = 'none'; box.textContent = ''; return; }
+        var frag = document.createDocumentFragment();
+        function line(txt, cls) {
+            var p = document.createElement('div');
+            if (cls) p.className = cls;
+            p.textContent = txt;
+            frag.appendChild(p);
+        }
+        line('线上清单：更新于 ' + (report.updated || '未知') + (report.signed ? '（已签名）' : '（未签名）') +
+            ' · 白名单 ' + report.remoteCards + ' 张 · 吊销 ' + report.remoteRevoked + ' 张');
+        if (report.consistent) {
+            line('本地台账与线上清单一致（已上传 ' + report.remoteCards + ' 张）。', 'lmt-diff-ok');
+        } else {
+            line('本地有、线上无（未上传）：' + report.notUploaded.length + ' 项');
+            report.notUploaded.slice(0, 5).forEach(function (it) { line('· ' + it.mc + (it.note ? '（' + it.note + '）' : '')); });
+            line('线上有、本地无（线上多出）：' + report.extraOnline.length + ' 项');
+            report.extraOnline.slice(0, 5).forEach(function (code) { line('· ' + code); });
+            line('已吊销但仍出现在线上白名单：' + report.revokedButWhitelisted + ' 项');
+            line('线上已吊销、本地台账仍在：' + report.onlineRevokedLocalKept + ' 项');
+        }
+        box.textContent = '';
+        box.appendChild(frag);
+        box.style.display = '';
+    }
+
+    // ---------- 筛选 + 批量操作（功能⑤） ----------
+    var filterText = '';
+    function filterEntries(list) {
+        var arr = list || [];
+        if (!filterText) return arr;
+        var q = String(filterText).toLowerCase();
+        return arr.filter(function (p) {
+            return String(p.display || '').toLowerCase().indexOf(q) >= 0 ||
+                String(p.mc || '').toLowerCase().indexOf(q) >= 0 ||
+                String(p.note || '').toLowerCase().indexOf(q) >= 0 ||
+                String(p.card || '').toLowerCase().indexOf(q) >= 0;
+        });
+    }
+    // 把一组卡密归一化去重后「追加」到吊销框；返回本次新增条数。
+    function revokeCards(cards) {
+        var seen = {};
+        String(revokeList.value || '').split(/\r?\n/).forEach(function (l) { var n = normalize(l); if (n) seen[n] = true; });
+        var add = [];
+        (cards || []).forEach(function (c) {
+            var n = normalize(c);
+            if (n && !seen[n]) { seen[n] = true; add.push(group(n, 4)); }
+        });
+        if (!add.length) return 0;
+        var base = String(revokeList.value || '').replace(/\s+$/, '');
+        revokeList.value = (base ? base + '\n' : '') + add.join('\n');
+        buildManifest();
+        saveRevoke();
+        return add.length;
+    }
+    function checkedCards() {
+        return Array.prototype.slice.call(out.querySelectorAll('input.lmt-check:checked')).map(function (el) { return el.value; });
+    }
+
+    // ---------- 批量续期（功能③） ----------
+    // 自绘浮层（不使用 prompt/alert），含「延长月数」与「按当前有效期 / 从今天起算」两种基准。
+    function renewAll() {
+        var btn = document.getElementById('renew-btn');
+        var entries = uniqueEntries(mcList.value);
+        if (!entries.length) { flashButton(btn, '台账为空'); return; }
+        var mask = document.createElement('div');
+        mask.className = 'manual-copy-mask';
+        mask.setAttribute('role', 'dialog');
+        mask.setAttribute('aria-modal', 'true');
+        var card = document.createElement('div');
+        card.className = 'manual-copy-card';
+        var h = document.createElement('h3');
+        h.textContent = '批量续期';
+        var p = document.createElement('p');
+        p.textContent = '给台账里的卡密延长有效期。选择基准与月数后点「确定续期」，会回写台账并刷新清单。';
+        var label = document.createElement('label');
+        label.textContent = '延长月数';
+        label.setAttribute('for', 'renew-months');
+        var monthInput = document.createElement('input');
+        monthInput.type = 'text';
+        monthInput.id = 'renew-months';
+        monthInput.value = '12';
+        var opt1 = document.createElement('label');
+        opt1.className = 'inline-check';
+        var r1 = document.createElement('input');
+        r1.type = 'radio'; r1.name = 'renew-base'; r1.id = 'renew-base-cur'; r1.checked = true;
+        opt1.appendChild(r1);
+        opt1.appendChild(document.createTextNode(' 按当前有效期续期（无有效期则从今天起算）'));
+        var opt2 = document.createElement('label');
+        opt2.className = 'inline-check';
+        var r2 = document.createElement('input');
+        r2.type = 'radio'; r2.name = 'renew-base'; r2.id = 'renew-base-today';
+        opt2.appendChild(r2);
+        opt2.appendChild(document.createTextNode(' 从今天起算'));
+        var actions = document.createElement('div');
+        actions.className = 'manual-copy-actions';
+        var disposed = false, offEsc = null;
+        function dispose() {
+            if (disposed) return;
+            disposed = true;
+            if (offEsc) offEsc();
+            unlockScroll();
+            if (mask.parentNode) mask.parentNode.removeChild(mask);
+        }
+        var cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.textContent = '取消';
+        cancel.addEventListener('click', dispose);
+        var ok = document.createElement('button');
+        ok.type = 'button';
+        ok.textContent = '确定续期';
+        ok.addEventListener('click', function () {
+            var months = parseInt(String(monthInput.value).replace(/[^0-9]/g, ''), 10);
+            if (!months || months < 1 || months > 600) { monthInput.focus(); return; }
+            var fromToday = r2.checked;
+            var lines = entries.map(function (e) {
+                var exp = fromToday ? addMonths('', months) : addMonths(e.exp, months);
+                return entryLine({ mc: e.mc, note: e.note, exp: exp });
+            });
+            mcList.value = lines.join('\n');
+            dispose();
+            saveLedger();
+            render();
+            flashButton(document.getElementById('renew-btn'), '已续期');
+        });
+        actions.appendChild(cancel);
+        actions.appendChild(ok);
+        card.appendChild(h);
+        card.appendChild(p);
+        card.appendChild(label);
+        card.appendChild(monthInput);
+        card.appendChild(opt1);
+        card.appendChild(opt2);
+        card.appendChild(actions);
+        mask.appendChild(card);
+        mask.addEventListener('click', function (e) { if (e.target === mask) dispose(); });
+        document.body.appendChild(mask);
+        lockScroll();
+        offEsc = onEsc(dispose);
+        try { monthInput.focus(); } catch (e) {}
     }
 
     // 拉取在线清单（主源 + 备用源依次尝试），返回解析后的对象；全部失败返回 null。
@@ -1052,6 +2055,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             });
             onlineStatus = status;
             render();
+            // 功能⑦：把结构化差异报告渲染到 #diff-report（无差异则显示一致提示）。
+            renderDiffReport(buildDiffReport(buildManifestObj(), data));
             flashButton(b, notUp > 0 ? (notUp + ' 张未上传') : '全部已上传');
             if (tip) tip.textContent = '线上清单更新于 ' + (data.updated || '未知') +
                 (data.sig ? '（已签名）' : '（未签名）') +
@@ -1067,6 +2072,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 只对已用过「对照」的用户生效，避免从不用该功能的人产生无谓请求。
     window.addEventListener('online', function () {
         if (onlineCheckAttempted) runOnlineCheck();
+        // 功能②：网络恢复后若存在「待重传」且已保存令牌，自动补传一次。
+        if (getToken() && isPendingUpload()) uploadManifest(false);
     });
 
     // ---------- 上传到 GitHub（细粒度 PAT，令牌仅存本机） ----------
@@ -1078,15 +2085,57 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return { owner: m[1], repo: m[2].replace(/\.git$/, ''), branch: m[3], path: m[4] };
     }
 
-    // GitHub 令牌读写（仅本机）：空值即清除。
+    // GitHub 令牌读写（仅本机）：v2 只存 {v:1,t,at}；空值即清除。
+    // 界面只显示指纹（前4…后4），绝不回填输入框、绝不打印控制台、绝不写入清单。
+    function tokenFingerprint(t) {
+        t = String(t == null ? '' : t);
+        if (!t) return '';
+        if (t.length <= 8) return t.slice(0, 2) + '…';
+        return t.slice(0, 4) + '…' + t.slice(-4);
+    }
+    // 合法令牌：前缀为 ghp_ / github_pat_ / gho_，且长度不过短（下限取 8，仅拦明显不合法输入）。
+    function isTokenUsable(t) {
+        t = String(t == null ? '' : t);
+        return /^(ghp_|github_pat_|gho_)/.test(t) && t.length >= 8;
+    }
     function getToken() {
-        try { return localStorage.getItem(UPLOAD_TOKEN_KEY) || ''; } catch (e) { return ''; }
+        var rec = null;
+        try {
+            var raw = localStorage.getItem(UPLOAD_TOKEN_KEY);
+            if (raw) {
+                var d = JSON.parse(raw);
+                if (d && typeof d === 'object' && typeof d.t === 'string') rec = d;
+            }
+        } catch (e) { rec = null; }
+        if (!rec) {
+            // 旧键迁移：前缀合法才迁移一次并删除旧键；不合法直接清除旧键。
+            try {
+                var old = localStorage.getItem(UPLOAD_TOKEN_LEGACY_KEY);
+                if (old) {
+                    if (isTokenUsable(old)) { setToken(old); rec = { t: old, at: new Date().toISOString() }; }
+                    localStorage.removeItem(UPLOAD_TOKEN_LEGACY_KEY);
+                }
+            } catch (e2) {}
+            if (!rec) return '';
+        }
+        // 30 天后视为过期：返回空并提示（不打印、不回填）。
+        if (rec.at) {
+            var at = Date.parse(rec.at);
+            if (!isNaN(at) && (Date.now() - at) > 30 * 24 * 3600 * 1000) {
+                setToken('');
+                setUploadTip('令牌已过期，请重新粘贴。');
+                return '';
+            }
+        }
+        return rec.t || '';
     }
     function setToken(t) {
         try {
-            if (t) localStorage.setItem(UPLOAD_TOKEN_KEY, t);
-            else localStorage.removeItem(UPLOAD_TOKEN_KEY);
-        } catch (e) {}
+            if (!t) { localStorage.removeItem(UPLOAD_TOKEN_KEY); return true; }
+            if (!isTokenUsable(t)) return false; // 格式不符：不落盘
+            localStorage.setItem(UPLOAD_TOKEN_KEY, JSON.stringify({ v: 1, t: String(t), at: new Date().toISOString() }));
+            return true;
+        } catch (e) { return false; }
     }
 
     // base64 编解码（UTF-8 安全）：GitHub Contents API 的 content 要求 base64；
@@ -1116,8 +2165,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             revoked.push(group(n, 4));
         }
         (local.revoked || []).forEach(addRev);
+        // 有效期映射同样取并集（本机优先），随清单一起上传；不参与签名。
+        var exp = {};
+        Object.keys(local.exp || {}).forEach(function (k) { exp[k] = local.exp[k]; });
+        var remExp = (remote && remote.exp) || {};
+        Object.keys(remExp).forEach(function (k) { if (!exp[k]) exp[k] = remExp[k]; });
         var updated = local.updated;
-        return { updated: updated, cards: cards, revoked: revoked, sig: manifestSignature(updated, cards, revoked) };
+        var merged = { updated: updated, cards: cards, revoked: revoked };
+        if (Object.keys(exp).length) merged.exp = exp;
+        merged.sig = manifestSignature(updated, cards, revoked);
+        return merged;
     }
 
     // 读取远端 cards.json：用 API 而非 raw CDN，避免 CDN 缓存拿到过期内容。
@@ -1241,21 +2298,31 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     function computePairs() {
         // 只处理有效机器码（4 组共 16 位）；无法识别的行被忽略，也不会进入在线清单
         return uniqueEntries(mcList.value).map(function (e) {
-            return { mc: e.key, display: e.mc, card: makeCard(e.key), note: e.note };
+            return { mc: e.key, display: e.mc, card: makeCard(e.key), note: e.note, exp: e.exp || '' };
         });
     }
 
     function render() {
         out.textContent = '';
         pairs = computePairs();
+        // 有筛选时只渲染匹配项；无筛选时行为与原先完全一致（标题仍是「生成结果（N 条）」）。
+        var visible = filterEntries(pairs);
         // 用 DocumentFragment 一次性插入：逐行 appendChild 到已挂载的 out 会触发多次重排，
         // 台账上千条时首屏渲染明显阻塞，且监听器与节点逐次挂载更慢。
         var frag = document.createDocumentFragment();
-        pairs.forEach(function (p) {
+        visible.forEach(function (p) {
             var card = p.card;
 
             var item = document.createElement('div');
             item.className = 'item';
+
+            // 行首勾选框：供「全选 / 吊销筛选结果 / checkedCards()」使用；value 存卡密。
+            var check = document.createElement('input');
+            check.type = 'checkbox';
+            check.className = 'lmt-check';
+            check.value = card;
+            check.setAttribute('aria-label', '选择 ' + p.display);
+            item.appendChild(check);
 
             var mcEl = document.createElement('span');
             mcEl.className = 'mc';
@@ -1286,6 +2353,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 noteEl.textContent = p.note;
                 item.appendChild(noteEl);
             }
+            // 有效期徽标：有 exp 才显示；已过期用醒目样式（新 class 一律 lmt- 前缀）。
+            if (p.exp) {
+                var expired = isExpired(p.exp);
+                var expEl = document.createElement('span');
+                expEl.className = 'lmt-exp-badge' + (expired ? ' is-expired' : '');
+                expEl.textContent = expired ? '已过期' : ('有效期至 ' + p.exp);
+                item.appendChild(expEl);
+            }
             if (onlineStatus) {
                 var st = onlineStatus[p.mc] || 'notup';
                 var badge = document.createElement('span');
@@ -1297,12 +2372,14 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             frag.appendChild(item);
         });
 
-        if (pairs.length === 0) {
+        if (visible.length === 0) {
             var empty = document.createElement('div');
             empty.className = 'empty';
-            empty.textContent = '暂无结果，请先粘贴机器码。';
+            empty.textContent = pairs.length === 0 ? '暂无结果，请先粘贴机器码。' : '没有匹配当前筛选的结果。';
             frag.appendChild(empty);
-            outTitle.textContent = '生成结果';
+            outTitle.textContent = pairs.length === 0 ? '生成结果' : ('生成结果（0/' + pairs.length + ' 条）');
+        } else if (filterText) {
+            outTitle.textContent = '生成结果（' + visible.length + '/' + pairs.length + ' 条）';
         } else {
             outTitle.textContent = '生成结果（' + pairs.length + ' 条）';
         }
@@ -1395,6 +2472,20 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (!text) { flashButton(b, '无结果'); return; }
         copyWithFeedback(text, b, '已复制文案');
     });
+    // 交付图：勾选优先、否则按当前筛选结果，全部画进一张长图（含可扫码的激活二维码）。
+    document.getElementById('deliver-img-btn').addEventListener('click', function () {
+        var b = document.getElementById('deliver-img-btn');
+        var targets = deliverImageTargets();
+        if (!targets.length) { flashButton(b, '无结果'); return; }
+        var canvas = buildDeliverImage(targets);
+        if (!canvas) { flashButton(b, '出图失败'); return; }
+        var how;
+        try { how = saveCanvasPng(canvas, deliverImageName()); }
+        catch (e) { flashButton(b, '出图失败'); return; }
+        var cut = targets.length > IMG_MAX;
+        flashButton(b, how === 'native' ? (cut ? '已存前 20 条' : '已保存到相册')
+                                       : (cut ? '已导出前 20 条' : '已导出'));
+    });
     document.getElementById('backup-btn').addEventListener('click', function () {
         var b = document.getElementById('backup-btn');
         var json = buildLedgerBackup();
@@ -1423,14 +2514,70 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     });
     document.getElementById('online-check-btn').addEventListener('click', runOnlineCheck);
     document.getElementById('upload-btn').addEventListener('click', function () { uploadManifest(true); });
+    // 一键发布：生成清单 → 上传 → 成功后写回执（含清单指纹 / 张数 / 清单全文），并刷新差异报告。
+    document.getElementById('publish-btn').addEventListener('click', function () {
+        var b = document.getElementById('publish-btn');
+        buildManifest();
+        flashButton(b, '发布中…');
+        uploadManifest(true).then(function (ok) {
+            if (!ok) { flashButton(b, '发布失败'); updateReceiptTip(); return; }
+            recordUploadReceipt(manifestOut.value);
+            try { renderDiffReport(buildDiffReport(buildManifestObj(), JSON.parse(lastUploadedJson || '{}'))); } catch (e) {}
+            flashButton(b, '已发布');
+        });
+    });
+    // 台账快照：下载最近一份 / 合并回台账
+    document.getElementById('snapshot-btn').addEventListener('click', function () {
+        var b = document.getElementById('snapshot-btn');
+        var last = latestSnapshot();
+        if (!last) { flashButton(b, '无快照'); return; }
+        var name = '台账快照_' + String(last.at || '').slice(0, 10).replace(/-/g, '') + '.csv';
+        if (!downloadFile(name, last.csv || '') || isMobileUA()) {
+            flashButton(b, isMobileUA() ? '请手动复制' : '已导出');
+            showManualCopy(last.csv || '', '台账快照（若未自动保存，请长按复制）');
+            return;
+        }
+        flashButton(b, '已下载');
+    });
+    document.getElementById('snapshot-restore-btn').addEventListener('click', function () {
+        var b = document.getElementById('snapshot-restore-btn');
+        var res = restoreLatestSnapshot();
+        flashButton(b, res ? (res.added > 0 ? ('已恢复 +' + res.added) : '已合并（无新增）') : '无快照');
+    });
+    // 筛选 + 批量操作
+    document.getElementById('filter-input').addEventListener('input', function () {
+        filterText = String(this.value || '').trim().toLowerCase();
+        render();
+    });
+    document.getElementById('select-all-btn').addEventListener('click', function () {
+        var boxes = Array.prototype.slice.call(out.querySelectorAll('input.lmt-check'));
+        var allChecked = boxes.length > 0 && boxes.every(function (x) { return x.checked; });
+        boxes.forEach(function (x) { x.checked = !allChecked; });
+        flashButton(document.getElementById('select-all-btn'), allChecked ? '已取消全选' : '已全选');
+    });
+    document.getElementById('revoke-filtered-btn').addEventListener('click', function () {
+        var b = document.getElementById('revoke-filtered-btn');
+        var cards = filterEntries(computePairs()).map(function (p) { return p.card; });
+        if (!cards.length) { flashButton(b, '无匹配'); return; }
+        var n = revokeCards(cards);
+        flashButton(b, n > 0 ? ('已吊销 ' + n + ' 张') : '已吊销');
+    });
+    document.getElementById('deliver-filtered-btn').addEventListener('click', function () {
+        var b = document.getElementById('deliver-filtered-btn');
+        var text = buildDeliverTextFor(filterEntries(computePairs()));
+        if (!text) { flashButton(b, '无匹配'); return; }
+        copyWithFeedback(text, b, '已复制话术');
+    });
+    document.getElementById('renew-btn').addEventListener('click', renewAll);
     document.getElementById('gh-token-save').addEventListener('click', function () {
         var b = document.getElementById('gh-token-save');
         var input = document.getElementById('gh-token');
         var t = (input.value || '').trim();
         if (!t) { flashButton(b, '令牌为空'); return; }
+        if (!isTokenUsable(t)) { flashButton(b, '格式不符'); setUploadTip('令牌格式不符（应以 ghp_ / github_pat_ / gho_ 开头），未保存。'); return; }
         setToken(t);
         input.value = ''; // 保存后立即清空输入框，避免令牌停留在 DOM 里
-        input.placeholder = '已保存令牌（如需更换可重新粘贴）';
+        input.placeholder = '已保存令牌 ' + tokenFingerprint(t) + '（如需更换可重新粘贴）';
         flashButton(b, '已保存');
         setUploadTip('令牌已保存在本机，可随时点「清除令牌」删除。');
     });
@@ -1464,15 +2611,21 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 启动：恢复上次保存的台账与吊销清单
     if (!normalize(mcList.value)) mcList.value = loadLedger();
     revokeList.value = loadRevoke();
-    // 恢复「自动上传」开关与令牌状态提示（令牌本身不回填到输入框）
+    // 恢复「自动上传」开关、令牌状态提示（令牌本身不回填输入框，只显示指纹）
+    // 以及 lastUploadedJson（存于上传回执，页面重开后「待重传」判定才准确）
     (function () {
         var cb = document.getElementById('auto-upload');
         try { cb.checked = localStorage.getItem(AUTO_UPLOAD_KEY) === '1'; } catch (e) {}
-        if (getToken()) document.getElementById('gh-token').placeholder = '已保存令牌（如需更换可重新粘贴）';
+        var tk = getToken();
+        if (tk) document.getElementById('gh-token').placeholder = '已保存令牌 ' + tokenFingerprint(tk) + '（如需更换可重新粘贴）';
+        var rec0 = getUploadReceipt();
+        if (rec0 && rec0.json) lastUploadedJson = rec0.json;
         if (cb.checked) setUploadTip(getToken() ? '已开启自动上传。' : '已开启自动上传，但还没有保存令牌。');
     })();
     updateLedgerTip();
     render();
+    updateSnapshotTip();
+    updateReceiptTip();
 
     // 页面被隐藏/关闭时立即落盘：台账保存有 300ms 防抖，避免最后一次输入来不及写入
     function flushSave() {
@@ -1504,7 +2657,23 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         buildTemplateCsv: buildTemplateCsv, buildLedgerCsv: buildLedgerCsv, ledgerFileName: ledgerFileName,
         copyText: copyText, copyWithFeedback: copyWithFeedback, showManualCopy: showManualCopy,
         flashButton: flashButton, isIOSLike: isIOSLike, isMobileUA: isMobileUA,
-        getPairs: function () { return pairs; }, setLedger: function (t) { mcList.value = t; }, render: render
+        getPairs: function () { return pairs; }, setLedger: function (t) { mcList.value = t; }, render: render,
+        // 新增能力：有效期 / 快照 / 上传回执 / 差异报告 / 筛选批量 / 令牌
+        parseExpiry: parseExpiry, addMonths: addMonths, isExpired: isExpired, renewAll: renewAll,
+        buildDeliverTextFor: buildDeliverTextFor, filterEntries: filterEntries,
+        revokeCards: revokeCards, checkedCards: checkedCards,
+        getFilterText: function () { return filterText; }, setFilterText: function (t) { filterText = t; },
+        buildSnapshotRecord: buildSnapshotRecord, saveSnapshot: saveSnapshot, loadSnapshots: loadSnapshots,
+        restoreLatestSnapshot: restoreLatestSnapshot,
+        getUploadReceipt: getUploadReceipt, setUploadReceipt: setUploadReceipt, isPendingUpload: isPendingUpload,
+        tokenFingerprint: tokenFingerprint, isTokenUsable: isTokenUsable,
+        UPLOAD_TOKEN_KEY: UPLOAD_TOKEN_KEY, UPLOAD_RECEIPT_KEY: UPLOAD_RECEIPT_KEY, SNAPSHOT_KEY: SNAPSHOT_KEY,
+        buildDiffReport: buildDiffReport, renderDiffReport: renderDiffReport,
+        // 交付二维码与交付图（自研零依赖 QR 编码器，规格 QR Model 2 / byte / ECC L / v1..v10）
+        qrEncode: QRLIB.encode, qrDecode: QRLIB.decode, qrSelfTest: QRLIB.selfTest, qrPickVersion: QRLIB.pickVersion,
+        activateUrl: activateUrl, ACTIVATE_BASE: ACTIVATE_BASE,
+        buildDeliverImage: buildDeliverImage, deliverImageName: deliverImageName,
+        deliverImageTargets: deliverImageTargets, saveCanvasPng: saveCanvasPng
     };
 })();
 </script>

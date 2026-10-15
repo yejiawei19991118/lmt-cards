@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>卡密交付 · 图文排版生成器</title>
+<!--
+  客户扫码落地页（零依赖、单文件）。
+
+  用途：作者在「卡密生成器」里为某个客户生成一张交付二维码，二维码内容就是本页地址加两个
+  hash 参数：
+      activate.html#c=<归一化卡密>&m=<归一化机器码>
+  客户用手机相机扫一下就能看到自己的卡密并一键复制，不必在聊天记录里翻找长串卡密。
+
+  设计取舍：
+  · 卡密与机器码只走 URL hash（# 后的片段），**不会**发往服务器、不会进入 Referer，
+    静态页本身也不需要任何后端；因此这个页面可以安全地放在 GitHub Pages 上。
+  · 本页只做「展示 + 复制」，不做任何校验：真正的校验在客户设备的应用内完成
+    （一卡一机：卡密必须与本机机器码匹配，且要出现在作者签名的在线白名单里）。
+    在这里联网校验一次没有意义，反而会在断网时给出误导性的失败提示。
+  · 复制按钮沿用应用内同款策略：execCommand 必须在用户手势的同步调用栈里执行，
+    挪进 Promise/setTimeout 后 iOS 与安卓 WebView 会因选区丢失而静默失败。
+-->
+<style>
+    :root {
+        --accent: #2f6df6;
+        --page-bg: #eef1f6;
+        --text-main: #1f2430;
+        --text-sub: #5b6472;
+        --line: #dbe1ea;
+        --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+        min-height: 100vh;
+        background: var(--page-bg);
+        color: var(--text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+        -webkit-text-size-adjust: 100%;
+    }
+    .card {
+        width: 100%;
+        max-width: 460px;
+        background: #fff;
+        border-radius: 18px;
+        padding: 22px 20px;
+        box-shadow: 0 10px 30px rgba(24, 33, 51, .10);
+    }
+    h1 { margin: 0 0 6px; font-size: 19px; }
+    .sub { margin: 0 0 18px; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
+    .label { font-size: 12.5px; font-weight: 600; color: var(--text-sub); margin-bottom: 8px; }
+    .code-box {
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        border-radius: 12px;
+        padding: 14px 12px;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: .6px;
+        word-break: break-all;
+        -webkit-user-select: text;
+        user-select: text;
+    }
+    .mc-box {
+        border: 1px dashed var(--line);
+        border-radius: 12px;
+        padding: 11px 12px;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: 14px;
+        color: var(--text-sub);
+        word-break: break-all;
+        -webkit-user-select: text;
+        user-select: text;
+    }
+    .field { margin-bottom: 16px; }
+    button.copy {
+        width: 100%;
+        min-height: 50px;
+        margin-top: 12px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--accent);
+        color: #fff;
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+    button.copy:active { opacity: .9; }
+    button.copy.ghost { background: #f2f5fa; color: var(--text-sub); border: 1px solid var(--line); }
+    .tip { min-height: 18px; margin: 10px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--text-sub); }
+    .steps { margin: 22px 0 0; padding: 0; list-style: none; counter-reset: step; }
+    .steps li {
+        position: relative;
+        counter-increment: step;
+        padding: 0 0 14px 34px;
+        font-size: 13.5px;
+        line-height: 1.65;
+        color: var(--text-main);
+    }
+    .steps li::before {
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .steps li:last-child { padding-bottom: 0; }
+    .foot { margin: 20px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.6; color: var(--text-sub); }
+    .empty { font-size: 14px; line-height: 1.7; color: var(--text-sub); }
+    .hidden { display: none !important; }
+    /* 复制兜底浮层：自动复制在部分 WebView/非 https 环境下整体失效时，
+       弹出可长按选中的文本域，避免「点了复制却没反应」。 */
+    .fallback-mask {
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(15, 23, 42, .45);
+    }
+    .fallback-card {
+        width: 460px;
+        max-width: 100%;
+        max-height: 100%;
+        overflow-y: auto;
+        background: #fff;
+        border-radius: 16px;
+        padding: 20px;
+    }
+    .fallback-card h3 { margin: 0 0 6px; font-size: 16px; }
+    .fallback-card p { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--text-sub); }
+    .fallback-card textarea {
+        width: 100%;
+        min-height: 76px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fbfcfe;
+        color: var(--text-main);
+        font-family: var(--mono);
+        font-size: 14px;
+        line-height: 1.6;
+        -webkit-user-select: text;
+        user-select: text;
+    }
+    .fallback-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+    .fallback-actions button {
+        min-height: 44px;
+        padding: 0 18px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #f7f9fc;
+        color: var(--text-sub);
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    @media (max-width: 360px) { .code-box { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="card">
+    <h1>你的专属卡密</h1>
+    <p class="sub">本页面仅供查看与复制卡密，卡密与由你所在设备生成，请勿转发给他人。</p>
+
+    <div id="main" class="hidden">
+        <div class="field">
+            <div class="label">卡密（激活码）</div>
+            <div class="code-box" id="card-view"></div>
+            <button type="button" class="copy" id="copy-card">复制卡密</button>
+            <p class="tip" id="copy-tip" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="field hidden" id="mc-field">
+            <div class="label">机器码（本机标识）</div>
+            <div class="mc-box" id="mc-view"></div>
+        </div>
+    </div>
+
+    <div id="empty" class="empty hidden">
+        这个链接里没有有效的卡密信息。请让作者重新发一张交付二维码，或用手机相机重新扫码。
+    </div>
+
+    <ol class="steps">
+        <li>打开「图文排版生成器」，在激活页面复制你的「本机机器码」。</li>
+        <li>把机器码发给作者，换取与本机一一对应的卡密（一卡一机，换设备需重新取号）。</li>
+        <li>回到软件激活页，粘贴上面的卡密并点击「激活」即可使用。</li>
+    </ol>
+
+    <p class="foot">卡密只与本机机器码匹配，换设备后会失效；若软件提示无法连接校验服务器，请先联网再激活。</p>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    // 归一化：与卡密生成器 / 主程序完全一致（去分隔符、转大写）。
+    function normalize(code) {
+        return String(code == null ? '' : code).toUpperCase().replace(/[^0-9A-Z]/g, '');
+    }
+    // 按 4 位一组显示：卡密 20 位 → 5 组，机器码 16 位 → 4 组。
+    function group(str, n) {
+        var out = [];
+        for (var i = 0; i < str.length; i += n) out.push(str.substr(i, n));
+        return out.join('-');
+    }
+
+    // 解析 hash：只接受 #c=<卡密>&m=<机器码> 这种情况；# 后的内容按 & 拆，值做百分号解码。
+    function parseHash(hash) {
+        var raw = String(hash == null ? '' : hash).replace(/^#/, '');
+        var out = { card: '', mc: '' };
+        if (!raw) return out;
+        raw.split('&').forEach(function (pair) {
+            if (!pair) return;
+            var eq = pair.indexOf('=');
+            var k = (eq < 0 ? pair : pair.slice(0, eq)).toLowerCase();
+            var v = eq < 0 ? '' : pair.slice(eq + 1);
+            try { v = decodeURIComponent(v.replace(/\+/g, ' ')); } catch (e) {}
+            if (k === 'c') out.card = normalize(v);
+            else if (k === 'm') out.mc = normalize(v);
+        });
+        return out;
+    }
+
+    // 同步复制：必须在用户手势的同步调用栈里执行（详见文件头注释）。
+    // 优先 execCommand；失败再试 navigator.clipboard，两者都失败由调用方弹兜底浮层。
+    function syncCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.setAttribute('aria-hidden', 'true');
+        ta.style.position = 'fixed';
+        ta.style.top = '50%';
+        ta.style.left = '50%';
+        ta.style.width = '1px';
+        ta.style.height = '1px';
+        ta.style.padding = '0';
+        ta.style.margin = '0';
+        ta.style.border = 'none';
+        ta.style.outline = 'none';
+        ta.style.background = 'transparent';
+        ta.style.color = 'transparent';
+        ta.style.opacity = '0';
+        ta.style.fontSize = '12pt'; // 字号过小会让 iOS 的选区不可靠
+        document.body.appendChild(ta);
+        var ok = false;
+        var sel = window.getSelection ? window.getSelection() : null;
+        var saved = (sel && sel.rangeCount) ? sel.getRangeAt(0) : null;
+        try {
+            try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
+            ta.select();
+            try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+            ok = document.execCommand('copy');
+        } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        try { if (sel) { sel.removeAllRanges(); if (saved) sel.addRange(saved); } } catch (e) {}
+        return ok;
+    }
+
+    function fallbackOverlay(text) {
+        var mask = document.createElement('div');
+        mask.className = 'fallback-mask';
+        var card = document.createElement('div');
+        card.className = 'fallback-card';
+        var h3 = document.createElement('h3');
+        h3.textContent = '请手动复制';
+        var p = document.createElement('p');
+        p.textContent = '当前环境不支持自动复制，请长按下面的卡密全选后复制。';
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        var actions = document.createElement('div');
+        actions.className = 'fallback-actions';
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = '关闭';
+        actions.appendChild(close);
+        card.appendChild(h3);
+        card.appendChild(p);
+        card.appendChild(ta);
+        card.appendChild(actions);
+        mask.appendChild(card);
+        function dispose() { mask.remove(); }
+        close.addEventListener('click', dispose);
+        mask.addEventListener('click', function (e) { if (e.target === mask) dispose(); });
+        document.body.appendChild(mask);
+        // 唤起键盘前先选中，长按/直接复制都省一步
+        try { ta.focus(); ta.select(); } catch (e) {}
+    }
+
+    var mainEl = document.getElementById('main');
+    var emptyEl = document.getElementById('empty');
+    var cardView = document.getElementById('card-view');
+    var mcField = document.getElementById('mc-field');
+    var mcView = document.getElementById('mc-view');
+    var copyBtn = document.getElementById('copy-card');
+    var tipEl = document.getElementById('copy-tip');
+
+    var parsed = parseHash(location.hash);
+    // 卡密固定 20 位（5 组）；长度不符说明链接被截断或参数不对，此时不展示「半截卡密」——
+    // 半截卡密复制的必然是一张无效码，不如直接提示重新取码。
+    var cardText = parsed.card.length === 20 ? group(parsed.card, 4) : '';
+
+    if (!cardText) {
+        emptyEl.classList.remove('hidden');
+    } else {
+        mainEl.classList.remove('hidden');
+        cardView.textContent = cardText;
+        if (parsed.mc.length === 16) {
+            mcField.classList.remove('hidden');
+            mcView.textContent = group(parsed.mc, 4);
+        }
+        copyBtn.addEventListener('click', function () {
+            var done = syncCopy(cardText);
+            copyBtn.textContent = done ? '已复制' : '请手动复制';
+            tipEl.textContent = done ? '已复制到剪贴板，回到软件粘贴即可。' : '';
+            if (!done) fallbackOverlay(cardText);
+            setTimeout(function () { copyBtn.textContent = '复制卡密'; }, 1500);
+        });
+    }
+
+    // hash 变化（例如在页面内被再次扫码打开）也要刷新展示，避免停在旧卡密上。
+    window.addEventListener('hashchange', function () { location.reload(); });
+})();
+</script>
+</body>
+</html>

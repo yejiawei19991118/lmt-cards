@@ -170,7 +170,12 @@
         save: function (name, mime, base64) {
           saverCalls[key].push({ name: String(name), mime: String(mime), base64: String(base64) });
           return true; // 与原生实现一致：成功返回 true，失败返回 false
-        }
+        },
+        // 安卓壳「打开所在位置」用到的两个原生能力（见 MainActivity）。
+        // 这里刻意都返回「拿不到」：外壳会因此走到「无法直接打开…」的兜底文案，
+        // 该文案有可观察的界面反馈，正好用来断言按钮确实被接上了（而不是点了没反应）。
+        lastSavedPath: function () { return ''; },
+        openLastSaved: function () { return false; }
       };
     } catch (e) { /* 跨源受限时保持浏览器原行为 */ }
   }
@@ -369,6 +374,14 @@
       assertEq(call.mime, 'image/png', '原生落盘 MIME 类型');
       assertMatch(call.base64, /^iVBORw0KGgo/, '原生落盘内容应是 PNG 的 base64（不能是空串或乱码）');
       assertMatch(text(msg), /^已保存到相册：/, '安卓壳应提示「已保存到相册」，实际：' + text(msg));
+
+      // 落盘成功后安卓壳才挂出「打开所在位置」按钮（PWA 侧不伪造该能力，故不会出现）。
+      // 假桥把「打开」与「最近路径」都返回「拿不到」，因此点击必须走到兜底文案 —— 有反馈即证明按钮真的接上了。
+      var loc = await until(function () { return doc.querySelector('#open-location-btn'); },
+        3000, '安卓壳落盘后应挂出「打开所在位置」按钮');
+      assertEq(text(loc), '打开所在位置', '按钮文案');
+      loc.click();
+      assert(/无法直接打开/.test(text(msg)), '点击「打开所在位置」在拿不到原生能力时应给出兜底文案，实际：' + text(msg));
     });
 
     test('layout/文案超长时禁用导出并提示，清空后恢复', async function () {
@@ -457,6 +470,200 @@
       lic.setManifestUrl('');
       await lic.fetchManifest('');
       assertEq(lic.getManifest(), null, '收尾后应清空清单，回到纯离线校验');
+    });
+
+    // ============================================================
+    // 新增功能：草稿箱 / 批量出图（自研 ZIP） / 自定义模板 / 记忆 + 文案库
+    // ============================================================
+    test('layout/ZIP 打包：本地头 / 中央目录 / EOCD 签名与 CRC32 正确', async function () {
+      var t = app();
+      // CRC-32(IEEE) 标准检错向量："123456789" → 0xCBF43926
+      var check = new Uint8Array([0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39]);
+      assertEq(t.crc32(check), 0xCBF43926, 'CRC32 标准向量');
+
+      var content = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      var name = 'a.png';
+      var zip = t.zipStore([{ name: name, bytes: content }]);
+      // 跨 realm：zipStore 在 iframe 内执行，返回的对象原型属于 iframe 的 Uint8Array
+      assert(zip instanceof L.Uint8Array, 'zipStore 应返回 Uint8Array，实际 ' + (zip && zip.constructor && zip.constructor.name));
+      function u16(b, i) { return b[i] | (b[i + 1] << 8); }
+      function u32(b, i) { return (b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24)) >>> 0; }
+      var CRC = t.crc32(content);
+
+      // 本地文件头：签名 / 版本 / 位标记 / 压缩方式 / CRC / 大小 / 文件名
+      assertEq(u32(zip, 0), 0x04034b50, '应以本地文件头签名 0x04034b50 开头');
+      assertEq(u16(zip, 6), 0x0800, '通用位标记应置 UTF-8 位（bit11）');
+      assertEq(u16(zip, 8), 0, '压缩方式应为 store（0）');
+      assertEq(u32(zip, 14), CRC, '本地头 CRC32 应等于内容的 CRC32');
+      assertEq(u32(zip, 18), content.length, '压缩后大小应等于原始大小（store 不压缩）');
+      assertEq(u32(zip, 22), content.length, '原始大小');
+      assertEq(u16(zip, 26), name.length, '文件名长度应与 UTF-8 字节数一致');
+      assertEq(Array.prototype.join.call(zip.subarray(30, 30 + name.length), ','), '97,46,112,110,103',
+        '文件名应按 UTF-8 写入（a.png → 97,46,112,110,103）');
+
+      // 中央目录：条目签名 / 压缩方式 / CRC / 指向的本地头偏移
+      var centralStart = u32(zip, zip.length - 22 + 16);
+      assertEq(u32(zip, centralStart), 0x02014b50, '中央目录起始处应是中央目录签名 0x02014b50');
+      assertEq(u16(zip, centralStart + 10), 0, '中央目录压缩方式应为 store');
+      assertEq(u32(zip, centralStart + 16), CRC, '中央目录 CRC32 应与内容一致');
+      assertEq(u32(zip, centralStart + 42), 0, '中央目录记录的本地头偏移应为 0');
+      assertEq(u16(zip, centralStart + 28), name.length, '中央目录里的文件名长度');
+
+      // EOCD：签名 / 条目数 / 中央目录大小与偏移，并做一次总长自洽校验
+      assertEq(u32(zip, zip.length - 22), 0x06054b50, '应以 EOCD 签名 0x06054b50 结尾');
+      assertEq(u16(zip, zip.length - 22 + 10), 1, 'EOCD 应记录 1 个中央目录条目');
+      var centralSize = u32(zip, zip.length - 22 + 12);
+      assertEq(centralSize, 46 + name.length, '中央目录总长应为固定头(46) + 文件名');
+      assertEq(zip.length, centralStart + centralSize + 22, '本地记录 + 中央目录 + EOCD 应恰好等于总长');
+
+      // 两条目：条目数递增，中央目录偏移等于全部本地记录长度之和
+      var zip2 = t.zipStore([{ name: '1.png', bytes: content }, { name: '2.png', bytes: content }]);
+      assertEq(u16(zip2, zip2.length - 22 + 10), 2, '两条目应记录 2 个中央目录条目');
+      assertEq(u32(zip2, zip2.length - 22 + 16), 2 * (30 + 5 + content.length),
+        '中央目录偏移应等于全部本地记录长度之和');
+    });
+
+    test('layout/草稿箱：命名浮层有反馈 + 保存 / 载入 / 导出导入 / 删除', async function () {
+      var t = app();
+      t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+      assertEq(t.listDrafts().length, 0, '前置：草稿箱应为空');
+
+      // 「保存草稿」必须先弹命名浮层（不能点了没反应）
+      q(doc, '#draft-save-btn').click();
+      var mask = await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '保存草稿命名浮层');
+      assertEq(text(mask.querySelector('h3')), '保存草稿', '浮层标题');
+      var cancel = qa(mask, 'button').filter(function (b) { return text(b) === '取消'; })[0];
+      assert(cancel, '命名浮层应有「取消」按钮');
+      cancel.click();
+      await until(function () { return !doc.querySelector('.lmt-modal-mask'); }, 3000, '命名浮层关闭');
+      assertEq(t.listDrafts().length, 0, '取消命名不应产生草稿');
+
+      // 保存：记录当前文案；改动后载入应逐字还原
+      setValue(q(doc, '#input-title'), '草稿标题A', L);
+      setValue(q(doc, '#input-subtitle'), '草稿副标题A', L);
+      var saved = t.saveDraft('用例草稿A');
+      assert(saved && saved.ok === true, '保存草稿应返回成功，实际 ' + JSON.stringify(saved));
+      var list = t.listDrafts();
+      assertEq(list.length, 1, '保存后应有 1 份草稿');
+      assertEq(qa(doc, '#draft-select option').length, 2, '草稿下拉应多出 1 项（另有 1 个占位项）');
+
+      setValue(q(doc, '#input-title'), '被改掉了', L);
+      assertEq(t.loadDraft(list[0].id), true, '载入草稿应成功');
+      assertEq(q(doc, '#input-title').value, '草稿标题A', '载入草稿应还原主标题');
+      assertEq(text(q(doc, '#preview-title')), '草稿标题A', '载入草稿后预览应同步还原');
+
+      // 导出 → 导入：往返不丢内容，且坏文件被拒
+      assertEq(t.exportDrafts(), true, '导出草稿应返回成功');
+      assertMatch(text(q(doc, '#draft-msg')), /已导出草稿文件/, '导出草稿应有反馈');
+      var raw = JSON.stringify({ v: 1, items: t.listDrafts() });
+      assertEq(t.deleteDraft(list[0].id), true, '删除草稿应成功');
+      assertEq(t.listDrafts().length, 0, '删除后草稿箱应为空');
+      assertEq(t.importDrafts('这不是 JSON'), false, '非法 JSON 应被拒绝');
+      assertEq(t.importDrafts('{"v":1}'), false, '缺少 items 应被拒绝');
+      assertEq(t.importDrafts(raw), true, '导入合法 JSON 应成功');
+      var back = t.listDrafts();
+      assertEq(back.length, 1, '导入后应恢复 1 份草稿');
+      assertEq(back[0].fields.title, '草稿标题A', '导入应保留草稿里的文案');
+      assertEq(t.loadDraft(back[0].id), true, '导入回来的草稿应可载入');
+    });
+
+    test('layout/我的模板：保存 / 列表 / 删除', async function () {
+      var t = app();
+      t.listMyTemplates().slice().forEach(function (x) { t.deleteMyTemplate(x.id); });
+      assertEq(t.listMyTemplates().length, 0, '前置：应无自定义模板');
+
+      var item = t.saveMyTemplate('用例模板', 'three', null);
+      assert(item && item.id, '保存模板应返回带 id 的记录');
+      assertEq(item.name, '用例模板', '模板名应被保留');
+      assertEq(item.base, 'three', '模板基底应记录为 three');
+      assertEq(t.listMyTemplates().length, 1, '应保存 1 个自定义模板');
+      assertEq(qa(doc, '#template-select option[value="' + item.id + '"]').length, 1,
+        '模板下拉里应出现该自定义模板');
+
+      assertEq(t.deleteMyTemplate(item.id), true, '删除模板应成功');
+      assertEq(t.listMyTemplates().length, 0, '删除后应无自定义模板');
+      assert(!doc.querySelector('#template-select option[value="' + item.id + '"]'),
+        '删除后下拉里不应再有该模板');
+    });
+
+    test('layout/偏好记忆：保存后可回灌 / 重置清空', async function () {
+      var t = app();
+      t.resetPrefs();
+      assertEq(t.loadPrefs(), false, '重置后应无记忆可载入');
+
+      // 注意：控制面板上挂着 change → savePrefs，派发事件会「顺手」把当前状态立刻写回记忆。
+      // 因此这里改界面时一律只改 value、不派发事件，才能模拟出「下次打开、记忆还是旧的那份」。
+      var sel = q(doc, '#template-select');
+      var title = q(doc, '#input-title');
+      sel.value = 'three';
+      title.value = '记忆标题';
+      t.savePrefs();
+
+      sel.value = 'window';
+      title.value = '';
+      assertEq(t.loadPrefs(), true, '应能载入上次记忆');
+      assertEq(sel.value, 'three', '应恢复上次使用的模板');
+      assertEq(title.value, '记忆标题', '应恢复上次的文案');
+
+      t.resetPrefs();
+      assertEq(title.value, '', '重置后文案应清空');
+      assertEq(sel.value, 'window', '重置后模板应回落内置橱窗模板');
+      assertEq(t.loadPrefs(), false, '重置后不应再能载入记忆');
+    });
+
+    test('layout/文案库：保存 / 插入 / 删除', async function () {
+      var t = app();
+      t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+      assertEq(t.listSnippets().length, 0, '前置：文案库应为空');
+
+      assertEq(t.saveSnippet('summary', '   '), false, '空白内容不应存入文案库');
+      assertEq(t.saveSnippet('summary', '库里存的顶部文案'), true, '保存片段应成功');
+      var list = t.listSnippets();
+      assertEq(list.length, 1, '应保存 1 条片段');
+      assertEq(list[0].field, 'summary', '片段应记录目标字段');
+
+      setValue(q(doc, '#input-summary'), '', L);
+      assertEq(t.insertSnippet(list[0].id), true, '插入片段应成功');
+      assertEq(q(doc, '#input-summary').value, '库里存的顶部文案', '插入后输入框应写入片段内容');
+      assertEq(text(q(doc, '#preview-summary')), '库里存的顶部文案', '插入后预览应同步');
+      assertEq(t.insertSnippet('不存在的片段'), false, '插入不存在的片段应返回失败');
+
+      assertEq(t.deleteSnippet(list[0].id), true, '删除片段应成功');
+      assertEq(t.listSnippets().length, 0, '删除后文案库应为空');
+    });
+
+    test('layout/批量出图：未勾选给提示，勾选后打包出图并恢复界面', async function () {
+      var t = app();
+      var btn = q(doc, '#batch-btn');
+      var tip = q(doc, '#batch-tip');
+      if (!t.listDrafts().length) { t.saveDraft('批量用例草稿'); }
+      var cbs = qa(doc, '#batch-list input[type="checkbox"]');
+      assert(cbs.length >= 1, '批量清单应列出至少 1 个任务（草稿或文案片段）');
+
+      // 未勾选：必须有即时提示，且不能进入批量流程
+      btn.click();
+      assertEq(text(tip), '请先勾选要出图的任务', '未勾选点批量出图应给出提示');
+      assert(!btn.disabled, '未勾选时不应进入批量流程（按钮不应被禁用）');
+
+      var before = saverCalls.layout.length;
+      cbs[0].checked = true;
+      btn.click();
+      assert(btn.disabled, '批量过程中按钮应禁用，避免重入');
+      await until(function () {
+        return /批量出图完成|批量出图失败|已取消/.test(text(tip));
+      }, 90000, '批量出图收尾（当前：' + text(tip) + '）');
+      assert(/批量出图完成/.test(text(tip)), '批量出图应成功，实际：' + text(tip));
+      assert(!btn.disabled, '批量结束后按钮应恢复可用');
+      if (hasSaverRef(L) && saverCalls.layout.length > before) {
+        // 安卓壳会把打包好的 ZIP 交给原生桥；回解 base64 校验它确实是 ZIP（PK 开头）
+        var zipCall = saverCalls.layout.slice(before).filter(function (c) {
+          return c.mime === 'application/zip';
+        })[0];
+        if (zipCall) {
+          assertMatch(zipCall.name, /^批量排版图_\d{8}_\d{4}\.zip$/, '批量 ZIP 文件名');
+          assertEq(atob(zipCall.base64).charCodeAt(0), 0x50, '批量 ZIP 落盘内容应以 PK 开头');
+        }
+      }
     });
 
     function blobUrl(win, obj) {
@@ -781,6 +988,203 @@
       assertEq(merged2.revoked.length, 1, '本机吊销项应归一化去重后保留');
       assertEq(merged2.revoked[0], 'H7S0-6M3M-GMA1-Y7T2-VNRM', '吊销项应恢复为分组写法');
       assertEq(raw.length, 24, '用例自检');
+    });
+
+    // ============================================================
+    // 新增功能：交付二维码/交付图 / 有效期 / 快照 / 回执 / 差异 / 筛选批量 / 令牌
+    // ============================================================
+    test('cardgen/二维码：自检零失败 + 编码回读一致 + 承载地址格式', async function () {
+      var t = g();
+      assert(typeof t.qrSelfTest === 'function', '卡密生成器应导出二维码自检入口');
+      var st = t.qrSelfTest();
+      assertEq(st.fails.length, 0, '二维码自检不得有失败项：\n' + st.fails.join('\n'));
+
+      ['A', 'HELLO WORLD', '卡密交付：中文内容也要能编码 ✓'].forEach(function (s) {
+        var qr = t.qrEncode(s);
+        assertEq(qr.modules.length, qr.size, '二维码矩阵应为 size×size');
+        assertEq(qr.size, (qr.version * 4 + 17), '尺寸应为 4×版本 + 17');
+        var back = t.qrDecode(qr);
+        assertEq(back.text, s, '编码 → 回读应还原原文（样本：' + s + '）');
+        assertEq(back.mask, qr.mask, '掩码回读应一致');
+      });
+      // 容量边界：v5 恰好放下 106 字节，107 字节进位到 v6，超出 v10-L 直接拒绝
+      assertEq(t.qrPickVersion(106), 5, 'v5 容量边界');
+      assertEq(t.qrPickVersion(107), 6, '107 字节应进位到 v6');
+      assertEq(t.qrPickVersion(9999), 0, '超长内容应被拒绝');
+
+      // 承载地址：卡密与机器码都必须归一化后再拼进 hash，避免同一份内容出现两种写法
+      var url = t.activateUrl('abcd-efgh-jkmn-pqrs', 'ABCD-EFGH-JKMN-PQRS');
+      assertEq(url, t.ACTIVATE_BASE + '#c=ABCDEFGHJKMNPQRS&m=ABCDEFGHJKMNPQRS', '激活地址应使用归一化值');
+      assertMatch(t.ACTIVATE_BASE, /^https:\/\/yejiawei19991118\.github\.io\/lmt-cards\/activate\.html$/,
+        '激活页地址应与仓库里的 docs/activate.html 对应');
+    });
+
+    test('cardgen/交付图：条数决定尺寸、二维码真的画在图上、文件名与按钮反馈', async function () {
+      var t = g();
+      assertEq(t.buildDeliverImage([]), null, '空列表不应出图');
+      assertEq(t.buildDeliverImage(null), null, '无参数不应出图');
+
+      var one = t.buildDeliverImage([{ mc: 'ABCD-EFGH-JKMN-PQRS', card: t.makeCard('ABCDEFGHJKMNPQRS'), note: '张三', exp: '' }]);
+      assert(one, '单条应出图');
+      assertEq(one.width, 720, '交付图宽度固定 720');
+      var two = t.buildDeliverImage([
+        { mc: 'ABCD-EFGH-JKMN-PQRS', card: 'XXXX-XXXX-XXXX-XXXX-XXXX', note: '张三', exp: '2027-01-01' },
+        { mc: 'STVW-XYZ0-1234-5678', card: 'YYYY-YYYY-YYYY-YYYY-YYYY', note: '', exp: '' }
+      ]);
+      assertEq(two.width, 720, '两条交付图宽度仍是 720');
+      assertEq(two.height - one.height, 236, '每多一条，交付图高度应增加一个信息块');
+      // 左上角是二维码：必须真的画出深色模块，否则「出图成功」只是画了一张白板
+      var px = one.getContext('2d').getImageData(40, 40, 184, 184).data;
+      var dark = 0;
+      for (var i = 0; i < px.length; i += 4) if (px[i] < 128) dark++;
+      assert(dark > 50, '交付图应把二维码画进左上角（深色像素数 ' + dark + '）');
+      assertMatch(t.deliverImageName(), /^lmt-deliver-\d{8}-\d{6}\.png$/, '交付图文件名应带时间戳');
+
+      // 目标选择：没有勾选就按当前筛选结果出图
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三');
+      t.setFilterText('');
+      q(doc, '#gen-btn').click();
+      assertEq(t.deliverImageTargets().length, 1, '未勾选时应按当前筛选结果出图');
+      t.setFilterText('ETJX');
+      assertEq(t.deliverImageTargets().length, 0, '筛选不命中时不应有出图目标');
+      t.setFilterText('');
+      t.render();
+
+      // 按钮：点击后必须立刻给出可见反馈（安卓壳写相册 / PWA 走下载）
+      var btn = q(doc, '#deliver-img-btn');
+      btn.click();
+      assertMatch(text(btn), /^(已保存到相册|已导出|已存前 20 条|已导出前 20 条)$/,
+        '交付图按钮点击后应有反馈，实际：' + text(btn));
+    });
+
+    test('cardgen/有效期：解析规范化 / 加月夹紧月末 / 过期判定', async function () {
+      var t = g();
+      assertEq(t.parseExpiry('2026-3-7'), '2026-03-07', '应补零规范化');
+      assertEq(t.parseExpiry('2026/03/07'), '2026-03-07', '斜杠写法应识别');
+      assertEq(t.parseExpiry('20260307'), '2026-03-07', '紧凑写法应识别');
+      assertEq(t.parseExpiry('2026-13-07'), '', '非法月份应返回空串');
+      assertEq(t.parseExpiry('随便写点什么'), '', '无法识别应返回空串');
+      assertEq(t.parseExpiry(''), '', '空值应返回空串');
+
+      assertEq(t.addMonths('2026-01-31', 1), '2026-02-28', '1/31 加一月应夹紧到 2 月末（2026 非闰年）');
+      assertEq(t.addMonths('2026-01-31', 12), '2027-01-31', '加 12 月应保持原日');
+      assertEq(t.addMonths('2026-03-15', 1), '2026-04-15', '普通加月应保持日');
+
+      assertEq(t.isExpired('2000-01-01'), true, '过去的日期应判为已过期');
+      assertEq(t.isExpired('2099-01-01'), false, '未来的日期不应判为过期');
+      assertEq(t.isExpired(''), false, '空有效期应视为长期有效');
+      assertEq(t.isExpired(null), false, '未设置有效期应视为长期有效');
+    });
+
+    test('cardgen/台账快照：空台账跳过 / 保存后可一键恢复', async function () {
+      var t = g();
+      try { C.localStorage.removeItem(t.SNAPSHOT_KEY); } catch (e) { /* 清不掉就让后续断言自己暴露问题 */ }
+      g().setLedger('');
+      t.saveSnapshot();
+      assertEq(t.loadSnapshots().items.length, 0, '空台账不应生成快照');
+
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三\nSTVW-XYZ0-1234-5678,李四');
+      q(doc, '#gen-btn').click();
+      t.saveSnapshot();
+      var items = t.loadSnapshots().items;
+      assertEq(items.length, 1, '应保存 1 份快照（同日重复保存只留最新一份）');
+      assert(/ABCD-EFGH-JKMN-PQRS/.test(items[0].csv), '快照应保存台账内容');
+      assertMatch(items[0].at, /^\d{4}-\d{2}-\d{2}T/, '快照应带 ISO 时间戳');
+
+      g().setLedger('');
+      var back = t.restoreLatestSnapshot();
+      assert(back && back.added === 2, '从快照恢复应补回 2 个机器码，实际 ' + JSON.stringify(back));
+      assert(/ABCD-EFGH-JKMN-PQRS/.test(q(doc, '#mc-list').value), '恢复后台账应包含快照里的机器码');
+      assertEq(qa(doc, '#out .item').length, 2, '恢复后结果列表应重排为 2 条');
+    });
+
+    test('cardgen/上传回执与待重传：内容一致即不待传，台账变更后置为待传', async function () {
+      var t = g();
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三');
+      setValue(q(doc, '#revoke-list'), '', C, 'input');
+      q(doc, '#gen-btn').click();
+
+      t.setUploadReceipt({ at: '2026-10-14T00:00:00.000Z', json: JSON.stringify(t.buildManifestObj()) });
+      assertEq(t.isPendingUpload(), false, '回执与当前清单一致时不应处于待重传');
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三\nSTVW-XYZ0-1234-5678,李四');
+      assertEq(t.isPendingUpload(), true, '台账新增后应判定为待重传');
+      t.setUploadReceipt(null);
+      assertEq(t.isPendingUpload(), false, '没有回执时不应判定为待重传');
+      assertEq(t.getUploadReceipt(), null, '清除回执后应读回空值');
+    });
+
+    test('cardgen/令牌：合法性与指纹脱敏', async function () {
+      var t = g();
+      assertEq(t.isTokenUsable('ghp_abcdefgh'), true, 'ghp_ 前缀且长度足够应判定合法');
+      assertEq(t.isTokenUsable('github_pat_11ABCDEFG'), true, 'github_pat_ 前缀应判定合法');
+      assertEq(t.isTokenUsable('随便一串字符'), false, '无合法前缀应判定不合法');
+      assertEq(t.isTokenUsable('ghp_x'), false, '过短应判定不合法');
+      assertEq(t.isTokenUsable(''), false, '空令牌应判定不合法');
+
+      assertEq(t.tokenFingerprint('ghp_1234567890abcdef'), 'ghp_…cdef', '指纹只应暴露首 4 位与末 4 位');
+      assertEq(t.tokenFingerprint(''), '', '空令牌指纹应为空串');
+      assertEq(t.tokenFingerprint('abcd').indexOf('abcd'), -1, '短令牌也不应原样展示');
+    });
+
+    test('cardgen/清单差异报告：本地未上传 / 线上多出 / 吊销与白名单冲突', async function () {
+      var t = g();
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三\nSTVW-XYZ0-1234-5678,李四');
+      setValue(q(doc, '#revoke-list'), '', C, 'input');
+      q(doc, '#gen-btn').click();
+      var local = t.buildManifestObj();
+      assertEq(local.cards.length, 2, '前置：本地清单应有 2 张卡密');
+
+      // 线上只登记了第一张：第二张属于「本地有、线上无」
+      var remote = { updated: '2026-10-14', sig: new Array(65).join('a'), cards: [local.cards[0]], revoked: [] };
+      var rep = t.buildDiffReport(local, remote);
+      assertEq(rep.notUploaded.length, 1, '应报告 1 条未上传');
+      assertEq(rep.extraOnline.length, 0, '线上不应多出条目');
+      assertEq(rep.consistent, false, '存在差异时 consistent 应为 false');
+      assertEq(rep.remoteCards, 1, '应统计线上白名单条数');
+
+      // 本机吊销了仍在线上白名单里的卡密：必须报告冲突
+      setValue(q(doc, '#revoke-list'), local.cards[0], C, 'input');
+      var rep2 = t.buildDiffReport(local, remote);
+      assertEq(rep2.revokedButWhitelisted, 1, '已吊销但线上仍在白名单应计入冲突');
+
+      // 完全一致：不做任何提示
+      setValue(q(doc, '#revoke-list'), '', C, 'input');
+      var rep3 = t.buildDiffReport(local, {
+        updated: '2026-10-14', sig: new Array(65).join('a'), cards: local.cards.slice(), revoked: []
+      });
+      assertEq(rep3.consistent, true, '完全一致时 consistent 应为 true');
+    });
+
+    test('cardgen/筛选与批量：筛选命中、勾选收集、批量吊销', async function () {
+      var t = g();
+      g().setLedger('ABCD-EFGH-JKMN-PQRS,张三\nSTVW-XYZ0-1234-5678,李四');
+      setValue(q(doc, '#revoke-list'), '', C, 'input');
+      q(doc, '#gen-btn').click();
+      var all = t.getPairs();
+      assertEq(all.length, 2, '前置：应有 2 条结果');
+
+      t.setFilterText('张三');
+      assertEq(t.filterEntries(all).length, 1, '按备注筛选应命中 1 条');
+      t.setFilterText('STVW');
+      assertEq(t.filterEntries(all).length, 1, '按机器码筛选应命中 1 条');
+      t.setFilterText('不存在的关键词');
+      assertEq(t.filterEntries(all).length, 0, '筛选不到时应返回空');
+      t.setFilterText('');
+      assertEq(t.filterEntries(all).length, 2, '清空筛选应返回全部');
+
+      var cbs = qa(doc, '#out input.lmt-check');
+      assertEq(cbs.length, 2, '每条结果都应带勾选框（供批量操作）');
+      cbs[0].checked = true;
+      var checked = t.checkedCards();
+      assertEq(checked.length, 1, 'checkedCards 应只返回被勾选的卡密');
+      assertEq(t.revokeCards(checked), 1, '批量吊销应新增 1 条');
+      assertEq(t.revokeCards(checked), 0, '重复吊销不应重复添加');
+      assertEq(t.normalize(q(doc, '#revoke-list').value), t.normalize(checked[0]),
+        '吊销框应写入被勾选的卡密（归一化后一致）');
+
+      // 收尾：清掉吊销框与筛选，避免影响后续用例
+      setValue(q(doc, '#revoke-list'), '', C, 'input');
+      t.setFilterText('');
     });
   }
 

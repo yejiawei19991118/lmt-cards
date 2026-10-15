@@ -135,6 +135,43 @@ jobs:
           pwsh lmt-cards/tools/release.ps1 -WithTests \
             -Notes "自动发版：共享核心随 lmt-cards ${GITHUB_SHA:0:8} 更新"
 
+      - name: 独立复核发版产物与登记值
+        # release.ps1 内部已有产物断言；这里再做一次「不信任脚本内存状态」的复核：直接用命令行工具重算
+        # 镜像 APK 的 sha256/大小、比对 update.json 登记值与 version.properties，最后通过 API 取 Release
+        # 资产的字节数——覆盖「本地算对了，但镜像没更新 / 资产没传上去 / 回写漏了一处」这类断链。
+        # 放在推送安卓副本之前：仅当产物确实一致时，才允许把这次同步结果固化进安卓仓库。
+        if: steps.gate.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r '.apps."lmt-layout".versionName' lmt-cards/update.json)
+          # API 偶发波动不应该判定为产物不一致：重试几次拿到资产清单再比对。
+          for i in 1 2 3; do
+            if gh release view "apk-v$VERSION" --repo yejiawei19991118/lmt-cards --json assets > /tmp/lmt-assets.json; then break; fi
+            echo "第 $i 次读取 Release 资产失败，稍后重试"
+            sleep 10
+          done
+          test -s /tmp/lmt-assets.json || { echo "::error::无法读取 apk-v$VERSION 的 Release 资产清单"; exit 1; }
+          for app in lmt-layout lmt-cardgen; do
+            want_size=$(jq -r ".apps.\"$app\".size" lmt-cards/update.json)
+            want_sha=$(jq -r ".apps.\"$app\".sha256" lmt-cards/update.json)
+            mirror="lmt-cards/docs/apk/$app-release.apk"
+            got_size=$(stat -c%s "$mirror")
+            got_sha=$(sha256sum "$mirror" | cut -d' ' -f1)
+            name=$(grep -E "^$app\.versionName=" android/version.properties | cut -d= -f2 | tr -d '\r')
+            [ "$want_size" = "$got_size" ] || { echo "::error::$app 镜像大小与登记值不符：登记 $want_size，实际 $got_size"; exit 1; }
+            [ "$want_sha" = "$got_sha" ] || { echo "::error::$app 镜像 sha256 与登记值不符：登记 $want_sha，实际 $got_sha"; exit 1; }
+            [ "$name" = "$VERSION" ] || { echo "::error::$app version.properties 版本名与清单不符：$name ≠ $VERSION"; exit 1; }
+            asset_size=$(jq -r --arg n "$app-release.apk" '.assets[] | select(.name == $n) | .size' /tmp/lmt-assets.json)
+            [ -n "$asset_size" ] && [ "$asset_size" != "null" ] || { echo "::error::Release apk-v$VERSION 缺少资产 $app-release.apk"; exit 1; }
+            [ "$asset_size" = "$want_size" ] || { echo "::error::$app Release 资产与登记值不同字节：资产 $asset_size，登记 $want_size"; exit 1; }
+            echo "$app 复核通过：$got_size 字节 / $got_sha"
+          done
+          # 主源与 Pages 承载的两份清单必须逐字一致，否则会按访问路径给出不同版本号。
+          diff -q lmt-cards/update.json lmt-cards/docs/update.json
+          echo "产物复核全部通过（清单 / 镜像 / Release 资产 / version.properties 一致）"
+
       - name: 提交并推送安卓副本
         if: steps.gate.outputs.changed == 'true'
         run: |

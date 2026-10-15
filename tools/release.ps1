@@ -347,6 +347,55 @@ if ($DryRun) {
         Copy-Item -Path (Get-ApkPath $a) -Destination $dst -Force
         Write-Info "镜像已更新：$ApkMirrorDir/$a-release.apk（$((Get-Item $dst).Length) 字节）"
     }
+
+    # ===== 产物一致性断言（发版产物 = 清单登记值） =====
+    # 刻意做成「把刚写下的文件读回来再独立重算」，而不是复用上面的 $entries / $updateText：
+    # 复用内存变量只能证明「脚本自己算的和自己写的一致」，写盘出错、镜像没跟着更新、两份清单不同步都漏检。
+    # App 端下载后会拿清单里的 sha256 校验整包，登记值与真实字节一旦不符，用户侧只看到「下载校验失败」而无从排查。
+    $writtenUpdate = [System.IO.File]::ReadAllText($updateFile) | ConvertFrom-Json
+    if ([System.IO.File]::ReadAllText($pagesUpdateFile) -ne $updateText) {
+        throw "docs/update.json 与 update.json 内容不一致：Pages 承载的那份不是本次发版写入的内容。"
+    }
+    foreach ($a in $App) {
+        $built = Get-ApkPath $a
+        if (-not (Test-Path $built)) { throw "未找到构建产物：$built" }
+        $builtSize = (Get-Item $built).Length
+        $builtSha = (Get-FileHash -Path $built -Algorithm SHA256).Hash.ToLower()
+        $entry = $writtenUpdate.apps.$a
+        if ([string]$entry.sha256 -ne $builtSha) {
+            throw "update.json 登记的 sha256 与构建产物不符：$a 登记 $($entry.sha256)，实际 $builtSha。"
+        }
+        if ([int]$entry.size -ne $builtSize) {
+            throw "update.json 登记的 size 与构建产物不符：$a 登记 $($entry.size)，实际 $builtSize。"
+        }
+        if ([string]$entry.versionCode -ne [string]$newCodes[$a] -or [string]$entry.versionName -ne $Version) {
+            throw "update.json 的版本号与本次发版不符：$a 登记 $($entry.versionName)/$($entry.versionCode)，本次 $Version/$($newCodes[$a])。"
+        }
+        if ([string]$entry.url -notlike "*/$tag/$a-release.apk") {
+            throw "update.json 的下载地址与本次 tag（$tag）不符：$a → $($entry.url)"
+        }
+        $mirror = Join-Path $mirrorRoot "$a-release.apk"
+        if (-not (Test-Path $mirror)) { throw "缺少 APK 镜像：$mirror" }
+        $mirrorSize = (Get-Item $mirror).Length
+        $mirrorSha = (Get-FileHash -Path $mirror -Algorithm SHA256).Hash.ToLower()
+        # 镜像必须与 Release 资产是同一份字节：主链被墙时 App 会回退到镜像，两者不一致会出现「同一个版本、两种结果」。
+        if ($mirrorSha -ne $builtSha -or $mirrorSize -ne $builtSize) {
+            throw "APK 镜像与构建产物不是同一份字节：$a（镜像 $mirrorSize/$mirrorSha，产物 $builtSize/$builtSha）"
+        }
+        Write-Info "产物断言通过：$a  $builtSize 字节  $builtSha"
+    }
+    # version.properties 必须与清单同版本：否则本机/离线 assembleRelease 会产出 versionCode 低于设备已装版本的包，
+    # 安装器直接拒绝，用户只看到「应用未安装」而不知道原因。
+    $verTextAfter = [System.IO.File]::ReadAllText($verFile)
+    foreach ($a in $AllApps) {
+        $mCode = [regex]::Match($verTextAfter, "(?m)^$([regex]::Escape($a))\.versionCode=(.*)$")
+        $mName = [regex]::Match($verTextAfter, "(?m)^$([regex]::Escape($a))\.versionName=(.*)$")
+        if (-not $mCode.Success -or $mCode.Groups[1].Value.Trim() -ne [string]$newCode -or
+            -not $mName.Success -or $mName.Groups[1].Value.Trim() -ne $Version) {
+            throw "version.properties 与本次发版不一致：$a 应为 $Version/code $newCode，实际 $($mName.Groups[1].Value.Trim())/$($mCode.Groups[1].Value.Trim())"
+        }
+    }
+    Write-Info "产物断言全部通过（update.json / docs/update.json / APK 镜像 / version.properties 四方一致）"
 }
 
 # ===== 6/7 发布 GitHub Release =====
