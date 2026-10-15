@@ -748,8 +748,17 @@
         { updated: '2026-10-14', cards: ['ABCD-EFGH-JKMN-PQRS-1234'], revoked: [] },
         { cards: ['ABCD-EFGH-JKMN-PQRS-1234', 'STVW-XYZ0-1234-5678-89AB'], revoked: ['H7S0-6M3M-GMA1-Y7T2-VNRM'] });
       assertEq(merged.cards.length, 2, '合并白名单应取并集并去重');
-      assertEq(merged.revoked.length, 1, '合并吊销名单应取并集');
+      // 吊销名单以本机为准，不与远端取并集：否则把某项从吊销框删掉再上传会被远端旧记录并回来，
+      // 用户永远解除不了吊销（撤销只能靠重新生成整份清单）。
+      assertEq(merged.revoked.length, 0, '合并吊销名单应只保留本机吊销框内容，不得把远端旧记录并回来');
       assertEq(merged.sig, t.manifestSignature(merged.updated, merged.cards, merged.revoked), '合并后必须重新签名');
+
+      // 本机吊销框有内容时应原样保留（归一化去重 + 恢复分组写法）。
+      var merged2 = t.mergeWithRemote(
+        { updated: '2026-10-14', cards: [], revoked: ['h7s0 6m3m-gma1-y7t2-vnrm', 'H7S0-6M3M-GMA1-Y7T2-VNRM'] },
+        { cards: [], revoked: ['STVW-XYZ0-1234-5678-89AB'] });
+      assertEq(merged2.revoked.length, 1, '本机吊销项应归一化去重后保留');
+      assertEq(merged2.revoked[0], 'H7S0-6M3M-GMA1-Y7T2-VNRM', '吊销项应恢复为分组写法');
       assertEq(raw.length, 24, '用例自检');
     });
   }
