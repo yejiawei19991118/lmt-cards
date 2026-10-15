@@ -30,7 +30,7 @@
             --page-bg: #eef1f6;
             --text-main: #1f2430;
             --text-sub: #5b6472;
-            /* 字幕安全区内边距（相对 375×667 画布的像素值）。
+            /* 安全区内边距（相对 375×667 画布的像素值）。
                原始位置为上50/左20/右80/下120，累计整体右移 0.7cm、下移 0.7cm：
                按 CSS 标准 96dpi 换算，1cm = 96/2.54 ≈ 37.7953px。
                右移 = 左侧内边距 +Δ、右侧内边距 -Δ；下移同理调整上/下内边距，尺寸保持不变。 */
@@ -909,7 +909,7 @@
                 <select id="font-select">
                     <option value="'ZCOOL KuaiLe', 'KaiTi', cursive" data-web="ZCOOL+KuaiLe" data-family="ZCOOL KuaiLe">站酷快乐体</option>
                 </select>
-                <div class="font-status" id="font-status" role="status" aria-live="polite">在线字体已加载</div>
+                <div class="font-status" id="font-status" role="status" aria-live="polite">正在加载在线字体…</div>
             </div>
 
             <!-- 模板自定义：颜色/字号即时覆盖预览，可存为「我的模板」 -->
@@ -1018,7 +1018,7 @@
     <div class="preview-container">
         <div class="preview-head">
             <span class="preview-head-title">实时预览</span>
-            <span class="preview-head-hint">画布 375 × 667（导出同尺寸）</span>
+            <span class="preview-head-hint">画布 375 × 667（导出 4× 高清图，1500 × 2668）</span>
         </div>
         <div class="preview-stage">
         <div class="canvas-wrapper web-font" id="canvas-wrapper">
