@@ -2040,9 +2040,44 @@
 <!-- @shell:pwa-sw -->
 <script>
     // PWA：注册 Service Worker，实现离线可用（需 http/https 环境，file:// 不生效）
+    // 三件事一起保证「发了新版本，苹果端也能跟上」：
+    //   1) updateViaCache:'none'：SW 脚本本身不走 HTTP 缓存（GitHub Pages 给 sw.js 10 分钟 max-age），
+    //      否则更新检查读到的还是旧的 sw.js，会被判定成「没有变化」；
+    //   2) 每次页面回到前台都主动 update()：iOS 主屏 App 只在冷启动时检查 SW 更新，
+    //      补上这一下，切回 App 时就能发现新版本；
+    //   3) 新 SW 接管后刷新一次：install 里的 skipWaiting 会让新 SW 立刻接管，
+    //      但当前页面跑的还是旧 HTML/JS，不刷新用户就一直看着旧界面。
+    //      为避免打断正在输入的用户（本应用的文案是手动输入的，刷新会丢），仅在页面尚未被操作过时自动刷新。
     if ('serviceWorker' in navigator) {
+        var swReg = null;
+        var reloading = false;
+        var hadController = !!navigator.serviceWorker.controller;
+        var edited = false;
+
+        ['pointerdown', 'keydown', 'input'].forEach(function (t) {
+            document.addEventListener(t, function () { edited = true; }, { capture: true, once: true });
+        });
+
+        function checkForUpdate() {
+            if (swReg && swReg.update) { swReg.update().catch(function () {}); }
+        }
+
         window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js').catch(function () {});
+            navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+                .then(function (reg) { swReg = reg; checkForUpdate(); })
+                .catch(function () {});
+        });
+
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') { checkForUpdate(); }
+        });
+
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+            // 首次安装时 activate 里的 clients.claim() 也会触发 controllerchange，
+            // 那种情况页面本身就是最新内容，不需要刷新；只有「页面加载时已有 SW 在控」才算更新。
+            if (!hadController || reloading || edited) { return; }
+            reloading = true;
+            window.location.reload();
         });
     }
 </script>

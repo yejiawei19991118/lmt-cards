@@ -1,6 +1,6 @@
 // PWA Service Worker：缓存应用外壳，实现离线可用（仅同源资源，跨域请求直接走网络）
-const CACHE = 'lmt-cardgen-v15';
-// @index-hash: 39fc6433  （index.html 归一化内容前 8 位；改完 index.html 运行 tools/web-sync.ps1 -Bump 自动升版）
+const CACHE = 'lmt-cardgen-v16';
+// @index-hash: 6f27b710  （index.html 归一化内容前 8 位；改完 index.html 运行 tools/web-sync.ps1 -Bump 自动升版）
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -37,6 +37,22 @@ self.addEventListener('fetch', function (e) {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // 跨域（如在线清单）交给网络，不做缓存
+  // 页面导航（HTML）单独走「网络优先、离线回退缓存」。
+  // 导航若也缓存优先，用户会长期停在旧 HTML：iOS 主屏 App 的 SW 更新检查只在冷启动时发生，
+  // 导航一旦命中缓存就再也不会去取新版本，表现为「发了新版，苹果端还是旧界面」。
+  // 静态资源（图标等）仍保持缓存优先，离线可用不受影响。
+  if (req.mode === 'navigate') {
+    e.respondWith(
+      fetch(req).then(function (resp) {
+        const copy = resp.clone();
+        caches.open(CACHE).then(function (c) { c.put(req, copy); }).catch(function () {});
+        return resp;
+      }).catch(function () {
+        return caches.match(req).then(function (hit) { return hit || caches.match('./index.html'); });
+      })
+    );
+    return;
+  }
   e.respondWith(
     caches.match(req).then(function (hit) {
       if (hit) return hit;
