@@ -138,24 +138,56 @@ function Get-Normalized([string]$code) {
     return (([string]$code) -replace '[^0-9A-Za-z]', '').ToUpper()
 }
 
+# JSON 原文里某字段名对应的字符串字面量，按出现顺序返回。用途见 Resolve-JsonString。
+function Get-JsonStringLiterals([string]$raw, [string]$field) {
+    $rx = '"' + [regex]::Escape($field) + '"\s*:\s*"([^"]*)"'
+    return @([regex]::Matches($raw, $rx) | ForEach-Object { $_.Groups[1].Value })
+}
+
+# 取参与签名的字符串值：pwsh 7 的 ConvertFrom-Json 会把「整体呈 ISO8601 形状」的字符串自动转成
+# [DateTime]（PS 5.1 不会），插值后变成 10/15/2026 18:04:25 这类随时区/区域设置而变的本地化文本，
+# 于是本机与 CI 对同一份 cards.json 重算出不同的 rev，CI 上直接报「内容指纹不符」卡住发版。
+# 故解析结果一旦是 DateTime（说明原文是纯 ISO8601），就改回 JSON 原文里的字面量——这类字符串不含
+# 需要反转义的字符，字面量即签名时用的原值。updated 与 cardgen 写出的 YYYY-MM-DD 都会命中。
+function Resolve-JsonString($value, [string]$literal) {
+    if ($value -is [datetime]) { return $literal }
+    return [string]$value
+}
+
 # 重算 cards.json 的内容指纹 rev，口径与卡密生成器 / 客户端（lmt-layout 的 manifestRevSource）逐字一致：
 #   revSource = ver "\n" updated "\n" cards 按 (mc,card) 升序逐行 "{card}|{mc}|{note}|{exp}" 用 "\n" 连接 "\n" revoked 升序 join(",")
 #   rev       = sha256Hex(revSource) 的前 16 位 hex
 # card / mc 归一化（转大写剔除 [^0-9A-Z]），note / exp 去首尾空白后原样参与。
 function Get-CardsRev([string]$cardsJsonPath) {
-    $j = [System.IO.File]::ReadAllText($cardsJsonPath) | ConvertFrom-Json
+    $raw = [System.IO.File]::ReadAllText($cardsJsonPath)
+    $j = $raw | ConvertFrom-Json
+    # updated / note / exp 这三个字符串不直接取 ConvertFrom-Json 的结果：pwsh 7 会把 ISO8601 形状的值
+    # 转成 [DateTime]（PS 5.1 不会），插值后随区域设置与时区变形（如 10/15/2026 18:04:25），
+    # 于是本机与 CI 对同一份 cards.json 算出不同的 rev。改从 JSON 原文按字面量取（见 Resolve-JsonString）。
+    # 生成器用 JSON.stringify(obj, null, 2) 输出，cards 数组内每个元素的字段顺序与数组顺序都是固定的，
+    # 因此按出现顺序取到的字面量与 cards 逐项对应。
+    $updatedLits = @(Get-JsonStringLiterals $raw 'updated')
+    $noteLits = @(Get-JsonStringLiterals $raw 'note')
+    $expLits = @(Get-JsonStringLiterals $raw 'exp')
+    $cardsArr = @($j.cards)
     $nul = [char]0
     $soh = [char]1
     # 排序键必须与 JS 的 mc + "\u0000" + card 一致，且比较必须走序号（Ordinal）而非区域性规则，否则与 JS 的 < 比较结果不同。
     # 键与行用 \u0001 拼在一起排序，排序后再截出行，避免用两个平行数组。
-    $combined = @($j.cards | ForEach-Object {
-        $mc = Get-Normalized $_.mc
-        $card = Get-Normalized $_.card
-        $note = ([string]$_.note).Trim()
-        $exp = ([string]$_.exp).Trim()
-        "$mc$nul$card$soh$card|$mc|$note|$exp"
-    })
-    $arr = [string[]]$combined
+    $combined = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $cardsArr.Count; $i++) {
+        $e = $cardsArr[$i]
+        $mc = Get-Normalized $e.mc
+        $card = Get-Normalized $e.card
+        $noteLit = ''
+        if ($i -lt $noteLits.Count) { $noteLit = $noteLits[$i] }
+        $expLit = ''
+        if ($i -lt $expLits.Count) { $expLit = $expLits[$i] }
+        $note = (Resolve-JsonString $e.note $noteLit).Trim()
+        $exp = (Resolve-JsonString $e.exp $expLit).Trim()
+        $combined.Add("$mc$nul$card$soh$card|$mc|$note|$exp")
+    }
+    $arr = $combined.ToArray()
     [System.Array]::Sort($arr, [System.StringComparer]::Ordinal)
     $cards = (($arr | ForEach-Object { $_.Substring($_.IndexOf($soh) + 1) }) -join "`n")
     $revokedArr = @($j.revoked | ForEach-Object { Get-Normalized $_ } | Select-Object -Unique)
@@ -164,7 +196,10 @@ function Get-CardsRev([string]$cardsJsonPath) {
         [System.Array]::Sort($revokedArr, [System.StringComparer]::Ordinal)
     }
     $revoked = ($revokedArr -join ',')
-    $revSource = "$([int]$j.ver)`n$($j.updated)`n$cards`n$revoked"
+    $updatedLit = ''
+    if ($updatedLits.Count -gt 0) { $updatedLit = $updatedLits[0] }
+    $updated = Resolve-JsonString $j.updated $updatedLit
+    $revSource = "$([int]$j.ver)`n$updated`n$cards`n$revoked"
     $sha = [System.Security.Cryptography.SHA256]::Create()
     $hash = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($revSource))
     return (-join ($hash | ForEach-Object { $_.ToString('x2') })).Substring(0, 16)
