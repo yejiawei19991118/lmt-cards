@@ -25,6 +25,9 @@
   var pageErrors = [];
   // 两个应用各自收到的「假原生落盘桥」调用，由 installFakeSaver 填充（见下）
   var saverCalls = { layout: [], cardgen: [] };
+  // 假桥的可调开关（用例里按需改写）：openOk 为 true 表示「原生侧真的把位置打开了」，
+  // 用来覆盖「打开所在位置」的成功分支；默认 false，让外壳走到有界面反馈的兜底文案。
+  var fakeSaver = { layout: { openOk: false, lastPath: '' }, cardgen: { openOk: false, lastPath: '' } };
 
   // ---------- 断言 / 等待 ----------
   function fail(msg) { throw new Error(msg); }
@@ -172,10 +175,11 @@
           return true; // 与原生实现一致：成功返回 true，失败返回 false
         },
         // 安卓壳「打开所在位置」用到的两个原生能力（见 MainActivity）。
-        // 这里刻意都返回「拿不到」：外壳会因此走到「无法直接打开…」的兜底文案，
+        // 默认都返回「拿不到」：外壳会因此走到「无法直接打开…」的兜底文案，
         // 该文案有可观察的界面反馈，正好用来断言按钮确实被接上了（而不是点了没反应）。
-        lastSavedPath: function () { return ''; },
-        openLastSaved: function () { return false; }
+        // 用例可以改写 fakeSaver[key].openOk / .lastPath 来覆盖别的分支。
+        lastSavedPath: function () { return fakeSaver[key].lastPath; },
+        openLastSaved: function () { return fakeSaver[key].openOk; }
       };
     } catch (e) { /* 跨源受限时保持浏览器原行为 */ }
   }
@@ -382,6 +386,18 @@
       assertEq(text(loc), '打开所在位置', '按钮文案');
       loc.click();
       assert(/无法直接打开/.test(text(msg)), '点击「打开所在位置」在拿不到原生能力时应给出兜底文案，实际：' + text(msg));
+
+      // 兜底文案同样说明「最近一次导出确实落了盘」，按钮必须继续挂着；否则点一次就消失，用户想重试都没得点。
+      var loc2 = await until(function () { return doc.querySelector('#open-location-btn'); },
+        3000, '给出兜底文案后「打开所在位置」按钮仍应保留（否则点一次就消失，没法重试）');
+      assertEq(text(loc2), '打开所在位置', '兜底后按钮文案');
+      // 成功分支：原生侧真的打开了位置，外壳应立即把控制权交出去，不得再写任何兜底文案。
+      // （Java 侧能否真的打开由 MainActivity 实现，浏览器里测不到，这里只锁页面这一层的契约。）
+      fakeSaver.layout.openOk = true;
+      var msgAfterFail = text(msg);
+      loc2.click();
+      assertEq(text(msg), msgAfterFail, '原生打开成功时不应改写导出提示（改写了说明仍走了兜底分支）');
+      fakeSaver.layout.openOk = false;
     });
 
     test('layout/文案超长时禁用导出并提示，清空后恢复', async function () {
