@@ -1994,8 +1994,6 @@
                 });
 
                 const shot = await canvasToUrl(canvas);
-                // 拿到可下载地址后才恢复按钮：否则 toBlob 未完成期间按钮已可点，能重入导出
-                restore();
                 const fileName = '排版图_' + new Date().getTime() + '.png';
                 // @shell:image-export
                 triggerDownload(shot.url, fileName);
@@ -2006,6 +2004,9 @@
                     setTimeout(shot.release, 8000); // 桌面端：等下载真正开始后再释放
                 }
                 // @shell:end
+                // 落盘/回退分支都走完才恢复按钮：安卓外壳的落盘是异步的（base64 编码 + 原生写入），
+                // 若在 toBlob 完成时就恢复按钮，编码尚未结束时按钮已可点，能重入并发导出。
+                restore();
             } catch (err) {
                 console.error('导出失败:', err);
                 // 不用 alert：移动端 WebView 未接管弹窗时会静默无提示
