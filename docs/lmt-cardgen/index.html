@@ -749,7 +749,12 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (!e) return;
             ok++;
             var prev = seen[e.key];
-            if (prev) { if (!prev.note && e.note) prev.note = e.note; }
+            if (prev) {
+                // 与 mergeCodes 保持同一合并语义：重复行里后出现的信息用来补全先前缺失的部分，
+                // 备注与有效期都要补，否则「一行带备注、一行带有效期」时会丢掉其中一项。
+                if (!prev.note && e.note) prev.note = e.note;
+                if (!prev.exp && e.exp) prev.exp = e.exp;
+            }
             else { seen[e.key] = e; entries.push(e); }
         });
         var data = { entries: entries, lines: lines, ok: ok };
@@ -758,7 +763,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return data;
     }
 
-    // 按机器码去重（保留首次出现的顺序；后出现的有备注而先前没有时补上备注）
+    // 按机器码去重（保留首次出现的顺序；后出现的有备注 / 有效期而先前没有时补上）
     // 返回解析结果的副本：analyzeLedger 的结果会被缓存复用，若直接把内部数组交出去，
     // 调用方一旦就地改动（排序、补备注）就会污染缓存，影响后续统计与清单。
     function uniqueEntries(text) { return analyzeLedger(text).entries.slice(); }
@@ -1040,7 +1045,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         // 否则统计会虚高并误报「无法识别」）。
         var s = analyzeLedger(mcList.value);
         var bad = s.lines - s.ok;
-        ledgerTip.textContent = '台账共 ' + s.entries.length + ' 位用户' +
+        // 空台账与首屏初始文案（#ledger-tip）保持同一措辞：都写「台账为空」，
+        // 避免出现「台账共 0 位用户」这种与初始态自相矛盾的说法。
+        ledgerTip.textContent = (s.entries.length ? ('台账共 ' + s.entries.length + ' 位用户') : '台账为空') +
             (bad > 0 ? '（' + bad + ' 行无法识别，将被忽略）' : '') + ' · 已自动保存到本浏览器';
     }
 
@@ -1851,30 +1858,33 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|HarmonyOS/i.test(String(ua));
     }
 
-    // 导入模板：与导出台账同格式（机器码,卡密,备注）。卡密列导入时会被自动忽略，
-    // 所以办理台账时可只填机器码和备注，卡密列留空或保留占位符都不影响。
+    // 导入模板：与导出台账同格式（机器码,卡密,备注,有效期）。卡密列导入时会被自动忽略，
+    // 所以办理台账时可只填机器码和备注，卡密与有效期列留空或保留占位符都不影响。
     function buildTemplateCsv() {
         var rows = [
-            ['机器码', '卡密', '备注'],
-            ['ABCD-EFGH-JKMN-PQRS', 'XXXX-XXXX-XXXX-XXXX-XXXX', '张三'],
-            ['STVW-XYZ0-1234-5678', 'XXXX-XXXX-XXXX-XXXX-XXXX', '李四'],
-            ['WXYZ-0123-4567-89AB', '', '王五']
+            ['机器码', '卡密', '备注', '有效期'],
+            ['ABCD-EFGH-JKMN-PQRS', 'XXXX-XXXX-XXXX-XXXX-XXXX', '张三', '2027-12-31'],
+            ['STVW-XYZ0-1234-5678', 'XXXX-XXXX-XXXX-XXXX-XXXX', '李四', ''],
+            ['WXYZ-0123-4567-89AB', '', '王五', '']
         ];
         return '\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
     }
 
-    // 交付文案（可指定列表）：一段可直接发给用户的文字，机器码与卡密一目了然（有备注时以备注作标题）。
+    // 交付文案（可指定列表）：一段可直接发给用户的文字，机器码 / 卡密 / 有效期一目了然
+    // （有备注时以备注作标题），末尾附激活指引。与交付图（含有效期）保持同一信息口径。
     // 抽成 buildDeliverTextFor(list) 后，交付按钮与「复制筛选话术」共用同一份生成逻辑。
     function buildDeliverTextFor(list) {
         var ps = list || [];
         if (!ps.length) return '';
-        return ps.map(function (p) {
+        var body = ps.map(function (p) {
             var lines = [];
             if (p.note) lines.push('【' + p.note + '】');
             lines.push('机器码：' + group(p.mc, 4));
             lines.push('卡密：' + p.card);
+            lines.push('有效期：' + (p.exp || '长期有效'));
             return lines.join('\n');
         }).join('\n\n');
+        return body + '\n\n激活指引：打开「图文排版生成器」，在卡密授权页粘贴上方卡密并点击「激活」。';
     }
     function buildDeliverText() {
         return buildDeliverTextFor(computePairs()); // 纯计算，无需重排结果列表 DOM
@@ -2048,15 +2058,27 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         var old;
         try { old = JSON.parse(rec.json); } catch (e) { return 0; }
         var cur = buildManifestObj();
-        function setOf(arr) {
-            var s = {};
-            (arr || []).forEach(function (c) { var n = cardOf(c); if (n) s[n] = true; });
-            return s;
+        // 白名单按「卡密 -> 详情指纹（有效期 + 名称）」建映射：既要识别新增 / 移除，
+        // 也要识别内容变更（改名或改有效期）。只比集合差异会漏掉内容变更，
+        // 导致「待重传 0 项」与 isPendingUpload() 的判定自相矛盾。
+        function cardMap(arr) {
+            var m = {};
+            (arr || []).forEach(function (c) {
+                var n = cardOf(c);
+                if (n) m[n] = String((c && c.exp) || '') + '|' + String((c && c.note) || '');
+            });
+            return m;
         }
-        var aC = setOf(cur.cards), bC = setOf(old.cards), aR = setOf(cur.revoked), bR = setOf(old.revoked);
+        var aC = cardMap(cur.cards), bC = cardMap(old.cards);
         var n = 0;
-        Object.keys(aC).forEach(function (k) { if (!bC[k]) n++; });
-        Object.keys(bC).forEach(function (k) { if (!aC[k]) n++; });
+        Object.keys(aC).forEach(function (k) {
+            if (bC[k] === undefined) n++;              // 新增
+            else if (aC[k] !== bC[k]) n++;             // 内容变更（有效期 / 名称）
+        });
+        Object.keys(bC).forEach(function (k) { if (aC[k] === undefined) n++; }); // 移除
+        var aR = {}, bR = {};
+        (cur.revoked || []).forEach(function (c) { var k = cardOf(c); if (k) aR[k] = true; });
+        (old.revoked || []).forEach(function (c) { var k = cardOf(c); if (k) bR[k] = true; });
         Object.keys(aR).forEach(function (k) { if (!bR[k]) n++; });
         Object.keys(bR).forEach(function (k) { if (!aR[k]) n++; });
         return n;
@@ -2729,7 +2751,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         // 否则改了台账又没点「生成卡密」时会复制到过期卡密（与 copy-manifest 的处理保持一致）。
         var fresh = computePairs();
         if (fresh.length === 0) { flashButton(copyAllBtn, '无结果'); return; }
-        var text = fresh.map(function (p) { return group(p.mc, 4) + '\t' + p.card + (p.note ? '\t' + p.note : ''); }).join('\n');
+        // 四列固定对齐（机器码 / 卡密 / 备注 / 有效期），缺失的列输出空串，
+        // 与「导出台账」的列口径一致，避免粘贴进表格时列位错乱。
+        var text = fresh.map(function (p) {
+            return group(p.mc, 4) + '\t' + p.card + '\t' + (p.note || '') + '\t' + (p.exp || '');
+        }).join('\n');
         copyWithFeedback(text, copyAllBtn, '已复制全部');
     });
     document.getElementById('export-btn').addEventListener('click', function () {

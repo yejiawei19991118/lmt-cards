@@ -1018,12 +1018,13 @@
     <div class="preview-container">
         <div class="preview-head">
             <span class="preview-head-title">实时预览</span>
-            <span class="preview-head-hint">画布 375 × 667（导出 4× 高清图，1500 × 2668）</span>
+            <span class="preview-head-hint" id="preview-head-hint">画布 375 × 667（导出 4× 高清图，1500 × 2668）</span>
         </div>
         <div class="preview-stage">
         <div class="canvas-wrapper web-font" id="canvas-wrapper">
             
-            <!-- 核心：只有这个区域内的内容会被导出，并且已被死死限制在红线内 -->
+            <!-- 可编辑内容区：承载全部文案与图片，被限制在安全区像素内。
+                 导出截取的是整个画布（#canvas-wrapper），安全区参考线在导出前会被隐藏，不会进入成品。 -->
             <div class="safe-content-area" id="export-target">
                 <div class="header-summary handwriting-font" id="preview-summary">
                     总结一下：<br>
