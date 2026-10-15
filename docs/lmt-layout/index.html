@@ -70,18 +70,18 @@
             color: var(--text-main);
         }
 
-        /* 控制面板 */
+        /* 控制面板：底色用浅灰，让内部的白色「区块卡」自然浮起来，一眼看出分组结构 */
         .control-panel {
             width: 330px;
-            background: #fff;
-            padding: 22px;
+            background: #f7f9fc;
+            padding: 18px;
             border-radius: 16px;
             border: 1px solid #e8ecf3;
             box-shadow: 0 8px 24px rgba(24, 33, 51, .08), 0 1px 3px rgba(24, 33, 51, .06);
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 14px;
             flex-shrink: 0;
         }
         .control-panel h2 {
@@ -174,23 +174,25 @@
 
         /* 美化滚动条（桌面端 WebKit 内核）：与卡片圆角风格统一 */
         .control-panel::-webkit-scrollbar,
-        .preview-container::-webkit-scrollbar { width: 10px; height: 10px; }
+        .preview-stage::-webkit-scrollbar { width: 10px; height: 10px; }
         .control-panel::-webkit-scrollbar-track,
-        .preview-container::-webkit-scrollbar-track { background: transparent; }
+        .preview-stage::-webkit-scrollbar-track { background: transparent; }
         .control-panel::-webkit-scrollbar-thumb,
-        .preview-container::-webkit-scrollbar-thumb {
+        .preview-stage::-webkit-scrollbar-thumb {
             background: #cfd8e5; border-radius: 8px;
             border: 2px solid transparent; background-clip: padding-box;
         }
         .control-panel::-webkit-scrollbar-thumb:hover,
-        .preview-container::-webkit-scrollbar-thumb:hover { background: #aebbcb; background-clip: padding-box; }
+        .preview-stage::-webkit-scrollbar-thumb:hover { background: #aebbcb; background-clip: padding-box; }
 
         /* 键盘可达性：Tab 聚焦时给出清晰外圈，鼠标点击不触发 */
         .btn-primary:focus-visible,
         .btn-ghost:focus-visible,
+        .btn-danger:focus-visible,
         .upload-btn:focus-visible,
         .manual-copy-actions button:focus-visible,
         .toggle-safe-zone:focus-within,
+        details.panel-block > summary:focus-visible,
         .control-group select:focus-visible {
             outline: 2px solid rgba(47, 109, 246, .5); outline-offset: 2px;
         }
@@ -210,15 +212,37 @@
         .fit-note { display: none; font-size: 12px; line-height: 1.55; color: #7a8699; }
         .fit-note.show { display: block; }
 
-        /* 预览区容器
-           说明：容器自身可纵向滚动，配合画布的 margin:auto 0 实现“安全居中”：
+        /* 预览区容器（纵向：顶部轻量标题栏 + 下方画布舞台）
+           说明：舞台自身可纵向滚动，配合画布的 margin:auto 0 实现“安全居中”：
            视口足够高时垂直居中；视口偏矮（如 1366×768 笔记本）时自动改为顶部对齐并可滚动，
-           避免 667px 画布被 body 的 overflow:hidden 裁掉上下两端且无法查看。 */
+           避免 667px 画布被 body 的 overflow:hidden 裁掉上下两端且无法查看。
+           标题栏只做信息提示，不参与导出，画布与安全区像素一律不变。 */
         .preview-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100%;
+            overflow: hidden;
+        }
+        .preview-head {
+            flex: 0 0 auto; width: 100%; box-sizing: border-box;
+            display: flex; align-items: center; gap: 10px; padding: 0 4px 10px;
+        }
+        .preview-head-title {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 14px; font-weight: 700; color: var(--text-main); letter-spacing: .3px;
+        }
+        .preview-head-title::before {
+            content: ''; width: 3px; height: 14px; border-radius: 2px;
+            background: linear-gradient(180deg, #6f9bff, var(--accent));
+        }
+        .preview-head-hint { margin-left: auto; font-size: 12px; color: var(--text-sub); }
+        /* 画布舞台：原先挂在 .preview-container 上的居中 + 纵向滚动逻辑原样搬到这里 */
+        .preview-stage {
+            flex: 1 1 auto; min-height: 0; width: 100%;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100%;
             overflow-y: auto;
             overflow-x: hidden;
         }
@@ -495,10 +519,15 @@
                 width: 100%;
                 height: auto;
                 display: block;
+                padding: 12px 0 4px;
+            }
+            .preview-head { padding: 0 16px 8px; }
+            .preview-stage {
+                display: block;
+                height: auto;
                 overflow-x: auto;
                 overflow-y: hidden;
                 -webkit-overflow-scrolling: touch;
-                padding: 12px 0 4px;
             }
             .canvas-wrapper {
                 margin: 0 auto;
@@ -661,6 +690,55 @@
             border-radius: 9px; font-size: 14px; font-family: inherit; background: #fbfcfe; color: var(--text-main);
         }
 
+        /* ===== 界面分区：把原先平铺的控制项归类成一张张「区块卡」 =====
+           目的：主流程一眼可见，辅助/高频次要功能收进折叠区，降低一屏内的视觉噪声。
+           注意：区块卡只是分组容器，不改动内部控件的 id / 文案 / data-tpl 显隐逻辑。 */
+        .panel-block {
+            display: flex; flex-direction: column; gap: 12px;
+            background: #fff; border: 1px solid #e8ecf3; border-radius: 14px;
+            padding: 12px 12px 14px;
+            box-shadow: 0 1px 2px rgba(24, 33, 51, .04);
+        }
+        .panel-block-title {
+            display: flex; align-items: center; gap: 8px;
+            margin: 0; font-size: 13px; font-weight: 700; color: var(--text-main); letter-spacing: .3px;
+        }
+        .panel-block-title::before {
+            content: ''; flex: 0 0 auto; width: 3px; height: 14px; border-radius: 2px;
+            background: linear-gradient(180deg, #6f9bff, var(--accent));
+        }
+        /* 辅助区块：色条调灰，与主流程区块拉开主次 */
+        .panel-block.is-aux .panel-block-title::before { background: #cbd4e2; }
+
+        /* 「高级功能」整块折叠：标题即 summary，展开后才是具体控件。
+           这里显式用 display:block，避免 flex 容器影响 <details> 的原生开合行为 */
+        details.panel-block { display: block; padding: 0; gap: 0; }
+        details.panel-block > summary.panel-block-title {
+            padding: 13px 12px; cursor: pointer; list-style: none; user-select: none;
+        }
+        details.panel-block > summary.panel-block-title::-webkit-details-marker { display: none; }
+        details.panel-block > summary.panel-block-title::after {
+            content: ''; margin-left: auto; width: 7px; height: 7px; flex: 0 0 auto;
+            border-right: 2px solid var(--text-sub); border-bottom: 2px solid var(--text-sub);
+            transform: rotate(45deg) translate(-1px, -1px); transition: transform .2s;
+        }
+        details.panel-block[open] > summary.panel-block-title::after {
+            transform: rotate(-135deg) translate(-1px, -1px);
+        }
+        details.panel-block > summary.panel-block-title:hover { color: var(--accent); }
+        details.panel-block > .panel-block-body {
+            display: flex; flex-direction: column; gap: 12px; padding: 0 12px 14px;
+        }
+
+        /* 按钮分级：主操作（实心主色，全局唯一）、次操作（描边中性）、删除/清空（危险描边） */
+        .btn-danger {
+            flex: 0 0 auto; padding: 0 14px; border: 1px solid #f0c4c0; background: #fff6f5;
+            border-radius: 9px; cursor: pointer; font-size: 13px; color: #b42318; font-family: inherit;
+            transition: background .15s, border-color .15s, color .15s;
+        }
+        .btn-danger:hover { background: #fdecea; border-color: #e2938c; }
+        .btn-danger:disabled, .btn-ghost:disabled { cursor: not-allowed; opacity: .5; }
+
         /* 弹层打开时锁定背景滚动，避免移动端手指在浮层上滑动时背景跟着一起滚 */
         body.modal-open { overflow: hidden; }
         /* 弹层入场：轻微上浮 + 淡入，给出「这是新出现的一层」的反馈 */
@@ -725,193 +803,224 @@
 
     <!-- 左侧控制面板 -->
     <div class="control-panel">
-        <h2>内容编辑</h2>
+        <h2>图文排版</h2>
 
-        <!-- 方案草稿：把当前内容/图片/样式整体存为一份可复用的方案 -->
-        <div class="control-group">
-            <label for="draft-select">方案草稿</label>
-            <select id="draft-select"><option value="">— 载入草稿 —</option></select>
-            <div class="lmt-btn-row">
-                <button type="button" class="btn-ghost" id="draft-save-btn">保存草稿</button>
-                <button type="button" class="btn-ghost" id="draft-delete-btn">删除草稿</button>
+        <!-- 区块一：核心内容（主流程，填完这几项即可出图） -->
+        <section class="panel-block">
+            <h3 class="panel-block-title">核心内容</h3>
+
+            <div class="control-group">
+                <label for="template-select">排版模板</label>
+                <select id="template-select">
+                    <option value="window">橱窗排版</option>
+                    <option value="three">三图竖排</option>
+                </select>
             </div>
-            <div class="lmt-btn-row">
-                <label for="draft-import-file" class="upload-btn" id="draft-import-btn">导入草稿</label>
-                <input type="file" id="draft-import-file" class="file-upload" accept="application/json,.json">
-                <button type="button" class="btn-ghost" id="draft-export-btn">导出草稿</button>
+
+            <div class="control-group">
+                <label for="input-summary">顶部文案</label>
+                <textarea id="input-summary" class="handwriting-font" placeholder="总结一下：&#10;宽松灰开衫弱化肩背臃肿感，不挑上身&#10;深色阔腿牛仔裤重感在线，拉长腿线&#10;平衡上下身比例，藏肉又显利落"></textarea>
             </div>
-            <div class="lmt-tip" id="draft-msg" role="status" aria-live="polite"></div>
-        </div>
 
-        <!-- 批量出图：勾选若干草稿/常用文案，逐张渲染后打包成一个 ZIP -->
-        <div class="control-group">
-            <label>批量出图任务</label>
-            <div class="lmt-batch-list" id="batch-list"></div>
-            <div class="lmt-btn-row">
-                <button type="button" class="btn-primary" id="batch-btn">批量出图</button>
-                <button type="button" class="btn-ghost" id="batch-cancel-btn" hidden>取消</button>
+            <div class="control-group">
+                <label for="input-title">主标题</label>
+                <input type="text" id="input-title" class="handwriting-font" placeholder="菜头的橱窗">
             </div>
-            <div class="lmt-tip" id="batch-tip" role="status" aria-live="polite"></div>
-        </div>
 
-        <div class="control-group">
-            <label for="template-select">排版模板</label>
-            <select id="template-select">
-                <option value="window">橱窗排版</option>
-                <option value="three">三图竖排</option>
-            </select>
-        </div>
+            <div class="control-group" data-tpl="window">
+                <label for="input-keywords">关键词</label>
+                <textarea id="input-keywords" class="handwriting-font" rows="2" placeholder="🔍 黑色原牛复古直筒裤&#10;🔍 老钱风毛衣"></textarea>
+            </div>
 
-        <div class="control-group">
-            <label for="input-summary">顶部文案</label>
-            <textarea id="input-summary" class="handwriting-font" placeholder="总结一下：&#10;宽松灰开衫弱化肩背臃肿感，不挑上身&#10;深色阔腿牛仔裤重感在线，拉长腿线&#10;平衡上下身比例，藏肉又显利落"></textarea>
-        </div>
+            <div class="control-group" data-tpl="window">
+                <label for="input-subtitle">副标题</label>
+                <input type="text" id="input-subtitle" class="handwriting-font" placeholder="我的尺码">
+            </div>
+        </section>
 
-        <div class="control-group">
-            <label for="input-title">主标题</label>
-            <input type="text" id="input-title" class="handwriting-font" placeholder="菜头的橱窗">
-        </div>
+        <!-- 区块二：图片素材（随当前模板只显示对应的一组上传项） -->
+        <section class="panel-block">
+            <h3 class="panel-block-title">图片素材</h3>
 
-        <div class="control-group" data-tpl="window">
-            <label for="input-keywords">关键词</label>
-            <textarea id="input-keywords" class="handwriting-font" rows="2" placeholder="🔍 黑色原牛复古直筒裤&#10;🔍 老钱风毛衣"></textarea>
-        </div>
-        
-        <div class="control-group" data-tpl="window">
-            <label for="input-subtitle">副标题</label>
-            <input type="text" id="input-subtitle" class="handwriting-font" placeholder="我的尺码">
-        </div>
+            <div class="control-group" data-tpl="window">
+                <label>左侧模特图 (1:1)</label>
+                <label for="upload-left" class="upload-btn">点击上传图片</label>
+                <input type="file" id="upload-left" class="file-upload" accept="image/*">
+            </div>
 
-        <div class="control-group">
-            <label for="font-select">手写字体</label>
-            <select id="font-select">
-                <option value="'ZCOOL KuaiLe', 'KaiTi', cursive" data-web="ZCOOL+KuaiLe" data-family="ZCOOL KuaiLe">站酷快乐体</option>
-            </select>
-            <div class="font-status" id="font-status" role="status" aria-live="polite">在线字体已加载</div>
-        </div>
+            <div class="control-group" data-tpl="window">
+                <label>右侧模特图 (1:1)</label>
+                <label for="upload-right" class="upload-btn">点击上传图片</label>
+                <input type="file" id="upload-right" class="file-upload" accept="image/*">
+            </div>
 
-        <div class="control-group" data-tpl="window">
-            <label>左侧模特图 (1:1)</label>
-            <label for="upload-left" class="upload-btn">点击上传图片</label>
-            <input type="file" id="upload-left" class="file-upload" accept="image/*">
-        </div>
+            <div class="control-group" data-tpl="window">
+                <label>底部左侧截图 (3:4)</label>
+                <label for="upload-screenshot-left" class="upload-btn">点击上传图片</label>
+                <input type="file" id="upload-screenshot-left" class="file-upload" accept="image/*">
+            </div>
 
-        <div class="control-group" data-tpl="window">
-            <label>右侧模特图 (1:1)</label>
-            <label for="upload-right" class="upload-btn">点击上传图片</label>
-            <input type="file" id="upload-right" class="file-upload" accept="image/*">
-        </div>
+            <div class="control-group" data-tpl="window">
+                <label>底部右侧截图 (3:4)</label>
+                <label for="upload-screenshot-right" class="upload-btn">点击上传图片</label>
+                <input type="file" id="upload-screenshot-right" class="file-upload" accept="image/*">
+            </div>
 
-        <div class="control-group" data-tpl="window">
-            <label>底部左侧截图 (3:4)</label>
-            <label for="upload-screenshot-left" class="upload-btn">点击上传图片</label>
-            <input type="file" id="upload-screenshot-left" class="file-upload" accept="image/*">
-        </div>
+            <div class="control-group" data-tpl="three">
+                <label>图片一 (1440×600)</label>
+                <label for="upload-wide-1" class="upload-btn">点击上传图片</label>
+                <input type="file" id="upload-wide-1" class="file-upload" accept="image/*">
+            </div>
 
-        <div class="control-group" data-tpl="window">
-            <label>底部右侧截图 (3:4)</label>
-            <label for="upload-screenshot-right" class="upload-btn">点击上传图片</label>
-            <input type="file" id="upload-screenshot-right" class="file-upload" accept="image/*">
-        </div>
+            <div class="control-group" data-tpl="three">
+                <label for="input-cap-1">小标题一</label>
+                <textarea id="input-cap-1" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
+            </div>
 
-        <div class="control-group" data-tpl="three">
-            <label>图片一 (1440×600)</label>
-            <label for="upload-wide-1" class="upload-btn">点击上传图片</label>
-            <input type="file" id="upload-wide-1" class="file-upload" accept="image/*">
-        </div>
+            <div class="control-group" data-tpl="three">
+                <label>图片二 (1440×600)</label>
+                <label for="upload-wide-2" class="upload-btn">点击上传图片</label>
+                <input type="file" id="upload-wide-2" class="file-upload" accept="image/*">
+            </div>
 
-        <div class="control-group" data-tpl="three">
-            <label for="input-cap-1">小标题一</label>
-            <textarea id="input-cap-1" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
-        </div>
+            <div class="control-group" data-tpl="three">
+                <label for="input-cap-2">小标题二</label>
+                <textarea id="input-cap-2" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
+            </div>
 
-        <div class="control-group" data-tpl="three">
-            <label>图片二 (1440×600)</label>
-            <label for="upload-wide-2" class="upload-btn">点击上传图片</label>
-            <input type="file" id="upload-wide-2" class="file-upload" accept="image/*">
-        </div>
+            <div class="control-group" data-tpl="three">
+                <label>图片三 (1440×600)</label>
+                <label for="upload-wide-3" class="upload-btn">点击上传图片</label>
+                <input type="file" id="upload-wide-3" class="file-upload" accept="image/*">
+            </div>
 
-        <div class="control-group" data-tpl="three">
-            <label for="input-cap-2">小标题二</label>
-            <textarea id="input-cap-2" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
-        </div>
+            <div class="control-group" data-tpl="three">
+                <label for="input-cap-3">小标题三</label>
+                <textarea id="input-cap-3" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
+            </div>
+        </section>
 
-        <div class="control-group" data-tpl="three">
-            <label>图片三 (1440×600)</label>
-            <label for="upload-wide-3" class="upload-btn">点击上传图片</label>
-            <input type="file" id="upload-wide-3" class="file-upload" accept="image/*">
-        </div>
+        <!-- 区块三：样式与安全区（外观微调 + 参考线开关） -->
+        <section class="panel-block">
+            <h3 class="panel-block-title">样式与安全区</h3>
 
-        <div class="control-group" data-tpl="three">
-            <label for="input-cap-3">小标题三</label>
-            <textarea id="input-cap-3" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
-        </div>
+            <div class="control-group">
+                <label for="font-select">手写字体</label>
+                <select id="font-select">
+                    <option value="'ZCOOL KuaiLe', 'KaiTi', cursive" data-web="ZCOOL+KuaiLe" data-family="ZCOOL KuaiLe">站酷快乐体</option>
+                </select>
+                <div class="font-status" id="font-status" role="status" aria-live="polite">在线字体已加载</div>
+            </div>
 
-        <!-- 模板自定义：颜色/字号即时覆盖预览，可存为「我的模板」 -->
-        <div class="control-group">
-            <details class="lmt-details">
-                <summary>样式自定义</summary>
-                <div class="lmt-style-grid">
-                    <label>标题颜色<input type="color" id="style-color-title" value="#14181f"></label>
-                    <label>标题字号<input type="range" id="style-size-title" min="16" max="40" step="1" value="24"></label>
-                    <label>文案颜色<input type="color" id="style-color-summary" value="#39404f"></label>
-                    <label>文案字号<input type="range" id="style-size-summary" min="9" max="22" step="1" value="13"></label>
-                    <label>关键词颜色<input type="color" id="style-color-copy" value="#4a5566"></label>
-                    <label>关键词字号<input type="range" id="style-size-copy" min="9" max="22" step="1" value="12"></label>
-                    <label>图片圆角<input type="range" id="style-radius" min="0" max="30" step="1" value="10"></label>
-                    <label>预览底色<input type="color" id="style-color-bg" value="#ffffff"></label>
+            <!-- 模板自定义：颜色/字号即时覆盖预览，可存为「我的模板」 -->
+            <div class="control-group">
+                <details class="lmt-details">
+                    <summary>样式自定义</summary>
+                    <div class="lmt-style-grid">
+                        <label>标题颜色<input type="color" id="style-color-title" value="#14181f"></label>
+                        <label>标题字号<input type="range" id="style-size-title" min="16" max="40" step="1" value="24"></label>
+                        <label>文案颜色<input type="color" id="style-color-summary" value="#39404f"></label>
+                        <label>文案字号<input type="range" id="style-size-summary" min="9" max="22" step="1" value="13"></label>
+                        <label>关键词颜色<input type="color" id="style-color-copy" value="#4a5566"></label>
+                        <label>关键词字号<input type="range" id="style-size-copy" min="9" max="22" step="1" value="12"></label>
+                        <label>图片圆角<input type="range" id="style-radius" min="0" max="30" step="1" value="10"></label>
+                        <label>预览底色<input type="color" id="style-color-bg" value="#ffffff"></label>
+                    </div>
+                    <input type="text" id="style-name-input" placeholder="我的模板名称（如：暖色调）">
+                    <div class="lmt-btn-row">
+                        <button type="button" class="btn-ghost" id="style-save-btn">存为我的模板</button>
+                        <button type="button" class="btn-ghost" id="style-reset-btn">恢复默认样式</button>
+                        <button type="button" class="btn-danger" id="style-delete-btn">删除我的模板</button>
+                    </div>
+                </details>
+            </div>
+
+            <label class="toggle-safe-zone">
+                <input type="checkbox" id="toggle-safe" checked=""> 显示字幕安全区辅助线
+            </label>
+        </section>
+
+        <!-- 区块四：高级工具（低频操作，默认收起，需要时再展开） -->
+        <details class="panel-block is-aux">
+            <summary class="panel-block-title">草稿箱与批量工具</summary>
+            <div class="panel-block-body">
+                <!-- 方案草稿：把当前内容/图片/样式整体存为一份可复用的方案 -->
+                <div class="control-group">
+                    <label for="draft-select">方案草稿</label>
+                    <select id="draft-select"><option value="">— 载入草稿 —</option></select>
+                    <div class="lmt-btn-row">
+                        <button type="button" class="btn-ghost" id="draft-save-btn">保存草稿</button>
+                        <button type="button" class="btn-danger" id="draft-delete-btn">删除草稿</button>
+                    </div>
+                    <div class="lmt-btn-row">
+                        <label for="draft-import-file" class="upload-btn" id="draft-import-btn">导入草稿</label>
+                        <input type="file" id="draft-import-file" class="file-upload" accept="application/json,.json">
+                        <button type="button" class="btn-ghost" id="draft-export-btn">导出草稿</button>
+                    </div>
+                    <div class="lmt-tip" id="draft-msg" role="status" aria-live="polite"></div>
                 </div>
-                <input type="text" id="style-name-input" placeholder="我的模板名称（如：暖色调）">
-                <div class="lmt-btn-row">
-                    <button type="button" class="btn-ghost" id="style-save-btn">存为我的模板</button>
-                    <button type="button" class="btn-ghost" id="style-reset-btn">恢复默认样式</button>
-                    <button type="button" class="btn-ghost" id="style-delete-btn">删除我的模板</button>
+
+                <!-- 批量出图：勾选若干草稿/常用文案，逐张渲染后打包成一个 ZIP -->
+                <div class="control-group">
+                    <label>批量出图任务</label>
+                    <div class="lmt-batch-list" id="batch-list"></div>
+                    <div class="lmt-btn-row">
+                        <button type="button" class="btn-ghost" id="batch-btn">批量出图</button>
+                        <button type="button" class="btn-ghost" id="batch-cancel-btn" hidden>取消</button>
+                    </div>
+                    <div class="lmt-tip" id="batch-tip" role="status" aria-live="polite"></div>
                 </div>
-            </details>
-        </div>
 
-        <!-- 常用文案库：把常写的文案存成片段，按字段一键插入 -->
-        <div class="control-group">
-            <label for="snippet-select">常用文案库</label>
-            <select id="snippet-select"><option value="">— 选择文案片段 —</option></select>
-            <select id="snippet-field-select">
-                <option value="summary">顶部文案</option>
-                <option value="title">主标题</option>
-                <option value="keywords">关键词</option>
-                <option value="subtitle">副标题</option>
-                <option value="cap1">小标题一</option>
-                <option value="cap2">小标题二</option>
-                <option value="cap3">小标题三</option>
-            </select>
-            <div class="lmt-btn-row">
-                <button type="button" class="btn-ghost" id="snippet-save-btn">存为片段</button>
-                <button type="button" class="btn-ghost" id="snippet-insert-btn">插入</button>
-                <button type="button" class="btn-ghost" id="snippet-delete-btn">删除片段</button>
+                <!-- 常用文案库：把常写的文案存成片段，按字段一键插入 -->
+                <div class="control-group">
+                    <label for="snippet-select">常用文案库</label>
+                    <select id="snippet-select"><option value="">— 选择文案片段 —</option></select>
+                    <select id="snippet-field-select">
+                        <option value="summary">顶部文案</option>
+                        <option value="title">主标题</option>
+                        <option value="keywords">关键词</option>
+                        <option value="subtitle">副标题</option>
+                        <option value="cap1">小标题一</option>
+                        <option value="cap2">小标题二</option>
+                        <option value="cap3">小标题三</option>
+                    </select>
+                    <div class="lmt-btn-row">
+                        <button type="button" class="btn-ghost" id="snippet-save-btn">存为片段</button>
+                        <button type="button" class="btn-ghost" id="snippet-insert-btn">插入</button>
+                        <button type="button" class="btn-danger" id="snippet-delete-btn">删除片段</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="lmt-btn-row">
+                        <button type="button" class="btn-ghost" id="prefs-reset-btn">恢复默认</button>
+                    </div>
+                    <div class="lmt-tip" id="tool-msg" role="status" aria-live="polite"></div>
+                </div>
             </div>
-        </div>
+        </details>
 
-        <div class="control-group">
-            <div class="lmt-btn-row">
-                <button type="button" class="btn-ghost" id="prefs-reset-btn">恢复默认</button>
+        <!-- 区块五：输出（提示 + 唯一的实心主按钮） -->
+        <section class="panel-block">
+            <h3 class="panel-block-title">输出</h3>
+
+            <div class="fit-note" id="fit-note" role="status" aria-live="polite"></div>
+            <div class="overflow-warn" id="overflow-warn" role="status" aria-live="polite">
+                内容过长：字号已缩到最小仍超出安全区，请精简文案后再导出。
             </div>
-            <div class="lmt-tip" id="tool-msg" role="status" aria-live="polite"></div>
-        </div>
 
-        <label class="toggle-safe-zone">
-            <input type="checkbox" id="toggle-safe" checked=""> 显示字幕安全区辅助线
-        </label>
-
-        <div class="fit-note" id="fit-note" role="status" aria-live="polite"></div>
-        <div class="overflow-warn" id="overflow-warn" role="status" aria-live="polite">
-            内容过长：字号已缩到最小仍超出安全区，请精简文案后再导出。
-        </div>
-
-        <button class="btn-primary" id="export-btn">导出为图片</button>
-        <div class="export-msg" id="export-msg" role="status" aria-live="polite"></div>
+            <button class="btn-primary" id="export-btn">导出为图片</button>
+            <div class="export-msg" id="export-msg" role="status" aria-live="polite"></div>
+        </section>
     </div>
 
     <!-- 右侧预览区 -->
     <div class="preview-container">
+        <div class="preview-head">
+            <span class="preview-head-title">实时预览</span>
+            <span class="preview-head-hint">画布 375 × 667（导出同尺寸）</span>
+        </div>
+        <div class="preview-stage">
         <div class="canvas-wrapper web-font" id="canvas-wrapper">
             
             <!-- 核心：只有这个区域内的内容会被导出，并且已被死死限制在红线内 -->
@@ -986,6 +1095,7 @@
             </div>
 
         </div>
+        </div><!-- /.preview-stage -->
     </div>
 
     <!-- ===== 卡密授权模块（一卡一机 · 离线校验 · 零依赖） =====

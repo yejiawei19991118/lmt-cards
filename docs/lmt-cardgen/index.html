@@ -59,8 +59,6 @@
     .btn-primary:active { transform: translateY(1px); }
     .btn-ghost { background: #f7f9fc; color: var(--text-sub); border: 1px solid #dbe1ea; }
     .btn-ghost:hover { background: #eef4ff; border-color: var(--accent); color: var(--accent); }
-    .out { margin-top: 20px; }
-    .out h2 { font-size: 14px; margin: 0 0 10px; color: var(--text-sub); font-weight: 600; }
     .item {
         display: flex; align-items: center; gap: 10px; padding: 10px 12px;
         border: 1px solid #e8ecf3; border-radius: 10px; margin-bottom: 8px; background: #fbfcfe;
@@ -80,7 +78,7 @@
     .status-badge.is-up { color: #0f7b3f; background: #e7f7ee; }
     .status-badge.is-notup { color: #b45309; background: #fff4e5; }
     .status-badge.is-revoked { color: #b42318; background: #fef3f2; }
-    .secret { font-size: 12px; color: var(--text-sub); margin-top: 18px; line-height: 1.6; }
+    .secret { font-size: 12px; color: var(--text-sub); line-height: 1.6; }
     code { background: #f2f5fa; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
     /* 手机端：结果行原本是「机器码 → 卡密 → 备注 → 复制」横排，
@@ -171,6 +169,58 @@
         background: #fbfcfe; font-size: 12.5px; color: var(--text-sub); line-height: 1.7;
     }
     .diff-report .lmt-diff-ok { color: #0f7b3f; font-weight: 600; }
+
+    /* ===== 界面分区：与「图文排版生成器」共用同一套分区卡 / 按钮分级 =====
+       主意：外层容器改浅灰底，内部白色区块卡自然分区；登录层仍是白卡（未挂 .app-shell）。 */
+    .app-shell { background: #f7f9fc; padding: 18px; }
+    .panel-block {
+        display: flex; flex-direction: column; gap: 12px;
+        background: #fff; border: 1px solid #e8ecf3; border-radius: 14px;
+        padding: 14px 14px 16px; box-shadow: 0 1px 2px rgba(24, 33, 51, .04);
+    }
+    .panel-block + .panel-block { margin-top: 14px; }
+    /* 区块内的标签不再自带下边距，交由字段分组统一控制间距 */
+    .panel-block label { margin-bottom: 0; }
+    .panel-block .sub { margin: 0; }
+    /* 与 layout 同名的字段分组：标签与控件贴紧，组与组之间才留大间距 */
+    .control-group { display: flex; flex-direction: column; gap: 7px; }
+    /* 按钮行的默认上外边距由区块的 gap 接管，避免叠加出过大空档 */
+    .panel-block .row { margin-top: 0; }
+    .panel-block-title {
+        display: flex; align-items: center; gap: 8px;
+        margin: 0; font-size: 13px; font-weight: 700; color: var(--text-main); letter-spacing: .3px;
+    }
+    .panel-block-title::before {
+        content: ''; flex: 0 0 auto; width: 3px; height: 14px; border-radius: 2px;
+        background: linear-gradient(180deg, #6f9bff, var(--accent));
+    }
+    /* 辅助区块：色条调灰，与主流程区块拉开主次 */
+    .panel-block.is-aux .panel-block-title::before { background: #cbd4e2; }
+
+    /* 「在线清单」整块折叠：标题即 summary，展开后才是具体控件。
+       这里显式用 display:block，避免 flex 容器影响 <details> 的原生开合行为 */
+    details.panel-block { display: block; padding: 0; gap: 0; }
+    details.panel-block > summary.panel-block-title {
+        padding: 14px; cursor: pointer; list-style: none; user-select: none;
+    }
+    details.panel-block > summary.panel-block-title::-webkit-details-marker { display: none; }
+    details.panel-block > summary.panel-block-title::after {
+        content: ''; margin-left: auto; width: 7px; height: 7px; flex: 0 0 auto;
+        border-right: 2px solid var(--text-sub); border-bottom: 2px solid var(--text-sub);
+        transform: rotate(45deg) translate(-1px, -1px); transition: transform .2s;
+    }
+    details.panel-block[open] > summary.panel-block-title::after {
+        transform: rotate(-135deg) translate(-1px, -1px);
+    }
+    details.panel-block > summary.panel-block-title:hover { color: var(--accent); }
+    details.panel-block > .panel-block-body {
+        display: flex; flex-direction: column; gap: 12px; padding: 0 14px 16px;
+    }
+
+    /* 按钮分级：主操作（实心主色，全局唯一）、次操作（描边中性）、清空/吊销（危险描边） */
+    .btn-danger { background: #fff6f5; color: #b42318; border: 1px solid #f0c4c0; }
+    .btn-danger:hover { background: #fdecea; border-color: #e2938c; }
+    .btn:disabled { cursor: not-allowed; opacity: .55; }
 </style>
 </head>
 <body>
@@ -187,96 +237,131 @@
     </div>
 </div>
 <div class="wrap">
-    <div class="card">
+    <div class="card app-shell">
         <h1>卡密生成器</h1>
         <p class="sub">把用户在软件里看到的「机器码」粘贴到下面（每行一个，支持批量），点击生成即可得到对应卡密。</p>
         <div class="warn">
             本工具仅供作者使用，请勿外传。密钥必须与主程序「图文排版生成器.html」中的 <code>LICENSE_SECRET</code> 完全一致，否则卡密无法通过校验。
         </div>
 
-        <label for="mc-list">机器码台账（每行一个，可在机器码后加「,备注」，如 <code>XXXX-XXXX-XXXX-XXXX,张三</code>；自动保存到本浏览器）</label>
-        <textarea id="mc-list" placeholder="XXXX-XXXX-XXXX-XXXX,张三
+        <!-- 区块一：机器码台账（主流程：粘机器码 → 生成卡密） -->
+        <section class="panel-block">
+            <h2 class="panel-block-title">机器码台账</h2>
+
+            <div class="control-group">
+                <label for="mc-list">机器码台账（每行一个，可在机器码后加「,备注」，如 <code>XXXX-XXXX-XXXX-XXXX,张三</code>；自动保存到本浏览器）</label>
+                <textarea id="mc-list" placeholder="XXXX-XXXX-XXXX-XXXX,张三
 YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
+            </div>
 
-        <div class="row">
-            <button type="button" class="btn btn-primary" id="gen-btn">生成卡密</button>
-            <button type="button" class="btn btn-ghost" id="copy-all">复制全部</button>
-            <button type="button" class="btn btn-ghost" id="export-btn">导出台账</button>
-            <button type="button" class="btn btn-ghost" id="import-btn">导入台账</button>
-            <button type="button" class="btn btn-ghost" id="template-btn">下载模板</button>
-            <button type="button" class="btn btn-ghost" id="clear-btn">清空台账</button>
-        </div>
-        <div class="ledger-tip" id="ledger-tip" role="status" aria-live="polite">台账共 2 位用户 · 已自动保存到本浏览器</div>
-        <input type="file" id="import-file" accept=".csv,.txt,text/plain,text/csv" style="display:none">
+            <div class="row">
+                <button type="button" class="btn btn-primary" id="gen-btn">生成卡密</button>
+                <button type="button" class="btn btn-ghost" id="copy-all">复制全部</button>
+            </div>
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="export-btn">导出台账</button>
+                <button type="button" class="btn btn-ghost" id="import-btn">导入台账</button>
+                <button type="button" class="btn btn-ghost" id="template-btn">下载模板</button>
+                <button type="button" class="btn btn-danger" id="clear-btn">清空台账</button>
+            </div>
+            <div class="ledger-tip" id="ledger-tip" role="status" aria-live="polite">台账共 2 位用户 · 已自动保存到本浏览器</div>
+            <input type="file" id="import-file" accept=".csv,.txt,text/plain,text/csv" style="display:none">
+        </section>
 
-        <div class="row">
-            <button type="button" class="btn btn-ghost" id="deliver-btn">复制交付文案</button>
-            <button type="button" class="btn btn-ghost" id="deliver-img-btn">生成交付图</button>
-            <button type="button" class="btn btn-ghost" id="backup-btn">备份台账</button>
-            <button type="button" class="btn btn-ghost" id="restore-btn">恢复备份</button>
-            <button type="button" class="btn btn-ghost" id="online-check-btn">对照线上清单</button>
-        </div>
-        <div class="row">
-            <button type="button" class="btn btn-ghost" id="snapshot-btn">下载最近快照</button>
-            <button type="button" class="btn btn-ghost" id="snapshot-restore-btn">恢复最近快照</button>
-        </div>
-        <div class="ledger-tip" id="snapshot-tip" role="status" aria-live="polite">尚未生成快照</div>
-        <div class="ledger-tip" id="online-tip" role="status" aria-live="polite"></div>
-        <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
-        <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
+        <!-- 区块二：交付与备份（交付话术/交付图、备份恢复、快照、线上对照） -->
+        <section class="panel-block">
+            <h2 class="panel-block-title">交付与备份</h2>
 
-        <div class="out">
-            <h2 id="out-title">生成结果（2 条）</h2>
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="deliver-btn">复制交付文案</button>
+                <button type="button" class="btn btn-ghost" id="deliver-img-btn">生成交付图</button>
+            </div>
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="backup-btn">备份台账</button>
+                <button type="button" class="btn btn-ghost" id="restore-btn">恢复备份</button>
+                <button type="button" class="btn btn-ghost" id="online-check-btn">对照线上清单</button>
+            </div>
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="snapshot-btn">下载最近快照</button>
+                <button type="button" class="btn btn-ghost" id="snapshot-restore-btn">恢复最近快照</button>
+            </div>
+            <div class="ledger-tip" id="snapshot-tip" role="status" aria-live="polite">尚未生成快照</div>
+            <div class="ledger-tip" id="online-tip" role="status" aria-live="polite"></div>
+            <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
+            <input type="file" id="restore-file" accept=".json,application/json" style="display:none">
+        </section>
+
+        <!-- 区块三：生成结果（筛选 / 批量续期与吊销 / 逐条复制） -->
+        <section class="panel-block">
+            <h2 class="panel-block-title" id="out-title">生成结果（2 条）</h2>
+
             <div class="row">
                 <input type="text" id="filter-input" placeholder="筛选：按备注 / 机器码 / 卡密" spellcheck="false" style="flex:1 1 200px;">
                 <button type="button" class="btn btn-ghost" id="select-all-btn">全选</button>
                 <button type="button" class="btn btn-ghost" id="renew-btn">续期</button>
             </div>
             <div class="row">
-                <button type="button" class="btn btn-ghost" id="revoke-filtered-btn">吊销筛选结果</button>
+                <button type="button" class="btn btn-danger" id="revoke-filtered-btn">吊销筛选结果</button>
                 <button type="button" class="btn btn-ghost" id="deliver-filtered-btn">复制筛选话术</button>
             </div>
             <div id="out"><div class="item"><span class="mc">D3J7-RC4Y-93VV-W61D</span><span class="arrow">→</span><span class="card-code">H7S0-6M3M-GMA1-Y7T2-VNRM</span><span class="note">菜头</span><button type="button" class="btn btn-ghost">复制卡密</button></div><div class="item"><span class="mc">WF31-AKW0-G0W5-HT1K</span><span class="arrow">→</span><span class="card-code">QDGK-CP94-AF9N-GPCG-C3C6</span><span class="note">菜头</span><button type="button" class="btn btn-ghost">复制卡密</button></div></div>
-        </div>
+        </section>
 
-        <label for="revoke-list" style="margin-top:18px;">已吊销卡密（可选，每行一个）</label>
-        <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并上传覆盖，即可在线吊销" spellcheck="false"></textarea>
+        <!-- 区块四：在线清单与发布（低频且影响线上，默认收起） -->
+        <details class="panel-block is-aux">
+            <summary class="panel-block-title">在线清单与发布</summary>
+            <div class="panel-block-body">
+                <p class="sub">复制下方 JSON，覆盖上传到「清单托管地址」，约 5 分钟生效。</p>
+                <textarea id="manifest-out" readonly="" spellcheck="false" style="min-height:160px;"></textarea>
+                <div class="row">
+                    <button type="button" class="btn btn-ghost" id="copy-manifest">复制清单 JSON</button>
+                </div>
+                <div class="row">
+                    <button type="button" class="btn btn-ghost" id="upload-btn">上传到 GitHub</button>
+                    <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（台账变化后自动提交）</label>
+                </div>
+                <div class="row">
+                    <button type="button" class="btn btn-ghost" id="publish-btn">一键发布</button>
+                </div>
+                <div class="ledger-tip" id="receipt-tip" role="status" aria-live="polite"></div>
 
-        <div class="out">
-            <h2>在线清单 JSON（复制后覆盖上传到下面这个地址，约 5 分钟生效）</h2>
-            <textarea id="manifest-out" readonly="" spellcheck="false" style="min-height:160px;"></textarea>
-            <div class="row">
-                <button type="button" class="btn btn-ghost" id="copy-manifest">复制清单 JSON</button>
-            </div>
-            <div class="row">
-                <button type="button" class="btn btn-primary" id="upload-btn">上传到 GitHub</button>
-                <label class="inline-check" for="auto-upload"><input type="checkbox" id="auto-upload"> 自动上传（台账变化后自动提交）</label>
-            </div>
-            <div class="row">
-                <button type="button" class="btn btn-primary" id="publish-btn">一键发布</button>
-            </div>
-            <div class="ledger-tip" id="receipt-tip" role="status" aria-live="polite"></div>
-            <label for="gh-token" style="margin-top:14px;">GitHub 令牌（细粒度 PAT，仅需本仓库的 Contents 读写权限；只保存在本机）</label>
-            <input type="password" id="gh-token" placeholder="粘贴令牌后点「保存令牌」" spellcheck="false" autocomplete="off">
-            <div class="row">
-                <button type="button" class="btn btn-ghost" id="gh-token-save">保存令牌</button>
-                <button type="button" class="btn btn-ghost" id="gh-token-clear">清除令牌</button>
-            </div>
-            <div class="ledger-tip" id="upload-tip" role="status" aria-live="polite"></div>
-            <label for="manifest-url" style="margin-top:14px;">清单托管地址（MANIFEST_URL，需与主程序保持一致）</label>
-            <input type="text" id="manifest-url" readonly="" spellcheck="false">
-            <div class="row">
-                <button type="button" class="btn btn-ghost" id="copy-manifest-url">复制地址</button>
-            </div>
-            <p class="sub" id="manifest-mirror" style="margin-top:10px;">备用源（主源不可达时自动回退）：https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json</p>
-        </div>
+                <div class="control-group">
+                    <label for="gh-token">GitHub 令牌（细粒度 PAT，仅需本仓库的 Contents 读写权限；只保存在本机）</label>
+                    <input type="password" id="gh-token" placeholder="粘贴令牌后点「保存令牌」" spellcheck="false" autocomplete="off">
+                    <div class="row">
+                        <button type="button" class="btn btn-ghost" id="gh-token-save">保存令牌</button>
+                        <button type="button" class="btn btn-ghost" id="gh-token-clear">清除令牌</button>
+                    </div>
+                </div>
+                <div class="ledger-tip" id="upload-tip" role="status" aria-live="polite"></div>
 
-        <p class="secret">
-            当前密钥：<code id="secret-view">aca0d140848ed9718184e7341d3c6ed7ff68283b50574258</code>
-        </p>
-        <div class="row">
-            <button type="button" class="btn btn-ghost" id="logout-btn">退出登录</button>
-        </div>
+                <div class="control-group">
+                    <label for="revoke-list">已吊销卡密（可选，每行一个）</label>
+                    <textarea id="revoke-list" placeholder="把要作废的卡密粘到这里，重新生成清单并上传覆盖，即可在线吊销" spellcheck="false"></textarea>
+                </div>
+
+                <div class="control-group">
+                    <label for="manifest-url">清单托管地址（MANIFEST_URL，需与主程序保持一致）</label>
+                    <input type="text" id="manifest-url" readonly="" spellcheck="false">
+                    <div class="row">
+                        <button type="button" class="btn btn-ghost" id="copy-manifest-url">复制地址</button>
+                    </div>
+                </div>
+                <p class="sub" id="manifest-mirror">备用源（主源不可达时自动回退）：https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json</p>
+            </div>
+        </details>
+
+        <!-- 区块五：账号（密钥查看 + 退出登录） -->
+        <section class="panel-block">
+            <h2 class="panel-block-title">账号</h2>
+
+            <p class="secret">
+                当前密钥：<code id="secret-view">aca0d140848ed9718184e7341d3c6ed7ff68283b50574258</code>
+            </p>
+            <div class="row">
+                <button type="button" class="btn btn-ghost" id="logout-btn">退出登录</button>
+            </div>
+        </section>
     </div>
 </div>
 
