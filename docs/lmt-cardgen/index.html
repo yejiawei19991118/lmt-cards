@@ -1515,7 +1515,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
 
     // ---------- 交付图（Canvas 2D 手绘，含二维码） ----------
-    var IMG_W = 720, IMG_HEAD = 96, IMG_BLOCK = 236, IMG_PAD = 28, IMG_MAX = 20;
+    // 一卡一图：每条占 720×(96+236+28)=720×360，不再有「单图条数上限」这类截断参数。
+    var IMG_W = 720, IMG_HEAD = 96, IMG_BLOCK = 236, IMG_PAD = 28;
     var IMG_SANS = '-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif';
     var IMG_MONO = 'ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace';
 
