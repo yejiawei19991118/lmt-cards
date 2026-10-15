@@ -2,22 +2,22 @@
   "updated": "2026-10-15",
   "apps": {
     "lmt-layout": {
-      "versionCode": 21,
-      "versionName": "1.20",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.20/lmt-layout-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=21", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=21"],
-      "sha256": "e7b079ba847ec52af497452bb3a8a1855fffc2d7b331d1d26317b2c74d222ed4",
-      "size": 140082,
-      "notes": "自动发版：共享核心随 lmt-cards 725c509b 更新"
+      "versionCode": 22,
+      "versionName": "1.21",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.21/lmt-layout-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=22", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=22", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=22"],
+      "sha256": "a27fd108120b839762387e7a9a6d79609aca569c6604c86903caf6c8eae9a396",
+      "size": 140262,
+      "notes": "自动发版：共享核心随 lmt-cards 4652a6e6 更新"
     },
     "lmt-cardgen": {
-      "versionCode": 21,
-      "versionName": "1.20",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.20/lmt-cardgen-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=21", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=21"],
-      "sha256": "c2802905118559aa6c058266d63d98fefbf6dc2df281f7cc9deb2f1f01fd8350",
-      "size": 100451,
-      "notes": "自动发版：共享核心随 lmt-cards 725c509b 更新"
+      "versionCode": 22,
+      "versionName": "1.21",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.21/lmt-cardgen-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=22", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=22", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=22"],
+      "sha256": "627060518d26dad89a93fa500357a6dce953f993c824ea5e49bde2d02a908dd2",
+      "size": 100639,
+      "notes": "自动发版：共享核心随 lmt-cards 4652a6e6 更新"
     }
   }
 }
