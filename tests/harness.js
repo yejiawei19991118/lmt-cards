@@ -341,17 +341,21 @@
       var before = calls.length;
       await until(function () { return !btn.disabled; }, 3000, '导出按钮可用');
       btn.click();
-      await until(function () { return text(btn) === '导出为图片' && !btn.disabled; }, 30000, '导出收尾');
 
-      if (calls.length === before) {
-        // 没有调用原生桥：只允许出现在「PWA 外壳」这一侧，且必须能证明源码里确实没有这条路径，
-        // 而不是安卓壳没能走到桥就悄悄回退（那种情况必须判失败）。
-        assert(!hasSaverRef(L),
-          '没有调用原生桥，页面源码里也不应出现 AndroidSaver：两端外壳差异必须由 @shell 标记明确表达');
+      if (!hasSaverRef(L)) {
+        // PWA 外壳：源码里根本没有 AndroidSaver（@shell:android-save / image-export 不在 PWA 里），
+        // 导出走 <a download> 回退。先等导出收尾，再确认回退分支没有报错。
+        await until(function () { return text(btn) === '导出为图片' && !btn.disabled; }, 30000, '导出收尾');
         assert(!/失败/.test(text(msg)), '回退分支也不应报错，实际：' + text(msg));
         skip('PWA 外壳没有 AndroidSaver 桥（@shell:android-save / image-export 在 PWA 里不存在），'
           + '导出走 <a download> + 手动保存回退；安卓壳对应路径由「安卓副本」那次运行覆盖');
       }
+
+      // 安卓外壳：源码里有 AndroidSaver，导出就必须真的走到桥；没走到即「悄悄回退」，必须判失败。
+      // 注意按钮恢复（restore）发生在异步 base64 编码之前，故不能只看按钮状态，
+      // 必须等到桥被真正调用为止，否则会把「还在编码」误判成「没落盘」。
+      await until(function () { return calls.length > before; }, FILE_WAIT_MS,
+        '安卓壳导出必须调用原生桥（页面源码含 AndroidSaver，导出结束后却仍未落盘）');
 
       var call = calls[calls.length - 1];
       assertMatch(call.name, /^排版图_\d+\.png$/, '原生落盘文件名应带时间戳');
@@ -623,14 +627,17 @@
       var before = calls.length;
       b.click();
 
-      if (calls.length === before) {
-        assert(!hasSaverRef(C),
-          '没有调用原生桥，页面源码里也不应出现 AndroidSaver：两端外壳差异必须由 @shell 标记明确表达');
-        assert(/已导出|请手动复制/.test(text(b)), '回退分支应给出下载/手动保存反馈，实际：' + text(b));
+      if (!hasSaverRef(C)) {
+        // PWA 外壳：源码里没有 AndroidSaver，导出台账走 <a download> 回退（等回退反馈出现再判定）。
+        await until(function () { return /已导出|请手动复制/.test(text(b)); }, FILE_WAIT_MS, '导出台账回退反馈');
         closeLayers(doc);
         skip('PWA 外壳没有 AndroidSaver 桥（@shell:android-save / export 在 PWA 里不存在），'
           + '导出台账走 <a download> 回退；安卓壳对应路径由「安卓副本」那次运行覆盖');
       }
+
+      // 安卓外壳：源码里有 AndroidSaver，导出台账就必须真的走到桥（没走到即悄悄回退，判失败）。
+      await until(function () { return calls.length > before; }, FILE_WAIT_MS,
+        '安卓壳导出台账必须调用原生桥（页面源码含 AndroidSaver，却未落盘）');
 
       var call = calls[calls.length - 1];
       assertMatch(call.name, /^卡密台账_\d{8}\.csv$/, '原生落盘文件名');
@@ -648,14 +655,17 @@
       var before = calls.length;
       b.click();
 
-      if (calls.length === before) {
-        assert(!hasSaverRef(C),
-          '没有调用原生桥，页面源码里也不应出现 AndroidSaver：@shell:template 只在安卓壳里，PWA 侧必须是干净的回退');
-        assert(/已下载|请手动复制/.test(text(b)), '回退分支应给出下载/手动保存反馈，实际：' + text(b));
+      if (!hasSaverRef(C)) {
+        // PWA 外壳：@shell:template 只存在于安卓壳，PWA 侧必须是干净的回退（等回退反馈出现再判定）。
+        await until(function () { return /已下载|请手动复制/.test(text(b)); }, FILE_WAIT_MS, '下载模板回退反馈');
         closeLayers(doc);
         skip('PWA 外壳没有模板原生落盘（@shell:template 只存在于安卓壳），模板走 <a download> 回退；'
           + '安卓壳对应路径由「安卓副本」那次运行覆盖');
       }
+
+      // 安卓外壳：@shell:template 存在，下载模板就必须真的走到桥（没走到即悄悄回退，判失败）。
+      await until(function () { return calls.length > before; }, FILE_WAIT_MS,
+        '安卓壳下载模板必须调用原生桥（页面源码含 AndroidSaver，却未落盘）');
 
       var call = calls[calls.length - 1];
       assertEq(call.name, '卡密导入模板.csv', '原生落盘文件名');
