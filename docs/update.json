@@ -2,22 +2,22 @@
   "updated": "2026-10-15",
   "apps": {
     "lmt-layout": {
-      "versionCode": 17,
-      "versionName": "1.16",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.16/lmt-layout-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=17", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=17"],
-      "sha256": "16ff6dc01e1d466eb2402c493a472832b5d2207efdf88bfb7b83f1ae83595ecc",
+      "versionCode": 18,
+      "versionName": "1.17",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.17/lmt-layout-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=18", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=18"],
+      "sha256": "9c8362c366a4f91b052c7851c3cfb4c3a4127556b4529c42c88b3a3f60959fce",
       "size": 125994,
-      "notes": "自动发版：共享核心随 lmt-cards 981db279 更新"
+      "notes": "自动发版：共享核心随 lmt-cards d6d1207a 更新"
     },
     "lmt-cardgen": {
-      "versionCode": 17,
-      "versionName": "1.16",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.16/lmt-cardgen-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=17", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=17"],
-      "sha256": "4025f9a0dff25df7ae66aa84a6f9b9bcf2de5e0b65d60df4c4fb2b53d407fb6a",
-      "size": 75959,
-      "notes": "自动发版：共享核心随 lmt-cards 981db279 更新"
+      "versionCode": 18,
+      "versionName": "1.17",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.17/lmt-cardgen-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=18", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=18"],
+      "sha256": "fd8d17c0ff556d6ba71808acfdecfd92e0926102cd998913bbf079403afeecd7",
+      "size": 76003,
+      "notes": "自动发版：共享核心随 lmt-cards d6d1207a 更新"
     }
   }
 }
