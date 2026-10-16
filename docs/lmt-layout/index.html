@@ -977,7 +977,6 @@
             </div>
 
             <button type="button" class="btn-primary" id="license-activate">激活</button>
-            <button type="button" class="btn-ghost" id="license-refresh">刷新凭证</button>
             <div class="license-msg" id="license-msg" role="status" aria-live="polite"></div>
             <div class="license-exp" id="license-exp" role="status" aria-live="polite"></div>
             <div class="license-cred" id="license-cred"></div>
@@ -2359,7 +2358,6 @@
             var expEl = document.getElementById('license-exp');
             var credEl = document.getElementById('license-cred');
             var credTtlEl = document.getElementById('license-cred-ttl');
-            var refreshBtn = document.getElementById('license-refresh');
             if (mcInput) {
                 mcInput.value = machineCode();
                 // 点一下自动全选：即便系统/WebView 拦掉了自动复制，
@@ -2391,15 +2389,15 @@
                     }
                     credEl.textContent = txt;
                 }
-                // 剩余天数徽标：<=3 天告警、=0/过期标红（联网刷新可续期）
+                // 剩余天数徽标：<=3 天告警、=0/过期标红
                 if (credTtlEl) {
                     var ageTtl = credAgeMs();
                     credTtlEl.className = 'license-cred';
                     if (ageTtl === Infinity) {
-                        credTtlEl.textContent = '离线凭证：尚未取得（联网刷新可续期）';
+                        credTtlEl.textContent = '离线凭证：尚未取得';
                     } else {
                         var leftTtl = Math.max(0, Math.ceil((CRED_TTL_DAYS * 86400000 - ageTtl) / 86400000));
-                        credTtlEl.textContent = '离线凭证：剩余 ' + leftTtl + ' 天（联网刷新可续期）';
+                        credTtlEl.textContent = '离线凭证：剩余 ' + leftTtl + ' 天';
                         if (leftTtl <= 0) credTtlEl.className = 'license-cred is-bad';
                         else if (leftTtl <= 3) credTtlEl.className = 'license-cred is-warn';
                     }
@@ -2461,33 +2459,22 @@
                 } catch (e) { return true; }
             }
             // 重新拉取在线清单并刷新首屏网络状态：启动时与「网络恢复」时共用同一段逻辑。
-            // force=true 时无视「后台自动同步」开关强制同步（供「刷新凭证」按钮使用）。
-            function syncManifestOnline(force) {
-                if (!MANIFEST_URL) return Promise.resolve();
-                if (!force && !prefAutoSyncOn()) {
+            function syncManifestOnline() {
+                if (!MANIFEST_URL) return;
+                if (!prefAutoSyncOn()) {
                     // 用户关闭了后台自动同步：不发起拉取，仅把首屏状态从「正在同步」收敛掉
                     manifestSyncing = false;
                     updateNetStatus();
-                    return Promise.resolve();
+                    return;
                 }
                 manifestSyncing = true;
                 updateNetStatus();
-                return fetchManifest().then(function () {
+                fetchManifest().then(function () {
                     manifestSyncing = false;
                     updateNetStatus();
                     if (!isActivated()) document.body.classList.add('locked');
                 });
             }
-            // 「刷新凭证」：强制联网同步并刷新状态文案，同步中按钮禁用且显示「刷新中…」
-            if (refreshBtn) refreshBtn.addEventListener('click', function () {
-                if (refreshBtn.disabled) return;
-                refreshBtn.disabled = true;
-                refreshBtn.textContent = '刷新中…';
-                var done = function () {
-                    if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = '刷新凭证'; }
-                };
-                syncManifestOnline(true).then(done, done);
-            });
 
             // 先载入本地缓存的「已验签清单」：断网时也能完成校验（离线凭证）
             if (!manifest) {
