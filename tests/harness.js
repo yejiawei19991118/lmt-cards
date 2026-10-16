@@ -747,6 +747,37 @@
       assertEq(t.loadDraft(back[0].id), true, '导入回来的草稿应可载入');
     });
 
+    // 回归守：照片还原是「异步解码 + 返回 Promise」，而清除是同步的。
+    // 若不对在途解码做作废，载入草稿后立刻清除，迟到的解码结果仍会把照片画回去
+    //（用户看到「清除不掉」，导出的图也带着本该删掉的照片）。
+    test('layout/图片还原竞态：清除后不得被迟到的解码结果画回来', async function () {
+      var t = app();
+      var box = q(doc, '#preview-img-left');
+      var cv = doc.createElement('canvas');
+      cv.width = 8; cv.height = 8;
+      var durl = cv.toDataURL('image/png');
+      try {
+        // 正向对照：正常还原必须把照片画进预览框（守住「作废逻辑别把正常路径也拦掉」）
+        await t.restorePhoto('left', durl);
+        assert(box.querySelector('canvas.preview-photo'), '正常还原应把照片绘制进预览框');
+
+        // 竞态：发起还原（异步解码）后立刻同步清除。
+        // Image 的 onload 只可能在当前同步块结束后触发，因此这里必然命中「解码在途」。
+        var pending = t.restorePhoto('left', durl);
+        t.clearPhoto('left');
+        assert(!box.querySelector('canvas.preview-photo'), '清除后预览框应立即为空');
+        await pending; // 等这次解码真正结束：旧实现会在此时把图错误地画回去
+        assert(!box.querySelector('canvas.preview-photo'),
+          '清除后不得被迟到的解码结果画回来（会增加「点了清除仍有图」的错觉）');
+
+        // 之后的新一次还原仍应正常生效（作废的是过期那次，不是整条路径）
+        await t.restorePhoto('left', durl);
+        assert(box.querySelector('canvas.preview-photo'), '后续还原仍应正常绘制');
+      } finally {
+        t.clearPhoto('left');
+      }
+    });
+
     test('layout/我的模板：保存 / 列表 / 删除', async function () {
       var t = app();
       t.listMyTemplates().slice().forEach(function (x) { t.deleteMyTemplate(x.id); });
@@ -1245,6 +1276,60 @@
       var c2 = t.makeCard('STVWXYZ012345678');
       assert(t.normalize(c2) !== t.normalize(c1), '不同机器码必须拿到不同的卡密');
       assertEq(t.loadCardMap().STVWXYZ012345678, c2, '第二台机器的绑定同样应可读回');
+    });
+
+    // 「已用卡密」索引：旧实现每次发卡都现扫整张绑定表重建（连续发 N 张 = O(N²)），
+    // 改为随绑定量化维护的索引。索引一旦与本机绑定表脱节，就可能把已占用的卡密再发一次
+    // （一卡多用），所以这里逐场景断言「索引 == 由绑定表推导出的卡密集合」。
+    test('cardgen/已用卡密索引：必须始终与本机绑定表一致（发卡提速后不得漏项/滞留旧值）', async function () {
+      var t = g();
+      var prev = C.localStorage.getItem(t.CARD_MAP_KEY);
+      // 索引内容 == 绑定表里所有卡密（两侧都归一化后按字典序比较）
+      function idxCards() { return Object.keys(t.usedCardIndex()).sort().join(','); }
+      function mapCards() {
+        var m = t.loadCardMap(), out = [];
+        Object.keys(m).forEach(function (k) { out.push(t.normalize(m[k])); });
+        return out.sort().join(',');
+      }
+      try {
+        C.localStorage.removeItem(t.CARD_MAP_KEY);
+        t.resetCardMapCache();
+
+        // 1) 连续发卡：索引随发卡增量补充，且每张卡密互不相同
+        var mcs = ['ABCDEFGHJKMNPQRS', 'STVWXYZ012345678', 'WXYZ0123456789AB', '23456789ABCDEFGH'];
+        var issued = mcs.map(function (m) { return t.normalize(t.makeCard(m)); });
+        assertEq(idxCards(), mapCards(), '连续发卡后索引必须与绑定表一致');
+        assertEq(idxCards(), issued.slice().sort().join(','), '索引内容应恰好是刚发出的 4 张卡密');
+        assertEq(issued.length === 4 && issued.filter(function (c) { return !!c; }).length === 4, true, '4 张卡密都应有效');
+        assertEq(issued.slice().sort().join(',').split(',').length, 4, '4 张卡密不得重复');
+
+        // 复用已有绑定：不得重复计入，也不得改变索引
+        var before = idxCards();
+        assertEq(t.normalize(t.makeCard(mcs[0])), issued[0], '复用：同一机器码仍应拿到原卡密');
+        assertEq(idxCards(), before, '复用已有绑定时索引必须原样不变');
+
+        // 2) 换设备重载（内存缓存清空后从 localStorage 重读）：索引随之由落盘绑定重建
+        t.resetCardMapCache();
+        assertEq(t.normalize(t.makeCard(mcs[3])), issued[3], '前置：重载后落盘绑定仍可读回');
+        assertEq(idxCards(), mapCards(), '整表重建后索引必须与绑定表一致');
+
+        // 3) 线上清单回灌改了绑定（权威顺序：线上 > 本机）：索引必须整块作废重建。
+        //    不重建的话，被顶掉的旧卡密仍留在索引里（新卡可能撞上它），新卡密则不在索引里。
+        C.localStorage.setItem(t.CARD_MAP_KEY, JSON.stringify({ ABCDEFGHJKMNPQRS: 'ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ' }));
+        t.resetCardMapCache();
+        t.loadCardMap();
+        assert(idxCards().indexOf('ZZZZZZZZZZZZZZZZZZZZ') >= 0, '前置：索引此时应含本机那张旧卡密');
+        t.rehydrateCardMap({ 'YYYYYYYYYYYYYYYYYYYY': { card: 'YYYY-YYYY-YYYY-YYYY-YYYY', mc: 'ABCDEFGHJKMNPQRS' } }, { dupCard: 0 });
+        assertEq(t.loadCardMap().ABCDEFGHJKMNPQRS, 'YYYY-YYYY-YYYY-YYYY-YYYY', '线上那张应覆盖本机旧值');
+        assertEq(idxCards(), mapCards(), '线上回灌后索引必须与本机绑定表一致');
+        assertEq(idxCards().indexOf('ZZZZZZZZZZZZZZZZZZZZ'), -1, '被顶掉的旧卡密必须从索引里剔除（否则新卡可能撞上它）');
+        assert(idxCards().indexOf('YYYYYYYYYYYYYYYYYYYY') >= 0, '回灌进来的线上卡密必须计入索引');
+      } finally {
+        // 收尾：还原本机绑定，避免影响后续用例（它们假定绑定表是本用例之前的状态）
+        if (prev == null) C.localStorage.removeItem(t.CARD_MAP_KEY);
+        else C.localStorage.setItem(t.CARD_MAP_KEY, prev);
+        t.resetCardMapCache();
+      }
     });
 
     test('cardgen/在线清单 JSON：ver 2 结构、sig2 自校验、复制', async function () {

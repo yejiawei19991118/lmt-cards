@@ -1,6 +1,6 @@
 // PWA Service Worker：缓存应用外壳，实现离线可用（仅同源资源，跨域请求直接走网络）
-const CACHE = 'lmt-layout-v48';
-// @index-hash: c994fd3f  （index.html 归一化内容前 8 位；改完 index.html 运行 tools/web-sync.ps1 -Bump 自动升版）
+const CACHE = 'lmt-layout-v49';
+// @index-hash: c63e22e2  （index.html 归一化内容前 8 位；改完 index.html 运行 tools/web-sync.ps1 -Bump 自动升版）
 const ASSETS = [
   './index.html',
   './html2canvas.min.js',

@@ -3450,9 +3450,14 @@
             previewCap2.textContent = inputCap2.value;
             previewCap3.textContent = inputCap3.value;
         }
+        // 每格「在途解码」令牌：发起新一次还原/清除就 +1，解码回来时令牌已变即丢弃。
+        // 否则「先发起、后完成」的那次会把后写入的图盖掉（连续切换草稿/快照时会串图）。
+        // 手动选图那条路径自带 uploadToken，两者互不影响、各守一段流程。
+        const photoSeq = {};
         function clearPhoto(key) {
             const info = IMG_TARGETS[key];
             if (!info) return;
+            photoSeq[key] = (photoSeq[key] || 0) + 1;
             info[0].textContent = PHOTO_PLACEHOLDER[key];
             info[0].classList.remove('has-photo');
             syncClearButtons();
@@ -3473,10 +3478,17 @@
             const info = IMG_TARGETS[key];
             if (!info) return Promise.resolve();
             if (!dataUrl) { clearPhoto(key); return Promise.resolve(); }
+            const seq = photoSeq[key] = (photoSeq[key] || 0) + 1;
             return new Promise((resolve) => {
                 const img = new Image();
-                img.onload = () => { paintPhoto(info[0], info[1], img); syncClearButtons(); resolve(); };
-                img.onerror = () => { clearPhoto(key); syncClearButtons(); resolve(); };
+                img.onload = () => {
+                    if (photoSeq[key] === seq) { paintPhoto(info[0], info[1], img); syncClearButtons(); }
+                    resolve();
+                };
+                img.onerror = () => {
+                    if (photoSeq[key] === seq) { clearPhoto(key); syncClearButtons(); }
+                    resolve();
+                };
                 img.src = dataUrl;
             });
         }
@@ -4489,6 +4501,8 @@
             // 批量出图/草稿箱相关的纯函数与导出入口
             zipStore: zipStore, zipBlob: zipBlob, crc32: crc32, paintPhoto: paintPhoto,
             captureFields: captureFields, captureImgs: captureImgs,
+            // 图片还原/清除的稳定入口：还原是异步的（返回 Promise），调用方可据它等待解码落地
+            restorePhoto: restorePhoto, clearPhoto: clearPhoto,
             saveDraft: saveDraft, loadDraft: loadDraft, listDrafts: listDrafts, deleteDraft: deleteDraft,
             exportDrafts: exportDrafts, importDrafts: importDrafts,
             applyCustomStyle: applyCustomStyle, resetCustomStyle: resetCustomStyle,

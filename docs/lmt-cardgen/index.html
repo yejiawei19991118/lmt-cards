@@ -1308,9 +1308,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 否则每次「生成卡密」都会换卡，用户手上刚拿到的卡密立刻失效。
     var CARD_MAP_KEY = 'lmt_card_map_v1';
     var cardMap = null; // { 归一化机器码: 'XXXX-XXXX-XXXX-XXXX' }
+    // 已用卡密索引（归一化卡密 → true）：发卡时要避开已占用的卡密，若每次都现扫 cardMap 重建，
+    // 连续发 N 张就是 O(N²)；改为随 cardMap 增量维护，仅在整表重建或回灌时整块作废。
+    var usedCards = null;
     function loadCardMap() {
         if (cardMap) return cardMap;
         cardMap = {};
+        usedCards = null; // 整表重建，索引随之作废（下次发卡时懒建）
         try {
             var raw = localStorage.getItem(CARD_MAP_KEY);
             var obj = raw ? JSON.parse(raw) : null;
@@ -1341,6 +1345,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         }
         return group(base32Encode(bytes, 20), 4);
     }
+    // 已用卡密索引：懒建一次，之后由 makeCard 增量补充 / rehydrateCardMap 整块作废。
+    function usedCardIndex() {
+        if (usedCards) return usedCards;
+        usedCards = {};
+        for (var k in cardMap) {
+            if (!Object.prototype.hasOwnProperty.call(cardMap, k)) continue;
+            usedCards[normalize(cardMap[k])] = true;
+        }
+        return usedCards;
+    }
     // 按机器码取卡密：命中缓存 / 已落盘 → 直接返回；否则随机生成并落盘。
     // 与旧实现（按机器码重算确定性卡密）接口保持一致，调用方无需改动。
     function makeCard(mc) {
@@ -1348,11 +1362,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (!key) return '';
         var map = loadCardMap();
         if (Object.prototype.hasOwnProperty.call(map, key)) return map[key];
-        var used = {}, k;
-        for (k in map) { if (Object.prototype.hasOwnProperty.call(map, k)) used[normalize(map[k])] = true; }
+        var used = usedCardIndex();
         var card = randomCard(), guard = 0;
         while (used[normalize(card)] && guard++ < 20) card = randomCard();
         map[key] = card;
+        used[normalize(card)] = true;
         saveCardMap();
         return card;
     }
@@ -3608,7 +3622,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (map[mc] !== group(card, 4)) { map[mc] = group(card, 4); changed = true; }
             owner[card] = mc;
         });
-        if (changed) saveCardMap();
+        if (changed) { usedCards = null; saveCardMap(); } // 回灌改了绑定，已用卡密索引作废
     }
 
     // 线上清单 → 结构化映射：归一化机器码 → 归一化卡密。同一机器码出现多条时只取权威顺序最高的一条。
@@ -4651,6 +4665,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         manifestCardsLines: manifestCardsLines, manifestRevokedStr: manifestRevokedStr,
         manifestRevSource: manifestRevSource, canonicalManifestString: canonicalManifestString,
         cardFormatOk: cardFormatOk, randomCard: randomCard, loadCardMap: loadCardMap,
+        // 仅供测试：读「已用卡密」索引，用于守住「索引必须与本机绑定表一致」（不一致就可能发出重卡）
+        usedCardIndex: usedCardIndex,
         parsePrivateKey: parsePrivateKey, privateKeyText: privateKeyText, setPrivateKey: setPrivateKey,
         pubKeyBase32: pubKeyBase32, privateKeyOk: privateKeyOk, localIso: localIso,
         base32EncodeFull: base32EncodeFull, base32Decode: base32Decode,
@@ -4691,7 +4707,7 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         setLedger: function (t) { mcList.value = t; }, render: render,
         // 仅供测试：清掉内存缓存，强制下次 loadCardMap 从 localStorage 重读
         //（回归守「落盘的机器码→卡密绑定必须能读回」，否则同一机器码重载后会重新发卡）
-        resetCardMapCache: function () { cardMap = null; },
+        resetCardMapCache: function () { cardMap = null; usedCards = null; },
         // 新增能力：有效期 / 快照 / 上传回执 / 差异报告 / 筛选批量 / 令牌
         parseExpiry: parseExpiry, addMonths: addMonths, isExpired: isExpired, renewAll: renewAll,
         buildDeliverTextFor: buildDeliverTextFor, filterEntries: filterEntries,
