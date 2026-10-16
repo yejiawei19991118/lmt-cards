@@ -506,15 +506,30 @@
       fakeSaver.layout.openOk = false;
     });
 
+    // 溢出兜底：真放不下时宁可禁用导出，也不产出被 overflow:hidden 裁掉的图。
+    // 这里先关掉「自动适配字号」（--fit 恒为 1），让「放不下」成为必然事件，
+    // 而不是依赖「缩到下限量仍溢出」——FIT_MIN 下调后那种情形会随缩放下限漂移。
     test('layout/文案超长时禁用导出并提示，清空后恢复', async function () {
       var btn = q(doc, '#export-btn');
       var warn = q(doc, '#overflow-warn');
-      setValue(q(doc, '#input-summary'), new Array(220).join('超长文案测试一二三四五'), L);
-      await until(function () { return btn.disabled; }, 4000, '超长内容应禁用导出');
-      assert(hasClass(warn, 'show'), '超长内容应显示溢出提示');
-      setValue(q(doc, '#input-summary'), '短文案', L);
-      await until(function () { return !btn.disabled; }, 4000, '清空后应恢复可导出');
-      assert(!hasClass(warn, 'show'), '恢复后应隐藏溢出提示');
+      var note = q(doc, '#fit-note');
+      var lock = q(doc, '#fit-lock');
+      var lockWas = lock.checked;
+      lock.checked = false;
+      fire(lock, 'change', L);
+      try {
+        setValue(q(doc, '#input-summary'), new Array(220).join('超长文案测试一二三四五'), L);
+        await until(function () { return btn.disabled; }, 4000, '超长内容应禁用导出');
+        assert(hasClass(warn, 'show'), '超长内容应显示溢出提示');
+        assert(!hasClass(note, 'show'), '溢出时提示位应让给溢出报警，两个提示不同时出现');
+        setValue(q(doc, '#input-summary'), '短文案', L);
+        await until(function () { return !btn.disabled; }, 4000, '清空后应恢复可导出');
+        assert(!hasClass(warn, 'show'), '恢复后应隐藏溢出提示');
+      } finally {
+        lock.checked = lockWas;
+        fire(lock, 'change', L);
+        setValue(q(doc, '#input-summary'), '', L);
+      }
     });
 
     test('layout/手写字体切换即时生效并给出加载状态', async function () {
@@ -918,41 +933,47 @@
       assertEq(qa(doc, '.panel-footer-row > select').length, 0, '底栏不应再有任何尺寸选择控件');
       assertEq(t.currentExportScale(), 4, '导出倍率应恒为 4（1500 × 2668）');
 
-      // P-17：文案长到「原字号放不下、缩小才放得下」时必须明示当前缩放比例。
-      // 该中间状态对应的文案长度取决于运行时排版，因此按长度递增去命中它
-      // （先出现缩放提示，继续加长才会越到「缩到下限仍溢出、禁用导出」）。
+      // P-17：适配结果必须常显三态（放得下就一定有文案），不能再拿「有没有提示」当命中条件，
+      // 只能按提示文案本身去命中中间态：先「按 100% 显示」，加长后才变成「当前按 X% 缩放」。
       var tpl = q(doc, '#template-select');
       tpl.value = 'window';
       fire(tpl, 'change', L);
       var title = q(doc, '#input-title');
       var note = q(doc, '#fit-note');
       var btn = q(doc, '#export-btn');
+      setValue(title, '一行短标题', L);
+      await until(function () { return hasClass(note, 'show'); }, 4000, '适配结果应常显');
+      assertMatch(text(note), /^内容已适配安全区：按 100% 显示。$/, '未缩放时应明示按 100% 显示，实际：' + text(note));
+
       var hit = false;
       for (var n = 10; n <= 600 && !hit; n += 10) {
         setValue(title, new Array(n + 1).join('缩放测试'), L);
         await sleep(45);
-        if (hasClass(note, 'show')) {
+        if (/^已自动适配安全区：当前按 \d+% 缩放。$/.test(text(note))) {
           hit = true;
-          assertMatch(text(note), /^已自动适配安全区：当前按 \d+% 缩放。$/, '应明示当前缩放百分比，实际：' + text(note));
         } else if (btn.disabled) {
           break; // 已越到「缩到下限仍溢出」，说明中间态没被覆盖到
         }
       }
       assert(hit, '应存在「缩小字号后才放得下」的中间状态，此时必须提示缩放比例');
 
-      // 自动适配字号：关闭后不再自动缩放（--fit 恒为 1），缩放提示也不再出现
+      // 自动适配字号：关闭后不再自动缩放（--fit 恒为 1）。此时上一步那点内容放不下，
+      // 提示位必须让给溢出报警，且不得再出现「已自动适配」字样（自相矛盾）。
       var lock = q(doc, '#fit-lock');
       lock.checked = false;
       fire(lock, 'change', L);
       await until(function () {
         return q(doc, '#export-target').style.getPropertyValue('--fit') === '1';
       }, 4000, '关闭自动适配后 --fit 应恒为 1（不再自动缩放）');
-      assert(!hasClass(note, 'show'), '关闭自动适配时不应再提示自动缩放');
+      assert(!(hasClass(note, 'show') && /已自动适配/.test(text(note))),
+        '关闭自动适配后不得再出现「已自动适配」字样，实际：' + text(note));
 
       lock.checked = true;
       fire(lock, 'change', L);
       setValue(title, '', L);
-      await until(function () { return !hasClass(note, 'show'); }, 4000, '清空文案后缩放提示应消失');
+      await until(function () {
+        return hasClass(note, 'show') && /^内容已适配安全区：按 100% 显示。$/.test(text(note));
+      }, 4000, '清空文案后应回到「按 100% 显示」');
     });
 
     test('layout/机器码：格式稳定，且由本机安装 ID 派生', async function () {
@@ -1292,10 +1313,9 @@
       }
     });
 
-    // 用户报的现象：「橱窗排版的安全区内照片没有跟顶部摘要左右对齐和大小缩放」。
-    // 根因：摘要用 width:fit-content 居中（短句比图片行窄、长句又能宽出去），
-    // 而图片行固定按 --content-w 取宽，两者左右边界必然对不齐。
-    test('layout/橱窗排版：顶部摘要与图片行左右严格对齐（P-34）', async function () {
+    // 口径（本轮变更）：橱窗排版的顶部摘要是「整块在安全区内水平居中、块内每行左对齐」。
+    // 短句时块比图片行窄（不再被拉满到图片行宽度），长句撑到内容宽上限即止（与图片行同宽）。
+    test('layout/橱窗排版：顶部摘要块居中、行内左对齐（P-34）', async function () {
       var tpl = q(doc, '#template-select');
       tpl.value = 'window';
       fire(tpl, 'change', L);
@@ -1303,19 +1323,77 @@
       assertEq(q(doc, '#export-target').dataset.activeTpl, 'window', '前置：应处于橱窗模板');
       var summary = q(doc, '#preview-summary');
       var row = q(doc, '.image-row[data-tpl="window"]');
-      // 短句（旧实现下明显比图片行窄）与长句（旧实现下会宽出内容宽）都要对齐
-      ['短', '这是一句明显更长的顶部总结文案，用来把摘要撑到内容宽上限附近再多加一些字']
-        .forEach(function (s) {
-          setValue(q(doc, '#input-summary'), s, L);
-          var a = summary.getBoundingClientRect(), b = row.getBoundingClientRect();
-          assert(Math.abs(a.left - b.left) <= 1,
-            '摘要左边界应与图片行对齐（文案「' + s.slice(0, 4) + '…」）：' + a.left + ' vs ' + b.left);
-          assert(Math.abs(a.right - b.right) <= 1,
-            '摘要右边界应与图片行对齐（文案「' + s.slice(0, 4) + '…」）：' + a.right + ' vs ' + b.right);
-          assert(Math.abs(a.width - b.width) <= 1,
-            '摘要宽度应与图片行同宽（随 --fit 等比缩放）：' + a.width + ' vs ' + b.width);
-        });
+      var target = q(doc, '#export-target');
+
+      // 短句：块比图片行窄，但相对安全区中线居中；行内文字左对齐（右侧自然参差）
+      setValue(q(doc, '#input-summary'), '短', L);
+      var a = summary.getBoundingClientRect(), b = row.getBoundingClientRect(), z = target.getBoundingClientRect();
+      assert(a.width < b.width - 1,
+        '短句时摘要块应比图片行窄（宽度随文字长短浮动）：' + a.width + ' vs ' + b.width);
+      assert(Math.abs((a.left + a.right) / 2 - (z.left + z.right) / 2) <= 1,
+        '短句时摘要块应在安全区内水平居中：摘要中线 ' + ((a.left + a.right) / 2)
+        + ' vs 安全区中线 ' + ((z.left + z.right) / 2));
+      assertEq(L.getComputedStyle(summary).textAlign, 'left', '摘要行内应左对齐');
+
+      // 长句：撑到内容宽上限即止 —— 与图片行同宽、左右边界对齐，且不越出安全区
+      setValue(q(doc, '#input-summary'), '这是一句明显更长的顶部总结文案，用来把摘要撑到内容宽上限附近再多加一些字', L);
+      a = summary.getBoundingClientRect(); b = row.getBoundingClientRect();
+      assert(Math.abs(a.width - b.width) <= 1, '长句时摘要应与图片行同宽：' + a.width + ' vs ' + b.width);
+      assert(Math.abs(a.left - b.left) <= 1, '长句时摘要左边界应与图片行对齐：' + a.left + ' vs ' + b.left);
+      assert(Math.abs(a.right - b.right) <= 1, '长句时摘要右边界应与图片行对齐：' + a.right + ' vs ' + b.right);
       setValue(q(doc, '#input-summary'), '', L);
+    });
+
+    // 用户诉求：「橱窗排版的安全区……不要超过安全区红线」。
+    // 两套模板共用同一套自动适配（--fit + checkContentFit），橱窗排版内容更满（4 段文案 + 4 张图），
+    // 必须实测它同样能把内容收进安全区，而不是缩到中途就放弃、让内容贴着红线被 overflow:hidden 裁掉。
+    test('layout/橱窗排版：文案与图片不越过安全区红线', async function () {
+      var tplEl = q(doc, '#template-select');
+      var tplWas = tplEl.value;
+      var target = q(doc, '#export-target');
+      var btn = q(doc, '#export-btn');
+      var note = q(doc, '#fit-note');
+      var warn = q(doc, '#overflow-warn');
+      var FIELDS = ['#input-summary', '#input-title', '#input-keywords', '#input-subtitle'];
+      var was = FIELDS.map(function (s) { return q(doc, s).value; });
+      try {
+        tplEl.value = 'window';
+        fire(tplEl, 'change', L);
+        await sleep(60);
+        // 灌到「四段文案都占满多行」：橱窗排版的内容量本就比三图竖排大，
+        // 这里刻意超量，验证自动适配能把整块压进安全区（而不是报警了事）。
+        setValue(q(doc, '#input-summary'), new Array(6).join('摘要第一行文案内容\n'), L);
+        setValue(q(doc, '#input-title'), new Array(6).join('橱窗主标题填充'), L);
+        setValue(q(doc, '#input-keywords'), new Array(6).join('关键词填充一行\n'), L);
+        setValue(q(doc, '#input-subtitle'), new Array(6).join('副标题填充'), L);
+        await sleep(120);
+        assert(!btn.disabled, '自动适配应把内容收进安全区（不该直接禁用导出），提示：' + text(note) + ' / ' + text(warn));
+        assert(!hasClass(warn, 'show'), '放得下时不应报溢出');
+        assert(target.scrollHeight <= target.clientHeight + 1,
+          '内容必须整体落在安全区内（不得被裁）：scrollHeight=' + target.scrollHeight
+          + ' clientHeight=' + target.clientHeight);
+        var z = target.getBoundingClientRect();
+        qa(doc, '#export-target > *').filter(isRendered).forEach(function (el) {
+          var r = el.getBoundingClientRect();
+          assert(r.top >= z.top - 1 && r.bottom <= z.bottom + 1 && r.left >= z.left - 1 && r.right <= z.right + 1,
+            '「' + (el.id || el.className) + '」越过了安全区红线：内容 ' + JSON.stringify([r.left, r.top, r.right, r.bottom])
+            + ' vs 安全区 ' + JSON.stringify([z.left, z.top, z.right, z.bottom]));
+        });
+        // 负向对照：关掉自动适配后同样的内容必然放不下 → 报警 + 禁用导出（绝不产出被裁的图）
+        var lock = q(doc, '#fit-lock');
+        var lockWas = lock.checked;
+        lock.checked = false;
+        fire(lock, 'change', L);
+        await sleep(80);
+        assert(hasClass(warn, 'show'), '关掉自动适配后超量内容应报溢出（说明上面的「放得下」确实靠自动适配）');
+        assert(btn.disabled, '溢出时必须禁用导出，避免产出被裁掉红线的图');
+        lock.checked = lockWas;
+        fire(lock, 'change', L);
+      } finally {
+        FIELDS.forEach(function (s, i) { setValue(q(doc, s), was[i], L); });
+        tplEl.value = tplWas;
+        fire(tplEl, 'change', L);
+      }
     });
 
     // 用户报的现象：批量出图「有没有失灵或者不合理的地方」。
@@ -1454,6 +1532,256 @@
         t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
         setValue(q(doc, '#input-title'), '', L);
         killToasts(); // 批量收尾会往底部常显提示条写回执，清掉避免影响后续用例
+      }
+    });
+
+    // ---------------------------------------------------------------
+    // 排版模板的文案/图片隔离 + 一键清空（本轮整改的回归守）
+    // ---------------------------------------------------------------
+
+    // 用户诉求：「排版模板之间输入框需要隔离（不要在橱窗排版输入后切换三图竖排后
+    // 输入框一模一样的文字）」，且「首次为空，来回切换都需保留，除非模板为空」。
+    // 两套模板的字段数并不相同：橱窗排版 4 项（摘要/主标题/关键词/副标题），
+    // 三图竖排 5 项（摘要/主标题/小标题一~三）；摘要与主标题是同一对输入框，但各存一份。
+    test('layout/排版模板：文案按模板隔离，来回切换各自保留', async function () {
+      var tpl = q(doc, '#template-select');
+      var tplWas = tpl.value;
+      var SEL = {
+        summary: '#input-summary', title: '#input-title', keywords: '#input-keywords', subtitle: '#input-subtitle',
+        cap1: '#input-cap-1', cap2: '#input-cap-2', cap3: '#input-cap-3'
+      };
+      var W_KEYS = ['summary', 'title', 'keywords', 'subtitle'];
+      var T_KEYS = ['summary', 'title', 'cap1', 'cap2', 'cap3'];
+      var was = {};
+      Object.keys(SEL).forEach(function (k) { was[k] = q(doc, SEL[k]).value; });
+      function val(k) { return q(doc, SEL[k]).value; }
+      function go(v) { tpl.value = v; fire(tpl, 'change', L); return sleep(60); }
+      function fill(keys) { keys.forEach(function (k) { setValue(q(doc, SEL[k]), '', L); }); }
+      try {
+        // 先把两套模板的槽都清成「空」：只有槽为空，「首次进入为空」的断言才有意义
+        // （其它用例可能已经往某一套模板里写过文案）。
+        await go('window'); fill(W_KEYS);   // 橱窗这一份空 → 切走时写进它自己的槽
+        await go('three'); fill(T_KEYS);    // 三图这一份空 → 切走时写进它自己的槽
+        await go('window');
+        W_KEYS.forEach(function (k) { assertEq(val(k), '', '前置：橱窗排版这一份应为空，实际 ' + k + '=' + val(k)); });
+
+        // 三图竖排：首次进入必须为空（不得把橱窗排版的文字带出来），随后写入它自己的 5 项
+        await go('three');
+        T_KEYS.forEach(function (k) {
+          assertEq(val(k), '', '三图竖排首次进入应为空（不得沿用橱窗排版的文案），实际 ' + k + '=' + val(k));
+        });
+        setValue(q(doc, SEL.summary), '三图摘要', L);
+        setValue(q(doc, SEL.title), '三图主标题', L);
+        setValue(q(doc, SEL.cap1), '小标题一', L);
+        setValue(q(doc, SEL.cap2), '小标题二', L);
+        setValue(q(doc, SEL.cap3), '小标题三', L);
+
+        // 橱窗排版：它这一份同样为空，写入它自己的 4 项
+        await go('window');
+        W_KEYS.forEach(function (k) {
+          assertEq(val(k), '', '橱窗排版这一份应为空（不得沿用三图竖排的文案），实际 ' + k + '=' + val(k));
+        });
+        setValue(q(doc, SEL.summary), '橱窗摘要', L);
+        setValue(q(doc, SEL.title), '橱窗主标题', L);
+        setValue(q(doc, SEL.keywords), '橱窗关键词', L);
+        setValue(q(doc, SEL.subtitle), '橱窗副标题', L);
+
+        // 来回切换：两边都必须逐字保留，互不串味
+        await go('three');
+        assertEq(val('summary'), '三图摘要', '切回三图竖排应还原它自己的摘要');
+        assertEq(val('title'), '三图主标题', '切回三图竖排应还原它自己的主标题');
+        assertEq(val('cap1'), '小标题一', '切回三图竖排应还原小标题一');
+        assertEq(val('cap3'), '小标题三', '切回三图竖排应还原小标题三');
+
+        await go('window');
+        assertEq(val('summary'), '橱窗摘要', '切回橱窗排版应还原它自己的摘要');
+        assertEq(val('title'), '橱窗主标题', '切回橱窗排版应还原它自己的主标题');
+        assertEq(val('keywords'), '橱窗关键词', '切回橱窗排版应还原关键词');
+        assertEq(val('subtitle'), '橱窗副标题', '切回橱窗排版应还原副标题');
+      } finally {
+        await go('window'); W_KEYS.forEach(function (k) { setValue(q(doc, SEL[k]), was[k], L); });
+        await go('three'); T_KEYS.forEach(function (k) { setValue(q(doc, SEL[k]), was[k], L); });
+        await go(tplWas);
+      }
+    });
+
+    // 用户诉求同样覆盖图片（「图片上传（按模板隔离）」）。
+    // 这里同时守一个已修的真实缺陷：applySnapshot 曾在还原时对「全部图片键」做无则清除，
+    // 于是载入一份橱窗草稿会把三图竖排的 3 张图一并清掉 —— 草稿只该管自己那一套模板。
+    test('layout/排版模板：图片按模板隔离，载入草稿不清掉另一套模板的图', async function () {
+      var t = app();
+      var tpl = q(doc, '#template-select');
+      var tplWas = tpl.value;
+      var BOX = { left: '#preview-img-left', wide1: '#preview-wide-1' };
+      var UP = { left: '#upload-left', wide1: '#upload-wide-1' };
+      function hasCanvas(k) { return !!q(doc, BOX[k]).querySelector('canvas.preview-photo'); }
+      function vis(k) { var c = q(doc, BOX[k]).querySelector('canvas.preview-photo'); return !!c && isRendered(c); }
+      function go(v) { tpl.value = v; fire(tpl, 'change', L); return sleep(60); }
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        await go('window');
+        t.clearPhoto('left');
+        t.clearPhoto('wide1');
+
+        // 橱窗排版放一张左图；切到三图竖排时它不该继续显示，且三图那一份自己还是空的
+        attachFile(L, q(doc, UP.left), 'win.png', 'image/png', pngBytes(L, 120, 90));
+        await until(function () { return hasCanvas('left'); }, FILE_WAIT_MS, '橱窗排版左图上传');
+
+        await go('three');
+        assert(!vis('left'), '切到三图竖排后不应还画着橱窗排版的左图');
+        assert(!hasCanvas('wide1'), '三图竖排这一份初始不应有图片');
+
+        // 三图竖排放一张图片一；往返一次，两套模板各自的图都必须还在
+        attachFile(L, q(doc, UP.wide1), 'thr.png', 'image/png', pngBytes(L, 300, 130));
+        await until(function () { return hasCanvas('wide1'); }, FILE_WAIT_MS, '三图竖排图片一上传');
+
+        await go('window');
+        assert(vis('left'), '切回橱窗排版应显示它自己的左图');
+        assert(!q(doc, '#preview-wide-1').getClientRects().length, '橱窗排版下三图竖排的图不该参与渲染');
+
+        // 存一份橱窗草稿，再切回三图竖排（图还在），载入那份草稿
+        assert((await t.saveDraft('图片隔离草稿')).ok, '前置：应能保存橱窗草稿');
+        await go('three');
+        assert(vis('wide1'), '切回三图竖排应显示它自己的图片一');
+
+        var d = t.listDrafts().filter(function (x) { return x.name === '图片隔离草稿'; })[0];
+        assert(d, '前置：草稿箱里应有这份橱窗草稿');
+        assertEq(t.draftImageCount(d), 1, '前置：草稿只应记录它自己那套模板的 1 张图');
+        assertEq((await t.loadDraft(d.id)).ok, true, '载入橱窗草稿应成功');
+        assert(hasCanvas('left'), '载入橱窗草稿应还原橱窗左图');
+        assert(hasCanvas('wide1'), '载入橱窗草稿不得清掉三图竖排的图片一（草稿只管自己那一套模板的图）');
+      } finally {
+        t.listDrafts().slice().forEach(function (x) { t.deleteDraft(x.id); });
+        t.clearPhoto('left');
+        t.clearPhoto('wide1');
+        await go(tplWas);
+      }
+    });
+
+    // 用户诉求：「排版模板：添加一键清空功能（只限排版模板模块）」。
+    // 范围＝当前模板的文案 + 图片（另一套模板、草稿箱都不受影响）；
+    // 安全网＝二次确认 + 底部提示条可撤销。
+    test('layout/排版模板：一键清空只清当前模板（二次确认 + 可撤销）', async function () {
+      var tpl = q(doc, '#template-select');
+      var tplWas = tpl.value;
+      var btn = q(doc, '#tpl-clear-btn');
+      var msg = q(doc, '#tpl-clear-msg');
+      var W = { summary: '#input-summary', subtitle: '#input-subtitle' };
+      var T = { summary: '#input-summary', cap1: '#input-cap-1' };
+      var was = { summary: q(doc, '#input-summary').value, subtitle: q(doc, '#input-subtitle').value,
+        cap1: q(doc, '#input-cap-1').value };
+      function go(v) { tpl.value = v; fire(tpl, 'change', L); return sleep(60); }
+      function mask() { return doc.querySelector('.lmt-modal-mask'); }
+      try {
+        // 两套模板各写一份内容
+        await go('window');
+        setValue(q(doc, W.summary), '橱窗摘要', L);
+        setValue(q(doc, W.subtitle), '橱窗副标题', L);
+        await go('three');
+        setValue(q(doc, T.summary), '三图摘要', L);
+        setValue(q(doc, T.cap1), '小标题一', L);
+
+        // 按钮文案跟着当前模板走
+        assertEq(text(btn), '清空三图竖排', '按钮文案应指向当前模板，实际：' + text(btn));
+
+        // 取消：什么都不该发生
+        btn.click();
+        await until(mask, 3000, '清空应弹二次确认');
+        dialogButton(doc, /^取消$/).click();
+        await until(function () { return !mask(); }, 3000, '取消后应关闭弹层');
+        assertEq(q(doc, '#input-summary').value, '三图摘要', '取消清空不应动文案');
+
+        // 确认清空：只清当前模板（三图竖排 5 项文案 / 3 张图）
+        btn.click();
+        await until(mask, 3000, '清空应弹二次确认');
+        assertMatch(text(mask()), /清空三图竖排/, '弹层标题应写清是哪个模板');
+        dialogButton(doc, /^清空$/).click();
+        await until(function () { return q(doc, T.summary).value === ''; }, 3000, '清空应生效');
+        assertEq(q(doc, T.cap1).value, '', '应清掉小标题一');
+        assertMatch(text(msg), /已清空「三图竖排」的 5 项文案与 3 张图片/, '应给出清空回执，实际：' + text(msg));
+
+        // 撤销（趁提示条还在：TTL 由「撤销时长」设置决定）
+        var undoBtn = qa(await until(function () { return doc.querySelector('.lmt-undo-toast'); },
+          3000, '清空应有可撤销提示条'), 'button').filter(function (b) { return text(b) === '撤销'; })[0];
+        assert(undoBtn, '提示条上应有「撤销」按钮（纯提示不该出现在这里）');
+        undoBtn.click();
+        await until(function () { return !doc.querySelector('.lmt-undo-toast'); }, 3000, '点撤销后提示条应消失');
+        assertMatch(text(msg), /已恢复清空前的「三图竖排」内容/, '撤销应有回执，实际：' + text(msg));
+
+        // 另一套模板全程不受影响
+        await go('window');
+        assertEq(q(doc, W.summary).value, '橱窗摘要', '清空三图竖排不得动橱窗排版的摘要');
+        assertEq(q(doc, W.subtitle).value, '橱窗副标题', '清空三图竖排不得动橱窗排版的副标题');
+
+        // 撤销还原到「被清空的那个模板」，不是「撤销那一刻的当前模板」
+        await go('three');
+        assertEq(q(doc, T.summary).value, '三图摘要', '撤销后应恢复三图竖排的摘要');
+        assertEq(q(doc, T.cap1).value, '小标题一', '撤销后应恢复小标题一');
+      } finally {
+        if (mask()) { var c = dialogButton(doc, /^取消$/); if (c) c.click(); }
+        qa(doc, '.lmt-undo-toast').forEach(function (el) { if (el.__dispose) el.__dispose(); });
+        await go('window'); setValue(q(doc, W.summary), was.summary, L); setValue(q(doc, W.subtitle), was.subtitle, L);
+        await go('three'); setValue(q(doc, T.cap1), was.cap1, L);
+        await go(tplWas);
+      }
+    });
+
+    // 批量出图内部会为「渲染某份草稿」而切模板。那不是用户切模板，
+    // 不得把草稿的文案写进用户两套模板各自的槽（否则批量跑一次就把用户内容改掉了）。
+    test('layout/批量出图：为渲染草稿切模板不得污染两套模板各自的文案', async function () {
+      var t = app();
+      var tpl = q(doc, '#template-select');
+      var tplWas = tpl.value;
+      var real = L.html2canvas;
+      var title = q(doc, '#input-title');
+      var batchBtn = q(doc, '#batch-btn');
+      function go(v) { tpl.value = v; fire(tpl, 'change', L); return sleep(60); }
+      function killToasts() {
+        qa(doc, '.lmt-undo-toast').forEach(function (el) { if (el.__dispose) el.__dispose(); });
+      }
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        // 用户的两份内容
+        await go('window');
+        setValue(title, '橱窗当前标题', L);
+        await go('three');
+        setValue(title, '三图当前标题', L);
+
+        // 存一份三图草稿（标题与用户当前内容刻意不同），存完把用户内容写回去
+        setValue(title, '草稿标题', L);
+        assert((await t.saveDraft('三图草稿')).ok, '前置：应存入三图草稿');
+        setValue(title, '三图当前标题', L);
+
+        // 用户回到橱窗排版，并在这一侧发起批量
+        await go('window');
+        setValue(title, '橱窗当前标题', L);
+
+        L.html2canvas = function () {
+          var cv = L.document.createElement('canvas');
+          cv.width = 40; cv.height = 60;
+          cv.getContext('2d').fillRect(0, 0, 40, 60);
+          return Promise.resolve(cv);
+        };
+        var cbs = await until(function () {
+          var list = qa(doc, '#batch-tasks input[type="checkbox"]');
+          return list.length ? list : null;
+        }, 3000, '批量清单渲染');
+        cbs[0].checked = true;
+        fire(cbs[0], 'change', L);
+        batchBtn.click();
+        await waitBatchFinish(q(doc, '#batch-tip'), batchBtn, '批量收尾');
+
+        assertEq(tpl.value, 'window', '批量结束后应回到发起时的模板');
+        assertEq(title.value, '橱窗当前标题', '批量结束后橱窗排版文案应原样还原');
+        await go('three');
+        assertEq(title.value, '三图当前标题',
+          '批量渲染草稿时的切模板不得把草稿标题写进三图竖排那一份，实际：' + title.value);
+      } finally {
+        L.html2canvas = real;
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        await go(tplWas);
+        setValue(title, '', L);
+        killToasts();
       }
     });
   }

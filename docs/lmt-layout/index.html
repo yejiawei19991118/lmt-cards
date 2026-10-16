@@ -373,22 +373,17 @@
             font-family: var(--handwriting-font);
         }
         
-        /* 顶部总结文案：整体在安全区内水平居中，但每行文字保持左对齐（右侧自然参差） */
+        /* 顶部总结文案：整块在安全区内水平居中，块内每行文字左对齐（右侧自然参差）。
+           宽度随文字长短浮动（短句窄），上限＝内容宽（与图片行同宽，并随 --fit 等比缩放），
+           两套模板共用同一套规则（此前橱窗排版另有一条「强制等宽」覆盖，短句会被拉满，已移除）。 */
         .header-summary {
             font-size: calc(var(--tpl-summary-size) * var(--fit));
             line-height: 1.55;
             width: fit-content;
-            max-width: 100%;
+            max-width: calc(var(--content-w) * var(--fit));
             align-self: center;
             text-align: left;
             color: var(--tpl-summary-color);
-        }
-
-        /* 橱窗排版：顶部摘要与图片行 / 截图行取同一份内容宽，左右边界严格对齐并随 --fit 等比缩放。
-           默认的 fit-content 会让摘要宽度随文字长短浮动（短句时比图片行窄、长句时又能宽出 20%），
-           看上去照片与顶部摘要左右都不齐。三图竖排的摘要仍按原样居中，不受此规则影响。 */
-        .safe-content-area[data-active-tpl="window"] .header-summary {
-            width: calc(var(--content-w) * var(--fit));
         }
         
         .main-title {
@@ -1012,6 +1007,12 @@
                 </select>
                 <p class="lmt-field-help">在「样式预设」里存下的样式会作为一条模板出现在本下拉中。</p>
             </div>
+
+            <!-- 一键清空：只清当前模板的文案与图片，另一套模板 / 草稿箱都不受影响（二次确认 + 可撤销） -->
+            <div class="lmt-btn-row is-split">
+                <button type="button" class="btn-danger" id="tpl-clear-btn">清空当前模板</button>
+            </div>
+            <div class="lmt-tip" id="tpl-clear-msg" role="status" aria-live="polite"></div>
 
             <div class="control-group">
                 <label for="input-summary">顶部摘要</label>
@@ -2584,6 +2585,8 @@
         const exportTarget = document.getElementById('export-target');
         const overflowWarn = document.getElementById('overflow-warn');
         const fitNote = document.getElementById('fit-note');
+        const tplClearBtn = document.getElementById('tpl-clear-btn');
+        const tplClearMsg = document.getElementById('tpl-clear-msg');
 
         // 1. 文本实时同步
         // 转义 HTML，避免输入 < > & 时被当成标签解析
@@ -2707,7 +2710,8 @@
         // 内容是否超出安全区（核心要求：导出内容绝不能越界）
         // 策略：溢出时自动等比缩小字号，逐步收敛到刚好放得下；
         //       缩到下限仍溢出才报警并禁用导出，避免导出被裁掉的图。
-        const FIT_MIN = 0.7;   // 字号最小缩到原始的 70%
+        const FIT_MIN = 0.4;   // 字号最小缩到原始的 40%：缩放下限越低，越多内容能靠缩放塞进安全区，
+                               // 而不是缩到一半就放弃、让内容贴着红线被 overflow:hidden 裁掉
         const FIT_STEP = 0.02; // 每次缩 2%，避免一次缩过头显得过小
         // 候选档位（从大到小，步长 FIT_STEP，下限 FIT_MIN）：取值集合与原逐档扫描完全一致，
         // 只构造一次并全程复用。
@@ -2716,7 +2720,7 @@
             for (let k = 1; k * FIT_STEP <= 1 - FIT_MIN + 1e-9; k++) {
                 g.push(Math.round((1 - k * FIT_STEP) * 100) / 100);
             }
-            return g; // [0.98, 0.96, …, 0.70]
+            return g; // [0.98, 0.96, …, FIT_MIN]
         })();
         function fitsAt(fit) {
             exportTarget.style.setProperty('--fit', String(fit));
@@ -2745,10 +2749,18 @@
             }
 
             overflowWarn.classList.toggle('show', !ok);
-            // 明示「当前按 X% 缩放」（P-17）：仅在确实发生自动缩放时提示；关闭自动适配时不提示
-            const scaled = ((!fitLock || fitLock.checked) && ok && fit < 1);
-            fitNote.classList.toggle('show', scaled);
-            if (scaled) fitNote.textContent = '已自动适配安全区：当前按 ' + Math.round(fit * 100) + '% 缩放。';
+            // 适配结果常显（两套模板共用同一条提示，天然一致）：
+            //   溢出 → 只报警（提示位让给 #overflow-warn）
+            //   放得下且缩放过 → 明示当前缩放百分比
+            //   放得下且未缩放 → 明示按 100% 显示
+            // 关闭「自动适配字号」时不出现「已自动适配」字样，避免自相矛盾。
+            const autoFit = (!fitLock || fitLock.checked);
+            fitNote.classList.toggle('show', ok);
+            if (ok) {
+                fitNote.textContent = (autoFit && fit < 1)
+                    ? '已自动适配安全区：当前按 ' + Math.round(fit * 100) + '% 缩放。'
+                    : '内容已适配安全区：按 100% 显示。';
+            }
             updateExportEnabled(ok);
         }
         // 导出按钮可用性 = 内容已适配安全区 且 手写字体已就绪（P-20）
@@ -2936,10 +2948,26 @@
         // P-30：专属字段「隐藏但保留值」——只切 hidden，不清空 input.value，
         //       导出时截取整个画布，隐藏元素（display:none）不参与渲染，故导出仅取当前模板字段。
         function applyTemplate(name) {
+            // 切模板 = 换一套文案：离开旧模板先把它这一份存进自己的槽，进入新模板取它自己那一份（首次为空）。
+            // 批量出图内部也会切模板（那是「渲染某份草稿」而不是用户切模板），靠 fieldSlotLock 跳过换槽，
+            // 否则两个槽会被最后几张草稿的内容污染。
+            if (!fieldSlotLock) {
+                const prev = exportTarget.dataset.activeTpl;
+                if (prev && prev !== name && TPL_SLOTS.indexOf(prev) >= 0 && TPL_SLOTS.indexOf(name) >= 0) {
+                    snapshotFieldsTo(prev);
+                    loadFieldsFrom(name);
+                }
+            }
             document.querySelectorAll('[data-tpl]').forEach((el) => { el.hidden = el.dataset.tpl !== name; });
             exportTarget.dataset.activeTpl = name; // 供 CSS 区分模板（如三图竖排的加粗总结文案）
             refreshSnippetFieldOptions(name);      // 常用文案库的目标字段随模板动态过滤（P-36）
+            refreshTplClearBtn();                  // 一键清空按钮的文案随当前模板变化
             checkContentFit();
+        }
+        // 「一键清空」按钮文案：直接取模板中文名，新增模板无需再维护映射
+        function refreshTplClearBtn() {
+            if (!tplClearBtn) return;
+            tplClearBtn.textContent = '清空' + tplLabelOf(currentSlotName());
         }
         // 「常用文案库 → 目标字段」按当前模板过滤（P-36）：
         //   橱窗排版：顶部文案 / 主标题 / 关键词 / 副标题
@@ -3235,6 +3263,50 @@
             summary: '顶部摘要', title: '主标题', keywords: '关键词', subtitle: '副标题',
             cap1: '段落小标题 1', cap2: '段落小标题 2', cap3: '段落小标题 3'
         };
+        // ---- 排版模板的数据隔离：两套模板各有自己的一份文案与图片 ----
+        // 橱窗排版 4 项文案 / 4 张图；三图竖排 5 项文案 / 3 张图。
+        // summary 与 title 是同一对输入框（两套模板都显示），但按需求各存一份、互不影响。
+        const TPL_SLOTS = ['window', 'three'];
+        const TPL_FIELD_KEYS = {
+            window: ['summary', 'title', 'keywords', 'subtitle'],
+            three: ['summary', 'title', 'cap1', 'cap2', 'cap3']
+        };
+        const TPL_IMG_KEYS = {
+            window: ['left', 'right', 'shotLeft', 'shotRight'],
+            three: ['wide1', 'wide2', 'wide3']
+        };
+        // key = 模板名，值 = { 字段: 文本 }；null = 该模板从未建立过 → 视为全空
+        const fieldStore = { window: null, three: null };
+        // 批量出图期间冻结换槽：批量内部会为「渲染某份草稿」而切模板，
+        // 那不是用户切模板，不应该把草稿内容写进用户的槽里。
+        let fieldSlotLock = false;
+        // 当前模板的槽名：「我的模板」（my_*）这类 id 落到它当前使用的底层模板
+        function currentSlotName() {
+            const v = templateSelect.value;
+            if (TPL_SLOTS.indexOf(v) >= 0) return v;
+            const a = exportTarget.dataset.activeTpl;
+            return TPL_SLOTS.indexOf(a) >= 0 ? a : 'window';
+        }
+        function snapshotFieldsTo(tpl) {
+            if (TPL_SLOTS.indexOf(tpl) < 0) return;
+            const snap = {};
+            TPL_FIELD_KEYS[tpl].forEach((k) => { if (FIELD_INPUTS[k]) snap[k] = FIELD_INPUTS[k].value; });
+            fieldStore[tpl] = snap;
+        }
+        // 只回填该模板自己的字段：另一套模板的输入框（隐藏状态）保持原样，互不干扰
+        function loadFieldsFrom(tpl) {
+            if (TPL_SLOTS.indexOf(tpl) < 0) return;
+            const src = fieldStore[tpl] || {};
+            TPL_FIELD_KEYS[tpl].forEach((k) => {
+                if (FIELD_INPUTS[k]) FIELD_INPUTS[k].value = typeof src[k] === 'string' ? src[k] : '';
+            });
+            syncFieldPreview();
+        }
+        function restoreFieldStore(s) {
+            if (!s) return;
+            TPL_SLOTS.forEach((t) => { fieldStore[t] = s[t] ? Object.assign({}, s[t]) : null; });
+        }
+        function clearFieldStore() { fieldStore.window = null; fieldStore.three = null; }
         // 图片上传 input id → IMG_TARGETS 的键（「清除」按钮据此定位要清空的预览框）
         const CLEAR_MAP = {
             'upload-left': 'left', 'upload-right': 'right',
@@ -3485,17 +3557,27 @@
         }
 
         // ---- 内容/图片/样式 的快照与还原（草稿箱、批量出图共用） ----
+        // 快照按「当前模板」作用域：草稿只带自己那套模板的文案与图片，
+        // 既符合「模板之间输入框隔离」，也避免拿另一套模板的空值把本份草稿撑大。
         function captureFields() {
             const f = {};
-            Object.keys(FIELD_INPUTS).forEach((k) => { f[k] = FIELD_INPUTS[k].value; });
+            const keys = TPL_FIELD_KEYS[currentSlotName()] || [];
+            keys.forEach((k) => { if (FIELD_INPUTS[k]) f[k] = FIELD_INPUTS[k].value; });
             return f;
         }
         // 采集各图片框的「原图」（见 photoSource）。
         // 不再回读预览框里的位图：那是按图片框烘焙好的小图，反复转存会逐代损失清晰度，
         // 且无损 PNG 体积远大于原图 JPEG，是「多份草稿只存得下一份图」的直接原因。
         function captureImgs() {
+            return captureImgsOf(TPL_IMG_KEYS[currentSlotName()] || []);
+        }
+        // 全量采集：批量出图要还原「批量前的完整界面」，两套模板的图都得留底
+        function captureImgsAll() {
+            return captureImgsOf(Object.keys(IMG_TARGETS));
+        }
+        function captureImgsOf(keys) {
             const imgs = {};
-            Object.keys(IMG_TARGETS).forEach((k) => { if (photoSource[k]) imgs[k] = photoSource[k]; });
+            keys.forEach((k) => { if (photoSource[k]) imgs[k] = photoSource[k]; });
             return imgs;
         }
         // 由输入框回灌预览（载入草稿/恢复记忆时不能只改输入框，否则预览还是旧的）
@@ -3558,17 +3640,21 @@
         }
         // 应用快照：字段/样式同步生效（保证同步调用方行为不变）；
         // 返回「图片全部还原完成」的 Promise，供批量出图等需要等待图片落地的场景 await。
+        // 文案与图片都只作用于「当前模板」：另一套模板的槽与图片原样不动，
+        // 否则载入一份橱窗草稿会把三图竖排的 3 张图一并清掉（草稿只带自己那份数据）。
         function applySnapshot(snap) {
             if (!snap) return Promise.resolve();
             if (snap.fields) {
-                Object.keys(FIELD_INPUTS).forEach((k) => {
-                    if (typeof snap.fields[k] === 'string') FIELD_INPUTS[k].value = snap.fields[k];
+                const keys = TPL_FIELD_KEYS[currentSlotName()] || [];
+                keys.forEach((k) => {
+                    if (FIELD_INPUTS[k] && typeof snap.fields[k] === 'string') FIELD_INPUTS[k].value = snap.fields[k];
                 });
                 syncFieldPreview();
             }
             let imgReady = Promise.resolve();
             if (snap.imgs) {
-                imgReady = Promise.all(Object.keys(IMG_TARGETS).map((k) => (
+                const imgKeys = TPL_IMG_KEYS[currentSlotName()] || [];
+                imgReady = Promise.all(imgKeys.map((k) => (
                     snap.imgs[k] ? restorePhoto(k, snap.imgs[k]) : Promise.resolve(clearPhoto(k))
                 )));
             }
@@ -3703,6 +3789,46 @@
                 applyTemplate(value);
             }
         }
+        // 一键清空（只限当前模板）：清掉该模板自己的文案与图片，另一套模板 / 草稿箱都不受影响。
+        // 清空后这一份就是「空」，之后来回切换仍是空（符合「除非模板为空」）。
+        async function clearCurrentTemplate() {
+            if (batchRunning) return false;
+            const tpl = currentSlotName();
+            const label = tplLabelOf(tpl);
+            const fieldKeys = TPL_FIELD_KEYS[tpl] || [];
+            const imgKeys = TPL_IMG_KEYS[tpl] || [];
+            const ok = await confirmDialog({
+                title: '清空' + label,
+                message: '将清空「' + label + '」的 ' + fieldKeys.length + ' 项文案与 ' + imgKeys.length + ' 张图片；'
+                    + '另一套模板的内容、草稿箱里的草稿都不受影响。',
+                okText: '清空', danger: true
+            });
+            if (!ok) return false;
+            const undoSnap = { fields: captureFields(), imgs: captureImgs() }; // 留底（都是当前模板这一份）
+            fieldKeys.forEach((k) => { if (FIELD_INPUTS[k]) FIELD_INPUTS[k].value = ''; });
+            syncFieldPreview();
+            imgKeys.forEach((k) => clearPhoto(k));
+            snapshotFieldsTo(tpl); // 把空值写回该模板的槽
+            checkContentFit();
+            scheduleSavePrefs();
+            const msg = '已清空「' + label + '」的 ' + fieldKeys.length + ' 项文案与 ' + imgKeys.length + ' 张图片';
+            setMsg(tplClearMsg, msg);
+            // 撤销锚定「被清空的那个模板」：若用户已经切走，只把它这一份写回槽里，
+            // 不能用「撤销那一刻的当前模板」当作用域，否则内容会被还原到别处
+            showUndoToast(msg, () => {
+                fieldStore[tpl] = Object.assign({}, undoSnap.fields);
+                TPL_IMG_KEYS[tpl].forEach((k) => {
+                    if (undoSnap.imgs[k]) restorePhoto(k, undoSnap.imgs[k]);
+                    else clearPhoto(k);
+                });
+                if (currentSlotName() === tpl) loadFieldsFrom(tpl);
+                checkContentFit();
+                scheduleSavePrefs();
+                setMsg(tplClearMsg, '已恢复清空前的「' + label + '」内容');
+            });
+            return true;
+        }
+        if (tplClearBtn) tplClearBtn.addEventListener('click', () => { clearCurrentTemplate(); });
 
         // ---- 草稿图片的大容量兜底（IndexedDB） ----
         // localStorage 只有 ~5MB，还与偏好/模板/片段共用，装不下多份带图草稿。
@@ -4062,9 +4188,12 @@
                 undoSec: prefUndoSeconds ? (Number(prefUndoSeconds.value) || 8) : 8
             };
             if (remember) {
+                // 先把当前模板那一份文案提交进它的槽，再连同另一套模板的槽一起落盘
+                snapshotFieldsTo(currentSlotName());
                 out.tpl = templateSelect.value;
                 out.fontFamily = fontSelect.value;
-                out.fields = captureFields();
+                out.fields = captureFields();                              // 旧键：当前模板这一份，兼容旧读法
+                out.fieldsByTpl = { window: fieldStore.window, three: fieldStore.three };
                 out.style = collectStyleFromControls();
                 out.safe = toggleSafe.checked;
                 out.fitLockAuto = !!(!fitLock || fitLock.checked); // 语义反转后记录「自动适配字号」是否开启
@@ -4074,6 +4203,7 @@
                 if (prev.tpl != null) out.tpl = prev.tpl;
                 if (prev.fontFamily != null) out.fontFamily = prev.fontFamily;
                 if (prev.fields) out.fields = prev.fields;
+                if (prev.fieldsByTpl) out.fieldsByTpl = prev.fieldsByTpl;
                 if (prev.style) out.style = prev.style;
                 if (typeof prev.safe === 'boolean') out.safe = prev.safe;
                 if (typeof prev.fitLockAuto === 'boolean') out.fitLockAuto = prev.fitLockAuto;
@@ -4104,12 +4234,19 @@
                 selectTemplateValue(p.tpl);
                 onTemplateSelectChange(templateSelect.value);
             }
-            if (p.fields) {
-                Object.keys(FIELD_INPUTS).forEach((k) => {
-                    if (typeof p.fields[k] === 'string') FIELD_INPUTS[k].value = p.fields[k];
+            // 文案按模板分槽回灌：两套模板各取自己那一份
+            if (p.fieldsByTpl) {
+                restoreFieldStore(p.fieldsByTpl);
+            } else if (p.fields) {
+                // 旧记录只有一份文案（两套模板共用）：归到当时用的那个模板，另一套模板首次仍为空
+                const slot = TPL_SLOTS.indexOf(p.tpl) >= 0 ? p.tpl : 'window';
+                const legacy = {};
+                TPL_FIELD_KEYS[slot].forEach((k) => {
+                    if (typeof p.fields[k] === 'string') legacy[k] = p.fields[k];
                 });
-                syncFieldPreview();
+                fieldStore[slot] = legacy;
             }
+            if (p.fieldsByTpl || p.fields) loadFieldsFrom(currentSlotName());
             if (p.style) applyCustomStyle(p.style);
             syncStyleControls();
             if (typeof p.safe === 'boolean') {
@@ -4155,6 +4292,8 @@
                 return true;
             }
 
+            // 重置全部：两套模板的文案槽一并清空（否则从此模板切过去还会冒出旧内容）
+            clearFieldStore();
             Object.keys(FIELD_INPUTS).forEach((k) => { FIELD_INPUTS[k].value = ''; });
             Object.keys(IMG_TARGETS).forEach((k) => clearPhoto(k));
             resetCustomStyle();
@@ -4326,6 +4465,8 @@
             if (draftSelect) draftSelect.disabled = locked;
             // 「导入草稿」是 label（触发 file input），没有 disabled 属性可用，只能靠指针事件拦截
             if (draftImportBtn) draftImportBtn.classList.toggle('is-disabled', locked);
+            // 一键清空同样属于「会改当前内容」的操作，批量进行中一并锁住
+            if (tplClearBtn) tplClearBtn.disabled = locked;
         }
         // 执行一批任务（成功、失败、取消都会逐字还原批量前的界面状态），返回结果供收尾处理
         async function performBatch(tasks) {
@@ -4342,10 +4483,14 @@
             if (batchProgress) { batchProgress.hidden = false; setBatchProgress(0, tasks.length); }
             updateBatchCount(); // 同步锁住「全选/全不选」
             // 记录批量前的完整界面状态：无论成功、失败还是取消，结束时都必须逐字还原
+            // 文案先提交进当前模板的槽并冻结换槽：批量内部为「渲染某份草稿」也会切模板，
+            // 那不是用户切模板，不该改写用户两套模板各自的文案
+            snapshotFieldsTo(currentSlotName());
+            fieldSlotLock = true;
             const beforeSnap = {
                 tpl: templateSelect.value,
                 fields: captureFields(),
-                imgs: captureImgs(),
+                imgs: captureImgsAll(),
                 style: readCurrentStyle(),
                 font: fontSelect.value,
                 safe: toggleSafe.checked
@@ -4386,8 +4531,14 @@
                 error = err;
             } finally {
                 // 恢复界面：模板、字段、图片、样式、字体、安全区逐项还原
+                // 还原模板这一步仍要冻结换槽：最后渲染的那张草稿未必是用户原来的模板，
+                // 此刻输入框里装的是那张草稿的内容，一解冻就会被当成「用户切模板」写进对应的槽，
+                // 把用户自己那一份覆盖掉。applySnapshot 不触发换槽，故解冻放在它之前即可。
                 selectTemplateValue(beforeSnap.tpl);
                 onTemplateSelectChange(templateSelect.value);
+                fieldSlotLock = false;
+                // 两套模板的槽在批量期间被冻结、未被改写，文案照旧还原；
+                // 图片按当前模板作用域还原（另一套模板的图批量期间没被动过）
                 await applySnapshot({ fields: beforeSnap.fields, imgs: beforeSnap.imgs, style: beforeSnap.style });
                 if (Array.prototype.some.call(fontSelect.options, (o) => o.value === beforeSnap.font)) {
                     fontSelect.value = beforeSnap.font;
