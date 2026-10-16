@@ -1790,6 +1790,23 @@
         function currentPubKey() { return pubKeyBytes; }
         setPubKey(LICENSE_PUBKEY);
 
+        // 验签结果缓存：Ed25519 是纯 BigInt 同步计算（一次约数百 ms 级），而 parseManifest
+        // 在「启动读本地缓存」与「每次联网拉取成功」时都会调用，同样的 (公钥, canonical, 签名)
+        // 重复验签纯属浪费。key 里带公钥，setPubKey 换钥匙后自然区分，不会串结果。
+        // 简单上限：缓存 20 条，超出整体清空（清单只有「最近几次」的量级，无需 LRU）。
+        var verifyCache = {};
+        var verifyCacheCount = 0;
+        function verifySigCached(canonical, sig) {
+            var key = (LICENSE_PUBKEY || '') + '\u0000' + sig + '\u0000' + canonical;
+            if (Object.prototype.hasOwnProperty.call(verifyCache, key)) return verifyCache[key];
+            var sigBytes = base32Decode(sig, 64);
+            var ok = !!sigBytes && ed25519Verify(pubKeyBytes, utf8Bytes(canonical), sigBytes);
+            if (verifyCacheCount >= 20) { verifyCache = {}; verifyCacheCount = 0; }
+            verifyCache[key] = ok;
+            verifyCacheCount++;
+            return ok;
+        }
+
         // ---------- 本机机器码 ----------
         function storage() { try { return window.localStorage; } catch (e) { return null; } }
         var memId = null;
@@ -1962,8 +1979,7 @@
             var sig = typeof data.sig2 === 'string' ? data.sig2 : '';
             var verified = false;
             if (ver === MANIFEST_VER && sig && pubKeyBytes && ed25519Supported()) {
-                var sigBytes = base32Decode(sig, 64);
-                verified = !!sigBytes && ed25519Verify(pubKeyBytes, utf8Bytes(canonical), sigBytes);
+                verified = verifySigCached(canonical, sig);
             }
             return {
                 ver: ver, updated: updated, rev: rev,
@@ -2654,6 +2670,11 @@
         // 裁切/缩放后绘制到一个 <canvas> 子元素里。画布位图按导出分辨率(EXPORT_SCALE)生成，
         // html2canvas 对 <canvas> 是像素级复制，导出即为清晰原图。
         const EXPORT_SCALE = 4;
+        // 批量出图专用倍率：单张导出 4×（P-33），批量按 4× 逐张 html2canvas 时
+        // 每张临时画布高达 1500×2668（约 16MB），数量一多内存与耗时都明显上升。
+        // 批量降到 2×（750×1334）：图片框位图仍是 4× 生成，无需提清晰度，够分享用。
+        // 若想恢复 4×，把这里改成 4 即可（画质↑、内存/耗时↑）。
+        const BATCH_EXPORT_SCALE = 2;
         // 各图片框的导出像素尺寸（CSS 尺寸 132×132 / 132×176，乘以 EXPORT_SCALE）
         const BOX_SIZE = {
             cover: [132 * EXPORT_SCALE, 132 * EXPORT_SCALE],   // 模特图：铺满方框
@@ -3830,13 +3851,15 @@
             // 等字体就绪，否则导出图会回退成系统字体
             if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
             const canvas = await html2canvas(canvasWrapper, {
-                scale: currentExportScale(),
+                scale: BATCH_EXPORT_SCALE, // 批量降倍率，控制逐张临时画布的内存与耗时
                 backgroundColor: readCurrentStyle().bg,
                 logging: false,
                 width: 375,
                 height: 667
             });
             const bytes = await canvasToPngBytes(canvas);
+            // 主动释放大画布：批量循环下避免已用画布驻留内存（width/height 置 0 即让浏览器回收位图）
+            try { canvas.width = 0; canvas.height = 0; } catch (e) { /* 个别环境只读，忽略 */ }
             return { name: task.name, bytes: bytes };
         }
         batchBtn.addEventListener('click', async () => {

@@ -628,6 +628,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // 上传回执 / 台账快照：独立的本机 localStorage 键，互不影响既有键。
     var UPLOAD_RECEIPT_KEY = 'lmt_last_upload_v1';
     var SNAPSHOT_KEY = 'lmt_ledger_snapshots_v1';
+    // 上次构建清单时的「内容指纹 → updated」记录：让内容不变时 updated / rev / sig2 保持稳定。
+    var UPDATED_KEY = 'lmt_manifest_updated_v1';
 
     // 「登录校验」常量：只存随机盐 + 哈希，不在源码里保存明文账号密码。
     // 校验用与本页其余算法同款的 HMAC-SHA256（纯 JS 实现，Android WebView 的 file:// 环境亦可用）。
@@ -1617,6 +1619,24 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     // entries 既供「线上条目」在卡密清单里只读展示，也作为发布时字段级三方合并的基准（base）。
     var lastRemote = null;
 
+    // updated 幂等化：内容指纹未变则沿用上次记录的 updated（首次构建 / 内容变化时才取当前时间）。
+    // 指纹记在本机 localStorage（跨刷新保持）；换机器各自独立——本工具是作者侧单机工具，无妨。
+    var updatedMemo = null; // { sig, updated }，首次读取时从 localStorage 载入
+    function resolveManifestUpdated(contentSig) {
+        if (updatedMemo === null) {
+            try {
+                var raw = localStorage.getItem(UPDATED_KEY);
+                var rec = raw ? JSON.parse(raw) : null;
+                if (rec && rec.sig && rec.updated) updatedMemo = { sig: String(rec.sig), updated: String(rec.updated) };
+            } catch (e) { /* 读不到 / 损坏就当作没有记录 */ }
+        }
+        if (updatedMemo && updatedMemo.sig === contentSig) return updatedMemo.updated;
+        var now = localIso(new Date());
+        updatedMemo = { sig: contentSig, updated: now };
+        try { localStorage.setItem(UPDATED_KEY, JSON.stringify(updatedMemo)); } catch (e) { /* 存不下只影响下次刷新 */ }
+        return now;
+    }
+
     // 依据「台账有效条目 + 吊销名单」组装线上清单对象（契约 ver 2：ver / updated / rev / cards / revoked / sig2）。
     // 与 buildManifest 拆开的原因：上传前需要先拿到本地对象、与远端合并后再重新签名。
     // 白名单条目写成对象 {card, mc, note, exp}：作者看清单 JSON 就能把卡密对应到具体用户的名称与机器码。
@@ -1643,13 +1663,17 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         // 吊销优先：产出清单时先剔除与吊销名单冲突的白名单条目，
         // 避免同一张卡密在清单里既「可用」又「已吊销」——客户端解析优先级也以吊销为准。
         Object.keys(revokedMap).forEach(function (n) { delete cardsMap[n]; });
-        // ISO 8601 含时区（P-32）：用本地时间 + 时区偏移，不用 toISOString（UTC），
-        // 否则东八区 08:00 前会写成前一天，容易让人误判清单是否为最新。
-        var updated = localIso(new Date());
         // ⚠️ 参与 rev / 签名的一律是「归一化」条目（card/mc 去分组横线）：
         //    客户端 parseManifest 解析后也是先归一化再拼规范化串，两侧必须逐字一致；
         //    分组横线只出现在写进 cards.json 的展示字段里，绝不进入规范化串。
         var normForSign = normCardsMap(cardsMap);
+        // ISO 8601 含时区（P-32）：用本地时间 + 时区偏移，不用 toISOString（UTC），
+        // 否则东八区 08:00 前会写成前一天，容易让人误判清单是否为最新。
+        // 幂等化：updated 参与 rev 与 canonical，若每次构建都刷新成「此刻」，
+        // 内容一字未改 rev / sig2 也会变，「内容是否变化、是否需要重传」的探测就失去意义。
+        // 故按「内容指纹（不含 updated）」决定：指纹未变则沿用上次的 updated。
+        var contentSig = sha256Hex(Number(MANIFEST_VER) + '\n' + manifestCardsLines(normForSign) + '\n' + manifestRevokedStr(revokedMap));
+        var updated = resolveManifestUpdated(contentSig);
         var rev = sha256Hex(manifestRevSource(MANIFEST_VER, updated, normForSign, revokedMap)).substr(0, 16);
         var canonical = canonicalManifestString(MANIFEST_VER, updated, rev, normForSign, revokedMap);
         var cards = [], revoked = [], keys, i;
