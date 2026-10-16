@@ -1,7 +1,7 @@
 {
   "ver": 2,
-  "updated": "2026-10-16T23:51:01+08:00",
-  "rev": "1e4d915ccc7f00a3",
+  "updated": "2026-10-16T23:51:47+08:00",
+  "rev": "c5571b54e53d7ec9",
   "cards": [
     {
       "card": "JYEB-9339-4V2R-S4GG-2JVJ",
@@ -18,7 +18,7 @@
     {
       "card": "27BQ-90Q1-0SP2-8QM7-VRCZ",
       "mc": "QQEK-TXJ0-3VCP-28XM",
-      "note": "",
+      "note": "电脑浏览器",
       "exp": ""
     },
     {
@@ -29,5 +29,5 @@
     }
   ],
   "revoked": [],
-  "sig2": "3NG1355WNQF1WKM02YBTD9V3P8XFSTQ5S8NJJVZWB1BN5XS9HF81SRT7A6HMWAVX0H6MRDX6119Y36VZDCH2RN3GSSK61C7KC9B0A28"
+  "sig2": "HRBJBFQBMNH15RXAAJNY4HCWMSANQNH18RGAF3T2DSMTWBSBTTPWP9QCJXQ41510C6CJ8MPBZGJNE41MPE7H1DCH1MZ7FY9BJCAYW30"
 }
