@@ -307,6 +307,10 @@
         padding: 4px 10px; border-radius: 999px;
         background: var(--accent-weak); border: 1px solid var(--accent-line);
         color: var(--accent-ink); font-size: var(--fs-xs); font-weight: 600; line-height: 1.5;
+        /* 通用不变式：任何一枚胶囊都不得撑出所在容器。结论里可能夹着不可断的 URL，
+           真机还可能放大字号；这里统一允许在盒内断行，宽度上限锁死为容器可用宽度。 */
+        box-sizing: border-box; max-width: 100%;
+        white-space: normal; word-break: break-word; overflow-wrap: anywhere;
     }
     .lmt-chip.is-warn { background: var(--warn-bg); border-color: #f2d4a8; color: var(--warn-ink); }
     /* 状态条的两个终态：同步失败（danger）与同步成功（ok）。颜色只在语义确实成立时使用 */
@@ -321,10 +325,10 @@
     .sync-bar .lmt-chip {
         display: block; box-sizing: border-box;
         width: 100%; max-width: 100%;
-        white-space: normal; word-break: break-word; overflow-wrap: anywhere;
     }
-    /* 初始为空时不渲染空胶囊（必须排在覆盖规则之后，否则空胶囊会被 display:block 顶出来） */
-    .lmt-chip:empty { display: none; }
+    /* 初始为空时不渲染空胶囊。必须带上 .sync-bar 前缀把特异度提到 (0,3,0)，
+       否则上面 .sync-bar .lmt-chip { display:block } 的 (0,2,0) 会赢，空胶囊被顶成一条空块。 */
+    .sync-bar .lmt-chip:empty { display: none; }
     /* 折叠说明块：把长格式说明从 label 里挪出来，标签只留一句人话 */
     .lmt-details { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
     .lmt-details > summary {
