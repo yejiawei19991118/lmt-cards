@@ -2,7 +2,7 @@
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File tests/run.ps1
-#   powershell -ExecutionPolicy Bypass -File tests/run.ps1 -Chrome "C:\path\to\msedge.exe" -TimeoutMs 60000
+#   powershell -ExecutionPolicy Bypass -File tests/run.ps1 -Chrome "C:\path\to\msedge.exe" -TimeoutMs 240000
 #   # 同一套用例改跑安卓 assets 副本（相对 tests/ 目录解析）：
 #   powershell -ExecutionPolicy Bypass -File tests/run.ps1 `
 #       -LayoutTarget  ../../android/lmt-layout/src/main/assets/index.html `
@@ -19,7 +19,11 @@
 
 param(
     [string]$Chrome = '',
-    [int]$TimeoutMs = 60000,
+    # 这是「虚拟时间预算」（见下方 --virtual-time-budget），不是墙钟超时：
+    # 用例里的每次 setTimeout 轮询都会按虚拟毫秒记账，用例越多消耗越大。
+    # 安卓副本（外壳用例真的要跑原生桥、真做 canvas 出图）比 PWA 副本更费，
+    # 60s 已被实测证明会在用例跑完前就耗尽、dump 出「测试运行中…」的中间态。
+    [int]$TimeoutMs = 180000,
     # 不指定则跑 docs/ 下的 PWA 副本；指定则跑对应副本，路径相对 tests/ 目录解析
     [string]$LayoutTarget = '',
     [string]$CardgenTarget = '',
