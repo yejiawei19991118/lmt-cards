@@ -1015,6 +1015,39 @@
       assertEq(q(doc, '#export-size').value, '4', '重置全部应恢复 4× 导出尺寸');
     });
 
+    test('layout/自动化承接：样式重置并入「重置偏好」、片段选中即写入指定字段（O-L10 / O-L11）', async function () {
+      var t = app();
+      // 两个手动入口已按 O-L10 / O-L11 删除，不得再出现在 DOM 里。
+      assertEq(doc.querySelector('#style-reset-btn'), null,
+        '「重置样式」按钮应已删除（改由「重置偏好」的「仅重置样式」承接）');
+      assertEq(doc.querySelector('#snippet-insert-btn'), null,
+        '「插入片段」按钮应已删除（改为「先选目标字段 → 再选片段」即自动写入）');
+
+      t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+      assertEq(t.saveSnippet('cap1', '片段内容甲'), true, '前置：应能存入一条片段');
+
+      // 次序：先选目标字段（cap1 属三图竖排专属，先把模板切过去），再选片段 → 选中即写入。
+      var tpl = q(doc, '#template-select');
+      tpl.value = 'three';
+      fire(tpl, 'change', L);
+      var fieldSel = q(doc, '#snippet-field-select');
+      fieldSel.value = 'cap1';
+      setValue(q(doc, '#input-cap-1'), '', L);
+
+      var sel = q(doc, '#snippet-select');
+      sel.value = t.listSnippets()[0].id;
+      fire(sel, 'change', L);
+      assertEq(q(doc, '#input-cap-1').value, '片段内容甲',
+        '选中片段后应自动写入 #snippet-field-select 指定的字段（不再需要手动点「插入」）');
+      assertEq(text(q(doc, '#preview-cap-1')), '片段内容甲', '自动写入后预览应同步');
+      assertMatch(text(q(doc, '#tool-msg')), /已写入/, '自动写入应有回执，实际：' + text(q(doc, '#tool-msg')));
+
+      // 收尾：切回橱窗模板并清空该字段，避免影响后续用例
+      tpl.value = 'window';
+      fire(tpl, 'change', L);
+      setValue(q(doc, '#input-cap-1'), '', L);
+    });
+
     test('layout/外壳：安卓壳读原生设备 ID，PWA 侧刻意不含该引用', async function () {
       var src = String(L.document.documentElement.outerHTML);
       var hasBridge = src.indexOf('LmtDevice') >= 0;
@@ -1040,6 +1073,15 @@
       assert(C.__cardGen, 'cardgen 脚本未初始化');
       return C.__cardGen;
     }
+
+    // 用例环境对齐：把「客户端内置公钥」对齐到测试私钥派生的公钥，等价于真实部署里
+    // 「作者私钥 ↔ 客户端内置公钥一致」；与主程序侧 lic.setPubKey(pub) 的做法对称。
+    // 不对齐的话，新增的「派生公钥必须与客户端内置公钥一致」自检门槛（CG-07-6）会让所有
+    // manifestSelfCheck(...).ok === true 的用例全部失败；那条负向路径由专门用例临时改值后覆盖。
+    g().setPrivateKey(TEST_PRIV);
+    var alignedPub = g().pubKeyBase32();
+    assert(alignedPub, '测试私钥应能派生出公钥');
+    g().setExpectedPubkey(alignedPub);
 
     test('cardgen/登录门：默认遮挡且错误提示可见', async function () {
       var gate = q(doc, '#auth-gate');
@@ -1308,26 +1350,30 @@
     // v2 §5.9：`#template-btn`（下载模板）已删除——格式说明与示例行直接写在台账折叠块里，
     // 该入口找不到独有场景，故不保留任何用例（删除即不再有可测行为）。
 
-    test('cardgen/线上清单自动同步：失败给原因 + 「重新同步」只在失败时出现', async function () {
+    test('cardgen/线上清单自动同步：失败给原因 + 内置自动重试（「重新同步」已删除，CG-07-2）', async function () {
       g().setPrivateKey(TEST_PRIV);
       var tip = q(doc, '#online-tip');
-      var retry = q(doc, '#refresh-btn');
-      // 「重新同步」是一次性入口：未同步 / 同步正常时都不渲染，只有失败才出现（§2.4）
-      assert(retry.hidden, '尚未同步时「重新同步」不应出现');
+      // 手动「重新同步」按钮已按 CG-07-2 删除：同步失败不再给手动入口，改由内置退避重试承接。
+      assertEq(doc.querySelector('#refresh-btn'), null, '「重新同步」按钮应已删除（改由内置自动重试承接）');
 
       // 无头环境断网（--host-resolver-rules），同步必然失败。自动触发点（online / visibilitychange /
       // 登录成功）在无头 harness 里无法模拟，这里直接调用同一个入口函数，覆盖的仍是同一条链路。
       await g().syncOnlineManifest();
-      // 断言「失败必须看得见」：状态条给出原因 + 「重新同步」出现（§2.4 第 3 条）
+      // 断言「失败必须看得见」：状态条给出原因 + 重试进度（CG-07-2）
       assert(/无法同步线上清单/.test(text(tip)), '同步失败必须给出原因，实际：' + text(tip));
       assert(/本机数据不受影响/.test(text(tip)), '失败提示应说明本机数据不受影响，实际：' + text(tip));
-      assert(!retry.hidden, '同步失败时「重新同步」必须出现');
+      assert(/正在自动重试（第 1 次）/.test(text(tip)), '失败后应立刻给出自动重试进度，实际：' + text(tip));
 
-      // 手动重同步：点击后重新进入同步中，并再次收敛到失败结论（仍失败则按钮保持可用）
-      retry.click();
-      assert(retry.hidden, '点击「重新同步」后应回到同步中（按钮先隐藏，避免重复点击）');
-      await until(function () { return /无法同步线上清单/.test(text(tip)); }, 30000, '重新同步后收敛');
-      assert(!retry.hidden, '重新同步仍失败时按钮应保持可用');
+      // 退避重试链自终止：3 次（3s / 9s / 27s）耗尽后收口为「稍后回到前台将自动再试」，
+      // 而不是暴露一枚已经不存在的按钮。
+      await until(function () { return /稍后回到前台将自动再试/.test(text(tip)); }, 40000,
+        '自动重试耗尽后应给出「稍后回到前台将自动再试」（当前：' + text(tip) + '）');
+      assert(/已自动重试 3 次仍未成功/.test(text(tip)), '耗尽后应说明已自动重试的次数，实际：' + text(tip));
+      assert(!/正在自动重试/.test(text(tip)), '重试链耗尽后不应再显示「正在自动重试」');
+      assertEq(doc.querySelector('#refresh-btn'), null, '重试链耗尽后仍不该出现任何手动重试入口');
+
+      // 收尾：等最后一枚退避计时器（第 4 次试探）也跑完，避免它跑进后续用例里触发 render()。
+      await sleep(30000);
     });
 
     test('cardgen/自动上传开关', async function () {
@@ -1536,6 +1582,38 @@
       var r2 = t.manifestSelfCheck(dupCard);
       assertEq(r2.ok, false, '一卡多用时自检必须失败');
       assert(/违反一卡一机/.test(r2.msg), '自检结论应指明违反一卡一机，实际：' + r2.msg);
+    });
+
+    test('cardgen/发布前自检：派生公钥与客户端内置公钥不一致时必须拦下发布（CG-07-6）', async function () {
+      var t = g();
+      t.setPrivateKey(TEST_PRIV);
+      var base = {
+        ver: t.MANIFEST_VER,
+        updated: '2026-10-14T10:00:00+08:00',
+        rev: '0123456789abcdef',
+        cards: [{ card: 'AAAA-AAAA-AAAA-AAAA-AAAA', mc: 'ABCD-EFGH-JKMN-PQRS', note: '张三', exp: '' }],
+        revoked: [],
+        sig2: new Array(104).join('A')
+      };
+      assertEq(t.manifestSelfCheck(base).ok, true, '前置：内置公钥对齐时自检应通过');
+
+      try {
+        // 模拟「换了签名私钥、却忘了把客户端内置公钥一起换」：派生公钥与内置公钥对不上。
+        t.setExpectedPubkey('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+        var r = t.manifestSelfCheck(base);
+        assertEq(r.ok, false, '派生公钥与客户端内置公钥不一致时自检必须失败');
+        assert(/公钥/.test(r.msg), '自检结论应指明公钥不一致，实际：' + r.msg);
+
+        // 界面结论与自检同口径，且「一键发布」以它为门槛：不一致必须被拦下，不得推到线上。
+        q(doc, '#publish-btn').click();
+        assertEq(text(q(doc, '#publish-btn')), '自检未通过', '公钥不一致时「一键发布」必须被自检拦下');
+        assert(hasClass(q(doc, '#publish-check'), 'is-bad'), '界面自检结论应为 is-bad');
+        assertMatch(text(q(doc, '#publish-check')), /公钥/, '界面自检结论应指明公钥不一致，实际：' + text(q(doc, '#publish-check')));
+      } finally {
+        t.setExpectedPubkey(alignedPub); // 收尾：恢复对齐，避免污染后续用例
+      }
+
+      assertEq(t.manifestSelfCheck(base).ok, true, '恢复内置公钥对齐后自检应重新通过');
     });
 
     test('cardgen/线上清单同步：条目只进清单不进台账输入框 + 「线上」来源徽标 + 状态徽标（FR-03）', async function () {
@@ -1922,7 +2000,7 @@
       t.render();
     });
 
-    test('cardgen/密钥区：保存私钥 / 公钥指纹 / 与客户端比对 / 记住与否', async function () {
+    test('cardgen/密钥区：保存私钥 / 公钥指纹 / 自动公钥自检 / 记住与否', async function () {
       var t = g();
       var input = q(doc, '#secret-input');
       var fp = q(doc, '#secret-fingerprint');
@@ -1946,15 +2024,27 @@
       assertEq(text(fp), t.pubKeyBase32(), '指纹应是当前私钥派生的公钥');
       assertMatch(text(fp), /^[0-9A-Z]{52}$/, '公钥应为 52 字符 base32');
 
-      // 与客户端内置公钥比对：测试私钥不是生产私钥，必须报「不一致」
-      assert(t.pubKeyBase32() !== t.EXPECTED_PUBKEY, '前置：测试私钥不应等于客户端内置的生产公钥');
-      q(doc, '#secret-compare-btn').click();
-      assertMatch(text(tip), /不一致/, '不配对时应提示不一致，实际：' + text(tip));
+      // 与客户端内置公钥比对：旧实现靠手动点「与客户端公钥比对」才出结论，
+      // 该按钮已按 CG-07-6 删除，改为保存私钥即自动自检（结论就地写在 #secret-tip）。
+      assertEq(doc.querySelector('#secret-compare-btn'), null,
+        '「与客户端公钥比对」按钮应已删除（改为保存私钥即自动自检）');
+      // 用例环境已把页面内的内置公钥对齐到测试私钥，因此这里是「一致」的正向结论；
+      // 内置公钥本身是生产常量，与测试私钥派生的公钥天然不同（对齐只发生在页面内）。
+      assert(t.pubKeyBase32() !== t.EXPECTED_PUBKEY, '前置：测试私钥派生的公钥不应等于客户端内置的生产公钥');
+      assertMatch(text(tip), /公钥自检：一致/, '保存私钥后应自动给出「一致」的公钥自检结论，实际：' + text(tip));
 
-      // 未录入时的比对必须给出明确提示，而不是静默无反应
-      q(doc, '#secret-clear').click();
-      q(doc, '#secret-compare-btn').click();
-      assertMatch(text(tip), /尚未录入私钥/, '未录入私钥时比对应给出提示，实际：' + text(tip));
+      // 负向：把内置公钥换成一把对不上的值 → 保存私钥即自动判「不一致」，并如实说明后果
+      t.setExpectedPubkey('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+      input.value = TEST_PRIV;
+      q(doc, '#secret-save').click();
+      assertMatch(text(tip), /公钥自检：不一致/, '内置公钥对不上时应判「不一致」，实际：' + text(tip));
+      assertMatch(text(tip), /无法被客户端验签/, '「不一致」结论应说明后果，实际：' + text(tip));
+
+      // 恢复对齐：自检应回到「一致」
+      t.setExpectedPubkey(alignedPub);
+      input.value = TEST_PRIV;
+      q(doc, '#secret-save').click();
+      assertMatch(text(tip), /公钥自检：一致/, '恢复内置公钥后自检应回到「一致」，实际：' + text(tip));
 
       // 「记住私钥」：勾选才落 localStorage，取消勾选必须立刻抹掉
       input.value = TEST_PRIV;

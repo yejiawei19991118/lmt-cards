@@ -442,10 +442,10 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         <section class="panel-block">
             <h2 class="panel-block-title" id="out-title">卡密清单</h2>
 
-            <!-- 线上清单状态条：自动同步的结论常驻此处。「重新同步」仅在同步失败时出现（默认隐藏）。 -->
+            <!-- 线上清单状态条：自动同步的结论常驻此处。同步失败不再给手动入口（原「重新同步」按钮已删除），
+                 改由内置「自动重试同步」承接——失败原因与重试进度都写在同一条胶囊里。 -->
             <div class="sync-bar">
                 <span class="lmt-chip" id="online-tip" role="status" aria-live="polite"></span>
-                <button type="button" class="btn btn-link" id="refresh-btn" hidden title="重新拉取线上清单，并与本机台账合并">重新同步</button>
             </div>
             <div class="diff-report" id="diff-report" style="display:none;" role="status" aria-live="polite"></div>
 
@@ -544,8 +544,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 <label class="inline-check" for="secret-persist"><input type="checkbox" id="secret-persist"> 记住私钥（勾选才写入本机，否则只在本标签页有效）</label>
             </div>
             <p class="sub">当前私钥派生的公钥指纹：<code id="secret-fingerprint">未录入</code></p>
+            <!-- 原「与客户端公钥比对」按钮已删除：保存私钥成功即自动比对派生指纹与客户端公钥，
+                 结论写在 #secret-tip（承接者为内置自动自检，不再有手动入口）。 -->
             <div class="row">
-                <button type="button" class="btn btn-ghost" id="secret-compare-btn" title="把当前私钥派生的公钥与客户端内置公钥比对，只返回是否一致，不回显明文">与客户端公钥比对</button>
                 <button type="button" class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">退出登录</button>
             </div>
             <div class="ledger-tip" id="secret-tip" role="status" aria-live="polite"></div>
@@ -1560,10 +1561,19 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         buildManifest(); // 私钥变化 → sig2 变化，立即重算清单，避免复制到没有签名的旧文本
         return ok;
     }
+    // 内置自动自检（CG-07-6）：保存私钥即自动比对派生公钥与客户端内置公钥，只回是否一致、不回显明文。
+    // 承接已删除的「与客户端公钥比对」按钮——不再需要手动点一次，结论写入 #secret-tip。
+    function autoSelfCheckSecret() {
+        var pub = pubKeyBase32();
+        if (!pub) return '公钥自检：尚未录入私钥，无法比对。';
+        return pub === EXPECTED_PUBKEY
+            ? '公钥自检：一致，当前私钥派生的公钥与客户端内置公钥相同。'
+            : '公钥自检：不一致，当前私钥派生的公钥与客户端内置公钥不同，生成的清单将无法被客户端验签通过。';
+    }
     document.getElementById('secret-save').addEventListener('click', function () {
         var ok = applyPrivateKey(secretInput.value, secretPersist.checked);
         setSecretTip(ok
-            ? '已保存私钥（公钥指纹 ' + pubKeyBase32() + '）。'
+            ? ('已保存私钥（公钥指纹 ' + pubKeyBase32() + '）。' + autoSelfCheckSecret())
             : '私钥格式不正确：需要 32 字节 seed（base32 52 字符或 hex 64 字符）。');
     });
     document.getElementById('secret-clear').addEventListener('click', function () {
@@ -1576,13 +1586,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             setSecretTip(secretPersist.checked ? '已记住私钥（写入本机浏览器）。' : '私钥改为仅本标签页有效。');
         });
     }
-    document.getElementById('secret-compare-btn').addEventListener('click', function () {
-        var pub = pubKeyBase32();
-        if (!pub) { setSecretTip('尚未录入私钥，无法比对。'); return; }
-        setSecretTip(pub === EXPECTED_PUBKEY
-            ? '一致：当前私钥派生的公钥与客户端内置公钥相同。'
-            : '不一致：当前私钥派生的公钥与客户端内置公钥不同，生成的清单将无法被客户端验签通过。');
-    });
     updateSecretUi();
 
     var pairs = []; // 最近一次生成的卡密清单 [{ mc, display, card, note, exp, online }]
@@ -1683,6 +1686,8 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (!Array.isArray(obj.revoked)) problems.push('revoked 不是数组');
             if (!privateKeyOk()) problems.push('未录入签名私钥，sig2 无法生成');
             else if (!obj.sig2) problems.push('缺少 sig2 签名');
+            // CG-07-6：派生公钥必须与客户端内置公钥一致，否则签得再对客户端也验不过（自检即门槛，拦下发布）
+            if (privateKeyOk() && pubKeyBase32() !== EXPECTED_PUBKEY) problems.push('派生公钥指纹与客户端内置公钥不一致（客户端将无法验签）');
             // FR-11 唯一性：重复机器码 = 同一台机器发了两张卡；重复卡密 = 一卡多用。
             var dup = manifestUniqueness(obj);
             if (dup.dupMc) problems.push('存在同一机器码的多条卡密（' + dup.dupMc + ' 条，违反一机一卡）');
@@ -3281,7 +3286,29 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         el.textContent = text || '';
         el.className = 'lmt-chip' + (cls ? ' ' + cls : '');
     }
-    function showSyncRetry(on) { var b = document.getElementById('refresh-btn'); if (b) b.hidden = !on; }
+    // ---------- CG-07-2 内置自动重试同步 ----------
+    // 原「重新同步」按钮已删除（DEL-CG-01）：同步失败不再给手动入口，
+    // 改由「退避计时 + 回前台 + 网络恢复」三处触发自动再试；失败原因与重试进度都写在 #online-tip。
+    // 重试耗尽后暴露的下一步是「稍后回到前台将自动再试」，而不是一枚已经不存在的按钮。
+    var syncRetryDelays = [3000, 9000, 27000];
+    var syncRetry = { count: 0, timer: 0 };
+    function clearSyncRetry() {
+        if (syncRetry.timer) { clearTimeout(syncRetry.timer); syncRetry.timer = 0; }
+    }
+    // 回到前台 / 网络恢复本身是文档规定的「自动再试」触发点，届时重置重试预算
+    function resetSyncRetry() { clearSyncRetry(); syncRetry.count = 0; }
+    function scheduleSyncRetry() {
+        clearSyncRetry();
+        if (syncRetry.count >= syncRetryDelays.length) return; // 已耗尽：改由回前台 / 网络恢复触发
+        var delay = syncRetryDelays[syncRetry.count];
+        syncRetry.count++;
+        syncRetry.timer = setTimeout(function () { syncRetry.timer = 0; syncOnlineManifest(); }, delay);
+    }
+    function syncRetrySuffix() {
+        return syncRetry.count < syncRetryDelays.length
+            ? ('正在自动重试（第 ' + syncRetry.count + ' 次）')
+            : ('已自动重试 ' + syncRetry.count + ' 次仍未成功，稍后回到前台将自动再试。');
+    }
     // 状态条文案用的本机时钟与来源名：让「上次同步时间 / 清单来源」成为可读信息而不是内部常量
     function nowClock() {
         var d = new Date();
@@ -3328,16 +3355,16 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         return { byMc: byMc, dupMc: dupMc };
     }
 
-    // 同步主流程。触发点：登录后首次进入、页面回到前台、网络恢复、同步失败后的「重新同步」、一键发布成功后。
+    // 同步主流程。触发点：登录后首次进入、页面回到前台、网络恢复、发布成功后、自动重试退避计时到达。
     function syncOnlineManifest() {
         if (!MANIFEST_URL) {
             setOnlineTip('未配置清单地址，无法同步线上清单。', 'is-bad');
-            showSyncRetry(false);
+            resetSyncRetry();
             return Promise.resolve(false);
         }
         if (syncBusy) return Promise.resolve(false);
         syncBusy = true;
-        showSyncRetry(false);
+        clearSyncRetry(); // 本次尝试已在路上，取消尚未触发的重试计时，避免并发请求
         setOnlineTip('正在同步线上清单…');
         return fetchOnlineManifest().then(function (res) {
             if (!res) throw new Error('主源与备用源均不可达');
@@ -3347,10 +3374,11 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             if (privateKeyOk() && !remote.verified) throw new Error('清单验签失败（签名不匹配或已换私钥）');
             return applyRemote(remote, sourceLabel(res.source));
         })['catch'](function (err) {
-            // 失败不阻断任何本机能力：状态条给原因 + 「重新同步」，本机数据原样保留（§2.3 恢复路径）。
+            // 失败不阻断任何本机能力：状态条给原因 + 自动重试进度，本机数据原样保留（§2.3 恢复路径）。
+            // 原「重新同步」按钮已删除，手动入口由内置自动重试承接（CG-07-2）。
             onlineStatus = null;
-            showSyncRetry(true);
-            setOnlineTip('无法同步线上清单：' + (err && err.message ? err.message : '网络错误') + '。本机数据不受影响。', 'is-bad');
+            scheduleSyncRetry();
+            setOnlineTip('无法同步线上清单：' + (err && err.message ? err.message : '网络错误') + '。本机数据不受影响。' + syncRetrySuffix(), 'is-bad');
             render();
             return false;
         })['then'](function (r) { syncBusy = false; return r; });
@@ -3417,20 +3445,22 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (conflicts.dupCard) bits.push('一卡多用 ' + conflicts.dupCard + ' 条（发布前自检会拦下）');
         bits.push('本机同步于 ' + nowClock());
         setOnlineTip(bits.join(' · '), (added.length || mismatched || bind.dupMc || conflicts.dupCard) ? 'is-warn' : 'is-ok');
-        showSyncRetry(false);
+        resetSyncRetry();
         try { renderDiffReport(buildDiffReport(buildManifestObj(), remote)); } catch (e) {}
         return true;
     }
 
 
     // 网络恢复后自动补一次同步，并在存在「待重传」且已保存令牌时自动补传（§5.8 自动化优先）。
+    // 这同时是自动重试同步的「回前台 / 网络恢复」触发点：先重置重试预算再重试。
     window.addEventListener('online', function () {
+        resetSyncRetry();
         syncOnlineManifest();
         if (getToken() && isPendingUpload()) uploadManifest(false);
     });
     // 页面从后台回到前台：覆盖「手机切走再切回」的常见场景（FR-03 触发时机表）
     document.addEventListener('visibilitychange', function () {
-        if (document.visibilityState === 'visible') syncOnlineManifest();
+        if (document.visibilityState === 'visible') { resetSyncRetry(); syncOnlineManifest(); }
     });
 
     // ---------- 上传到 GitHub（细粒度 PAT，令牌仅存本机） ----------
@@ -4133,8 +4163,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
             syncOnlineManifest(); // 发布后自动补一次同步，状态徽标随之刷新
         });
     });
-    // 同步失败时的唯一兜底入口（同步正常时该按钮不渲染）。
-    document.getElementById('refresh-btn').addEventListener('click', function () { syncOnlineManifest(); });
     // 台账快照：只保留「恢复所选时间点」；留存与下载已按 §5.9 删除（整份数据要带走请用「导出台账」）。
     document.getElementById('snapshot-restore-btn').addEventListener('click', function () {
         var b = document.getElementById('snapshot-restore-btn');
@@ -4307,6 +4335,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         // 用例隔离：把「已同步的线上清单」清空，回到「本次会话尚未同步过」的初始状态。
         // 否则上一用例的线上条目会作为「线上条目」继续出现在下一条用例的有效条目里。
         resetLastRemote: function () { lastRemote = null; onlineStatus = {}; },
+        // 用例隔离：把「客户端内置公钥」对齐到测试私钥（模拟真实部署：作者私钥与客户端内置公钥一致），
+        // 与主程序侧 lic.setPubKey(pub) 的做法对称；公钥不一致的负向路径由专门用例临时改值后再验。
+        setExpectedPubkey: function (v) { EXPECTED_PUBKEY = String(v == null ? '' : v); },
         setRevoke: function (t) { revokeList.value = t; },
         LEDGER_KEY: LEDGER_KEY, loadLedger: loadLedger, saveLedger: saveLedger, exportLedger: exportLedger,
         REVOKE_KEY: REVOKE_KEY, loadRevoke: loadRevoke, saveRevoke: saveRevoke, buildManifest: buildManifest,

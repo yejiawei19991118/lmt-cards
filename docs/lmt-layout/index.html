@@ -1107,8 +1107,9 @@
                     <div class="lmt-btn-row">
                         <button type="button" class="btn-ghost" id="style-save-btn">存为我的模板</button>
                     </div>
+                    <!-- 原「恢复默认样式」按钮已删除：样式重置统一走区块 5 的「恢复全部默认设置」三选一
+                         （仅重置样式）；收尾行只剩删除我的模板一枚危险按钮、行尾右推、不参与等分。 -->
                     <div class="lmt-btn-row is-split">
-                        <button type="button" class="btn-link" id="style-reset-btn">恢复默认样式</button>
                         <button type="button" class="btn-danger" id="style-delete-btn">删除我的模板</button>
                     </div>
                 </details>
@@ -1146,7 +1147,7 @@
                     <div class="lmt-tip" id="batch-tip" role="status" aria-live="polite"></div>
                 </div>
 
-                <!-- 常用文案库：把常写的文案存成片段，按字段一键插入 -->
+                <!-- 常用文案库：把常写的文案存成片段；先选目标字段，再选片段即自动写入该字段 -->
                 <div class="control-group">
                     <label for="snippet-select">常用文案库</label>
                     <select id="snippet-select"><option value="">— 选择文案片段 —</option></select>
@@ -1159,9 +1160,10 @@
                         <option value="cap2">小标题二</option>
                         <option value="cap3">小标题三</option>
                     </select>
+                    <!-- 原「插入」按钮已删除：先选目标字段，再选 #snippet-select 片段即自动写入该字段，
+                         回执走 #tool-msg（不再需要点一次「插入」）。 -->
                     <div class="lmt-btn-row">
                         <button type="button" class="btn-ghost" id="snippet-save-btn">存为片段</button>
-                        <button type="button" class="btn-ghost" id="snippet-insert-btn">插入</button>
                         <button type="button" class="btn-danger" id="snippet-delete-btn">删除片段</button>
                     </div>
                 </div>
@@ -3045,12 +3047,10 @@
         const styleColorBg = document.getElementById('style-color-bg');
         const styleNameInput = document.getElementById('style-name-input');
         const styleSaveBtn = document.getElementById('style-save-btn');
-        const styleResetBtn = document.getElementById('style-reset-btn');
         const styleDeleteBtn = document.getElementById('style-delete-btn');
         const snippetSelect = document.getElementById('snippet-select');
         const snippetFieldSelect = document.getElementById('snippet-field-select');
         const snippetSaveBtn = document.getElementById('snippet-save-btn');
-        const snippetInsertBtn = document.getElementById('snippet-insert-btn');
         const snippetDeleteBtn = document.getElementById('snippet-delete-btn');
         const prefsResetBtn = document.getElementById('prefs-reset-btn');
         const toolMsg = document.getElementById('tool-msg');
@@ -3613,17 +3613,20 @@
             refreshSnippetOptions();
             return true;
         }
-        function insertSnippet(id) {
+        // fieldOverride：目标字段由「常用文案库」的 #snippet-field-select 指定（先选字段 → 再选片段即写入）；
+        // 不传时回落到片段自己记录的字段（保存时就绑定的那个），旧调用语义保持不变。
+        function insertSnippet(id, fieldOverride) {
             const s = listSnippets().filter((x) => x.id === id)[0];
             if (!s) return false;
+            const field = (fieldOverride && FIELD_INPUTS[fieldOverride]) ? fieldOverride : s.field;
             // three 专属字段在 window 模板下是隐藏的：先切到 three 再写，
             // 否则用户看不到结果，会以为「点了没反应」。
-            if (THREE_ONLY_FIELDS[s.field] && (exportTarget.dataset.activeTpl !== 'three')) {
+            if (THREE_ONLY_FIELDS[field] && (exportTarget.dataset.activeTpl !== 'three')) {
                 selectTemplateValue('three');
                 templateSelect.value = 'three';
                 onTemplateSelectChange('three');
             }
-            const input = FIELD_INPUTS[s.field];
+            const input = FIELD_INPUTS[field];
             if (!input) return false;
             input.value = s.text;
             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -4085,12 +4088,6 @@
             savePrefs();
             setMsg(toolMsg, '已存为「我的模板」（仅样式）：' + t.name);
         });
-        styleResetBtn.addEventListener('click', () => {
-            resetCustomStyle();
-            syncStyleControls();
-            savePrefs();
-            setMsg(toolMsg, '已恢复默认样式（仅样式，不影响内容/图片/草稿）');
-        });
         styleDeleteBtn.addEventListener('click', async () => {
             const myNow = myTemplateById(templateSelect.value);
             if (!myNow) { setMsg(toolMsg, '当前未选中「我的模板」，无需删除'); return; }
@@ -4114,9 +4111,16 @@
             }
             setMsg(toolMsg, saveSnippet(field, text) ? '已存为文案片段' : '保存片段失败：本地存储空间不足');
         });
-        snippetInsertBtn.addEventListener('click', () => {
-            if (!snippetSelect.value) { setMsg(toolMsg, '请先选择文案片段'); return; }
-            setMsg(toolMsg, insertSnippet(snippetSelect.value) ? '已插入片段' : '插入失败：该片段已不存在');
+        // 原「插入」按钮已删除（O-L11）：次序固定为「先选目标字段 → 再选片段」，
+        // 选中片段立即写入 #snippet-field-select 指定的字段，回执走 #tool-msg（无需再点一次）。
+        snippetSelect.addEventListener('change', () => {
+            const id = snippetSelect.value;
+            if (!id) return; // 回到占位项（— 选择文案片段 —）不算一次写入动作
+            const field = snippetFieldSelect.value;
+            const okIns = insertSnippet(id, field);
+            setMsg(toolMsg, okIns
+                ? ('已写入「' + (FIELD_LABELS[field] || field) + '」')
+                : '写入失败：该片段已不存在');
         });
         snippetDeleteBtn.addEventListener('click', async () => {
             if (!snippetSelect.value) { setMsg(toolMsg, '请先选择要删除的片段'); return; }
