@@ -501,6 +501,34 @@
       assert(/已加载|加载失败/.test(text(status)), '字体状态应收敛为终态，实际：' + text(status));
     });
 
+    // 国内 CDN 字体（中文网字计划 cn-fontsource / jsDelivr）：走的是与 Google Fonts 不同的 data-cdn 分支。
+    // 本用例在断网环境跑，因此必然走到「回退系统字体」；重点锁三件事：确实挂的是 CDN 的 font.css、
+    // 不悄悄退回 Google 链路、以及字体失败后工具仍可导出（不能因字体加载不了把导出卡死）。
+    test('layout/国内 CDN 字体走 jsDelivr 分支，失败后仍可导出', async function () {
+      var sel = q(doc, '#font-select');
+      var opts = qa(doc, '#font-select option').filter(function (o) { return /cn-fontsource-/.test(o.dataset.cdn || ''); });
+      assert(opts.length > 0, '下拉里应有带 data-cdn 的国内 CDN 字体选项');
+      var opt = opts[0];
+      var before = qa(doc, 'head link[rel="stylesheet"]').length;
+      sel.value = opt.value;
+      fire(sel, 'change', L);
+      assertEq(L.document.documentElement.style.getPropertyValue('--handwriting-font'), opt.value, '应写入手写字体变量');
+      var added = qa(doc, 'head link[rel="stylesheet"]').slice(before).map(function (l) { return l.getAttribute('href'); });
+      assert(added.some(function (u) { return u.indexOf('cn-fontsource-') > -1; }), '应挂上国内 CDN 的 font.css，实际：' + added.join(' , '));
+      assert(added.every(function (u) { return u.indexOf('jsdelivr.net') > -1; }), 'CDN 字体不得走 Google Fonts 链路，实际：' + added.join(' , '));
+      var status = q(doc, '#font-status');
+      await until(function () { return text(status) !== '正在加载在线字体…'; }, 30000, 'CDN 字体加载收敛');
+      assert(/已加载|加载失败/.test(text(status)), '状态应收敛为终态，实际：' + text(status));
+      // 回退后恢复可导出是异步的（状态收敛之后还有 await document.fonts.ready + checkContentFit），
+      // 这里必须等待而不是立刻断言，否则会踩到「状态刚变、按钮还没解禁」的竞态。
+      await until(function () { return !q(doc, '#export-btn').disabled; }, 8000,
+        '字体加载失败并回退系统字体后，仍应允许导出（字体状态：' + text(status) + '）');
+      // 复原到默认字体，并把这次异步加载等干净，避免留给后续用例一个「加载中」的中间态
+      sel.selectedIndex = 0;
+      fire(sel, 'change', L);
+      await until(function () { return text(status) !== '正在加载在线字体…'; }, 30000, '复原默认字体加载收敛');
+    });
+
     test('layout/纯函数：escapeHtml / computeDrawRect / isMobileUA', async function () {
       var t = app();
       assertEq(t.escapeHtml('a<b>&"\''), 'a&lt;b&gt;&amp;"\'', 'escapeHtml 应只转义 & < >');

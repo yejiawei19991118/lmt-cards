@@ -1103,7 +1103,19 @@
             <div class="control-group">
                 <label for="font-select">手写字体</label>
                 <select id="font-select">
-                    <option value="'ZCOOL KuaiLe', 'KaiTi', cursive" data-web="ZCOOL+KuaiLe" data-family="ZCOOL KuaiLe">站酷快乐体</option>
+                    <option value="'ZCOOL KuaiLe', 'KaiTi', cursive" data-web="ZCOOL+KuaiLe" data-family="ZCOOL KuaiLe">站酷快乐体（默认）</option>
+                    <!-- 国内 CDN（中文网字计划 cn-fontsource，jsDelivr 托管，子集化 woff2 按需下载）：
+                         data-cdn 指向该字体的 font.css（内部用相对路径引用 woff2），data-family 必须与 CSS 内的 font-family 一致，
+                         否则 document.fonts.load 找不到字形，导出时会静默回退成系统字体。 -->
+                    <option value="'slideyouran', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-slideyouran-regular@1.0.3/font.css" data-family="slideyouran">演示悠然小楷（毛笔小楷）</option>
+                    <option value="'Slideqiuhong', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-slideqiuhong-regular@1.0.6/font.css" data-family="Slideqiuhong">演示秋鸿楷（手写楷）</option>
+                    <option value="'Xiaolai SC', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-xiaolai-sc-regular@1.0.2/font.css" data-family="Xiaolai SC">小赖字体（手写楷·开源）</option>
+                    <option value="'Yozai', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-yozai-regular@1.0.9/font.css" data-family="Yozai">悠哉手写体（手写风·开源）</option>
+                    <option value="'MaokenZhuyuanTi', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-maoken-zhuyuan-ti-regular@1.0.1/font.css" data-family="MaokenZhuyuanTi">猫啃珠圆体（可爱标题）</option>
+                    <!-- Google Fonts（原链路，含 fonts.loli.net 国内镜像兜底） -->
+                    <option value="'LXGW WenKai TC', 'KaiTi', serif" data-web="LXGW+WenKai+TC" data-family="LXGW WenKai TC">霞鹜文楷（开源楷体）</option>
+                    <option value="'ZCOOL XiaoWei', 'KaiTi', serif" data-web="ZCOOL+XiaoWei" data-family="ZCOOL XiaoWei">站酷小薇体（文艺细楷）</option>
+                    <option value="'ZCOOL QingKe HuangYou', 'KaiTi', cursive" data-web="ZCOOL+QingKe+HuangYou" data-family="ZCOOL QingKe HuangYou">站酷庆科黄油体（粗展板）</option>
                 </select>
                 <div class="font-status" id="font-status" role="status" aria-live="polite">正在加载在线字体…</div>
             </div>
@@ -2591,6 +2603,17 @@
             (f) => 'https://fonts.googleapis.com/css2?family=' + f + '&display=swap',
             (f) => 'https://fonts.loli.net/css2?family=' + f + '&display=swap' // 国内镜像兜底
         ];
+        // jsDelivr 的两个独立线路：统一走 cdn 域，失败时换 fastly 域重试（同一份文件的镜像）。
+        const JSDELIVR_MIRRORS = ['cdn.jsdelivr.net', 'fastly.jsdelivr.net'];
+        // 取出某个字体选项的 CSS 来源列表（按顺序尝试）：
+        //  · data-cdn：国内 CDN（中文网字计划 cn-fontsource）直给的 font.css，内部用相对路径引用 woff2，
+        //    挂 <link> 后浏览器只下载用到的子集，单款 CSS 50-160KB，国内直连较快。
+        //  · data-web：Google Fonts 的 family 参数，沿用原链路与其国内镜像。
+        function fontCssSources(option) {
+            const cdn = option.dataset.cdn;
+            if (cdn) return JSDELIVR_MIRRORS.map((host) => cdn.replace('cdn.jsdelivr.net', host));
+            return WEB_FONT_CDNS.map((f) => f(option.dataset.web));
+        }
         const fontStatus = document.getElementById('font-status');
         const webFontCache = {};
         // 字体是否就绪（P-20）：正在加载时为 false（此间禁用导出），加载完成或明确回退系统字体后置 true。
@@ -2601,15 +2624,16 @@
         // 「TCP 连得上但迟迟不返回」的情况，link.onerror 可能几十秒都不触发，
         // 界面会长期停在「正在加载在线字体…」。加超时兜底，到点即切到镜像源。
         const FONT_LOAD_TIMEOUT = 6000;
-        function loadWebFont(cssParam) {
-            if (!webFontCache[cssParam]) {
-                webFontCache[cssParam] = new Promise((resolve) => {
+        function loadWebFont(sources) {
+            const key = sources.join('|');
+            if (!webFontCache[key]) {
+                webFontCache[key] = new Promise((resolve) => {
                     let i = 0;
                     (function attempt() {
-                        if (i >= WEB_FONT_CDNS.length) { resolve(false); return; }
+                        if (i >= sources.length) { resolve(false); return; }
                         const link = document.createElement('link');
                         link.rel = 'stylesheet';
-                        link.href = WEB_FONT_CDNS[i++](cssParam);
+                        link.href = sources[i++];
                         let settled = false, timer = null;
                         const settle = (ok) => {
                             if (settled) return;
@@ -2626,7 +2650,7 @@
                     })();
                 });
             }
-            return webFontCache[cssParam];
+            return webFontCache[key];
         }
 
         // 记录最近一次字体请求：快速连续切换时，丢弃较早请求的过期异步结果，
@@ -2635,7 +2659,6 @@
 
         async function applyHandwritingFont(option) {
             const token = ++fontReqToken;
-            const web = option.dataset.web;
             const family = option.dataset.family;
 
             document.documentElement.style.setProperty('--handwriting-font', option.value);
@@ -2647,7 +2670,7 @@
             fontStatus.textContent = '正在加载在线字体…';
             fontStatus.classList.remove('error');
             checkContentFit(); // 加载期间禁用导出（P-20）
-            const ok = await loadWebFont(web);
+            const ok = await loadWebFont(fontCssSources(option));
             if (token !== fontReqToken) return; // 已被更新的选择取代
             if (ok) {
                 // 触发实际字形下载并等待就绪，否则导出时会回退成系统字体
