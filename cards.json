@@ -1,13 +1,19 @@
 {
   "ver": 2,
-  "updated": "2026-10-16T16:45:10+08:00",
-  "rev": "c8a41a3819aefcdd",
+  "updated": "2026-10-16T16:45:41+08:00",
+  "rev": "94310f669f9d6586",
   "cards": [
     {
       "card": "JYEB-9339-4V2R-S4GG-2JVJ",
       "mc": "8TBZ-R6T3-6KF7-BS1K",
       "note": "菜头",
       "exp": "2026-11-15"
+    },
+    {
+      "card": "SK1S-MQHJ-W56B-9CAQ-ACGV",
+      "mc": "9HZP-QTDC-FZ7H-Y0GG",
+      "note": "苹果",
+      "exp": ""
     },
     {
       "card": "DFV7-54ZB-25TD-HCY4-R1QH",
@@ -17,5 +23,5 @@
     }
   ],
   "revoked": [],
-  "sig2": "HHY9BB6S2W6PR58S0JXERHPSQHTJX68WYV1FXZG2P4XETBW47ZQKP84A2ER2P97JMD7XK08Y2P5MZ9HFZ31KGXBGZG5CGT1GTPVN438"
+  "sig2": "E8SSG6T5T7FWZX45BXN0ZF5KJEKYD23K13GBNC65353TSAK0V60WAMVWQXWBTHASVTAX7ES1TW8RTZTCA4Q27MTPKE93R18ZAE20M2G"
 }
