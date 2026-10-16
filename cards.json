@@ -1,7 +1,7 @@
 {
   "ver": 2,
-  "updated": "2026-10-16T23:54:06+08:00",
-  "rev": "016d3b44d5413591",
+  "updated": "2026-10-17T01:22:44+08:00",
+  "rev": "a458f056702df876",
   "cards": [
     {
       "card": "JYEB-9339-4V2R-S4GG-2JVJ",
@@ -26,8 +26,14 @@
       "mc": "S972-TX23-FBCM-6KNS",
       "note": "电脑",
       "exp": "2026-11-16"
+    },
+    {
+      "card": "ZDWG-JQ39-EBYW-7CGY-DT33",
+      "mc": "SX3F-Y8ER-REAE-JG7Z",
+      "note": "林",
+      "exp": "2026-10-19"
     }
   ],
   "revoked": [],
-  "sig2": "K1MFTNXN6PTN4WQ79ZPNF04JZJPGNT3ZW4GE6KKN8ZFDZ6821HWRBD5NM7XJJG4M2X6TJ55MA988WKMQJ7BBFAK8GPHCNWNNQX10C0R"
+  "sig2": "HM4C4H3Y0ZJ6GYDTCDE10KA2JEKBNHPDM0F2G1EAPE7FSZWQYBNQBJA0K0TD6XKHZZY8911T9438FH4TEJN7CXWW2V1W1J7AVVK5C08"
 }
