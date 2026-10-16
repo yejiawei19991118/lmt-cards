@@ -117,6 +117,17 @@
     }, 2000, name + ' 的复制结果反馈（当前停留在 ' + JSON.stringify(text(btn)) + '）');
   }
 
+  // 等一次批量出图收尾。不能只判「提示文案匹配终态」：#batch-tip 是常驻元素，
+  // 上一批留下的「批量出图完成…」会让匹配立刻成立，用例就会拿着上一条的文案继续断言（假通过/假失败）。
+  // 因此这里以「文案从点击前变为终态」+「按钮已恢复可用」为双重条件。
+  async function waitBatchFinish(tip, btn, label) {
+    var prev = text(tip);
+    await until(function () {
+      var s = text(tip);
+      return !btn.disabled && s !== prev && /批量出图完成|批量出图失败/.test(s);
+    }, 90000, (label || '批量出图收尾') + '（当前：' + text(tip) + '）');
+  }
+
   // ---------- 构造文件（用于 file input 的 change 事件） ----------
   function pngBytes(win, w, h) {
     var cv = win.document.createElement('canvas');
@@ -132,6 +143,22 @@
     var bin = atob(b64), out = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
+  }
+  // 随机噪点图（PNG 字节）。pngBytes 那种「两块纯色」压缩后只有几百字节，
+  // 压不出「无损位图存不下第二份草稿」的量级——要验证体积相关的回归必须用噪点。
+  function noisyPngBytes(win, w, h) {
+    var cv = win.document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var cx = cv.getContext('2d');
+    var id = cx.createImageData(w, h);
+    for (var i = 0; i < id.data.length; i += 4) {
+      id.data[i] = (Math.random() * 256) | 0;
+      id.data[i + 1] = (Math.random() * 256) | 0;
+      id.data[i + 2] = (Math.random() * 256) | 0;
+      id.data[i + 3] = 255;
+    }
+    cx.putImageData(id, 0, 0);
+    return b64ToBytes(cv.toDataURL('image/png').split(',')[1]);
   }
   function attachFile(win, input, fileName, mimeType, bytes) {
     var file = new win.File([bytes], fileName, { type: mimeType });
@@ -721,30 +748,32 @@
       // 保存：记录当前文案；改动后载入应逐字还原
       setValue(q(doc, '#input-title'), '草稿标题A', L);
       setValue(q(doc, '#input-subtitle'), '草稿副标题A', L);
-      var saved = t.saveDraft('用例草稿A');
+      var saved = await t.saveDraft('用例草稿A');
       assert(saved && saved.ok === true, '保存草稿应返回成功，实际 ' + JSON.stringify(saved));
       var list = t.listDrafts();
       assertEq(list.length, 1, '保存后应有 1 份草稿');
       assertEq(qa(doc, '#draft-select option').length, 2, '草稿下拉应多出 1 项（另有 1 个占位项）');
 
       setValue(q(doc, '#input-title'), '被改掉了', L);
-      assertEq(t.loadDraft(list[0].id), true, '载入草稿应成功');
+      // 载入草稿既是异步的（大图可能从 IndexedDB 兜底存储回读），也带回「图片是否缺失」：
+      // 契约是 { ok, imgsMissing }，断言 .ok 而不是返回值本身。
+      assertEq((await t.loadDraft(list[0].id)).ok, true, '载入草稿应成功');
       assertEq(q(doc, '#input-title').value, '草稿标题A', '载入草稿应还原主标题');
       assertEq(text(q(doc, '#preview-title')), '草稿标题A', '载入草稿后预览应同步还原');
 
       // 导出 → 导入：往返不丢内容，且坏文件被拒
-      assertEq(t.exportDrafts(), true, '导出草稿应返回成功');
+      assertEq(await t.exportDrafts(), true, '导出草稿应返回成功');
       assertMatch(text(q(doc, '#draft-msg')), /已导出草稿文件/, '导出草稿应有反馈');
       var raw = JSON.stringify({ v: 1, items: t.listDrafts() });
       assertEq(t.deleteDraft(list[0].id), true, '删除草稿应成功');
       assertEq(t.listDrafts().length, 0, '删除后草稿箱应为空');
-      assertEq(t.importDrafts('这不是 JSON'), false, '非法 JSON 应被拒绝');
-      assertEq(t.importDrafts('{"v":1}'), false, '缺少 items 应被拒绝');
-      assertEq(t.importDrafts(raw), true, '导入合法 JSON 应成功');
+      assertEq(await t.importDrafts('这不是 JSON'), false, '非法 JSON 应被拒绝');
+      assertEq(await t.importDrafts('{"v":1}'), false, '缺少 items 应被拒绝');
+      assertEq(await t.importDrafts(raw), true, '导入合法 JSON 应成功');
       var back = t.listDrafts();
       assertEq(back.length, 1, '导入后应恢复 1 份草稿');
       assertEq(back[0].fields.title, '草稿标题A', '导入应保留草稿里的文案');
-      assertEq(t.loadDraft(back[0].id), true, '导入回来的草稿应可载入');
+      assertEq((await t.loadDraft(back[0].id)).ok, true, '导入回来的草稿应可载入');
     });
 
     // 回归守：照片还原是「异步解码 + 返回 Promise」，而清除是同步的。
@@ -847,7 +876,7 @@
       var t = app();
       var btn = q(doc, '#batch-btn');
       var tip = q(doc, '#batch-tip');
-      if (!t.listDrafts().length) { t.saveDraft('批量用例草稿'); }
+      if (!t.listDrafts().length) { await t.saveDraft('批量用例草稿'); }
       // 「批量出图」以草稿为最小单元（常用文案库只用于给草稿套用指定字段），清单渲染在 #batch-tasks 里
       var cbs = await until(function () {
         var list = qa(doc, '#batch-tasks input[type="checkbox"]');
@@ -1022,7 +1051,7 @@
       t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
 
       setValue(q(doc, '#input-title'), '受保护的标题', L);
-      assert(t.saveDraft('分层重置草稿').ok, '前置：应存入 1 份草稿');
+      assert((await t.saveDraft('分层重置草稿')).ok, '前置：应存入 1 份草稿');
       assertEq(t.saveSnippet('summary', '受保护的片段'), true, '前置：应存入 1 条片段');
       q(doc, '#fit-lock').checked = false; // 关闭自动适配（= 原先的「锁定字号」）
       fire(q(doc, '#fit-lock'), 'change', L);
@@ -1123,6 +1152,208 @@
       }
       skip('PWA/iOS 没有稳定的原生设备标识，机器码按设计由本地安装 ID 派生（见「机器码」用例）；'
         + '安卓壳的原生分支由「安卓副本」那次运行覆盖');
+    });
+
+    // ---------------------------------------------------------------
+    // 批量出图 / 草稿图片（本次修复的回归守）
+    // ---------------------------------------------------------------
+
+    // 用户报的现象：「多个草稿批量出图 / 导出草稿，只有一张图文里有照片，其余没有」。
+    // 根因是草稿图片按「预览框里的无损 PNG 位图」存进单个 localStorage 键，一份 4 图草稿就逼近 4MB
+    // 上限，从第二份起图片被整包丢弃。现在改存「上传原图的 JPEG（长边 ≤1600）」，
+    // 并保留 IndexedDB 兜底。这里同时做正向断言与负向对照，证明用例不是空绿。
+    test('layout/批量出图：多份带图草稿都存得住（原图 JPEG，不再整包丢图）', async function () {
+      var t = app();
+      var KEYS = ['left', 'right', 'shotLeft', 'shotRight'];
+      var UPLOADS = {
+        left: ['#upload-left', '#preview-img-left'],
+        right: ['#upload-right', '#preview-img-right'],
+        shotLeft: ['#upload-screenshot-left', '#preview-screenshot-left'],
+        shotRight: ['#upload-screenshot-right', '#preview-screenshot-right']
+      };
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        KEYS.forEach(function (k) { t.clearPhoto(k); });
+
+        // 噪点图源：264×352（与 3:4 图片框同比例），四张都从上传入口进，走真实的 encodePhotoSource 压缩
+        for (var i = 0; i < KEYS.length; i++) {
+          var k = KEYS[i];
+          var input = q(doc, UPLOADS[k][0]);
+          attachFile(L, input, k + '.png', 'image/png', noisyPngBytes(L, 264, 352));
+          await until(function () {
+            return q(doc, UPLOADS[k][1]).querySelector('canvas.preview-photo');
+          }, FILE_WAIT_MS, k + ' 照片应绘制进预览框');
+        }
+
+        // 负向对照：旧实现存的就是这些「按图片框烘焙好的无损 PNG 位图」。
+        // 两份草稿的位图之和必须超过 DRAFT_MAX_BYTES(4MB)——否则说明本用例的素材太小，
+        // 「第二份草稿图片被整包丢弃」这个前提根本没被复现，用例也就证明不了什么。
+        var pngPerDraft = 0;
+        KEYS.forEach(function (k) {
+          var cv = q(doc, UPLOADS[k][1]).querySelector('canvas.preview-photo');
+          pngPerDraft += cv.toDataURL('image/png').length;
+        });
+        assert(pngPerDraft * 2 > 4 * 1024 * 1024,
+          '负向对照：旧逻辑（无损 PNG 位图）两份草稿应超出 4MB 上限，实际每份 ' + pngPerDraft
+          + '（两份 ' + (pngPerDraft * 2) + '）——素材太小则该用例失去意义');
+
+        setValue(q(doc, '#input-title'), '带图草稿甲', L);
+        assert((await t.saveDraft('带图草稿甲')).ok, '甲：保存带图草稿应成功');
+        setValue(q(doc, '#input-title'), '带图草稿乙', L);
+        assert((await t.saveDraft('带图草稿乙')).ok, '乙：保存第二份带图草稿应成功');
+
+        var list = t.listDrafts();
+        assertEq(list.length, 2, '应存下 2 份草稿');
+        // 正向断言：两份都要有 4 张图，且回读得到（不依赖具体落在哪个存储层）
+        for (var j = 0; j < list.length; j++) {
+          assertEq(t.draftImageCount(list[j]), 4, list[j].name + '：应记录 4 张图片');
+        }
+        for (var m = 0; m < list.length; m++) {
+          var imgs = await t.hydrateDraftImages(list[m]);
+          assertEq(Object.keys(imgs).length, 4, list[m].name + '：应能回读 4 张图片');
+          assertMatch(imgs.left, /^data:image\/jpeg/, list[m].name + '：草稿里存的应是原图 JPEG（不是无损 PNG 位图）');
+        }
+
+        // 列表标注：出图前就能看出每份草稿带没带图（原先只能导出后才发现某张没有照片）
+        var rows = qa(doc, '#batch-tasks label');
+        assertEq(rows.length, 2, '批量清单应列出 2 份草稿');
+        assertMatch(text(rows[0]), /（含图 4 张）$/, '带图草稿的行应标注含图张数，实际：' + text(rows[0]));
+
+        // 无图草稿：清掉照片再存一份，行上必须直接标成「无图」
+        KEYS.forEach(function (k) { t.clearPhoto(k); });
+        setValue(q(doc, '#input-title'), '无图草稿丙', L);
+        assert((await t.saveDraft('无图草稿丙')).ok, '丙：保存无图草稿应成功');
+        var rows2 = qa(doc, '#batch-tasks label');
+        var rowC = rows2.filter(function (r) { return /无图草稿丙/.test(text(r)); })[0];
+        assert(rowC, '清单里应有无图草稿丙这一行');
+        assertMatch(text(rowC), /（无图）$/, '无图草稿的行应标注「无图」，实际：' + text(rowC));
+      } finally {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        KEYS.forEach(function (k) { t.clearPhoto(k); });
+        setValue(q(doc, '#input-title'), '', L);
+      }
+    });
+
+    // 用户报的现象：「导出的图文里有安全区的红线和红字」。
+    // 根因：单张导出给 html2canvas 传了 ignoreElements 排除安全区参考层，批量那条路径漏传。
+    // 修法是收敛成公共的 captureCanvas()。这里用替换 html2canvas 的方式直接检查传参，
+    // 同时模拟「其中一张渲染抛异常」，验证单张失败不会把整批（已渲染好的图）掀翻。
+    test('layout/批量出图：安全区参考层必须被排除，且单张失败不掀翻整批', async function () {
+      var t = app();
+      var real = L.html2canvas;
+      var seen = [];
+      var call = 0;
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        setValue(q(doc, '#input-title'), '隔离草稿甲', L);
+        assert((await t.saveDraft('隔离草稿甲')).ok, '前置：应存入草稿甲');
+        setValue(q(doc, '#input-title'), '隔离草稿乙', L);
+        assert((await t.saveDraft('隔离草稿乙')).ok, '前置：应存入草稿乙');
+
+        // 第 1 次调用返回一张真画布（让画布→PNG→ZIP→落盘这条链路真实走完），第 2 次抛错
+        L.html2canvas = function (el, opts) {
+          seen.push({ el: el, opts: opts || {} });
+          call++;
+          if (call === 2) return Promise.reject(new Error('模拟渲染异常'));
+          var cv = L.document.createElement('canvas');
+          cv.width = 40; cv.height = 60;
+          var cx = cv.getContext('2d');
+          cx.fillStyle = '#123456'; cx.fillRect(0, 0, 40, 60);
+          return Promise.resolve(cv);
+        };
+
+        var cbs = qa(doc, '#batch-tasks input[type="checkbox"]');
+        assertEq(cbs.length, 2, '批量清单应列出 2 份草稿');
+        cbs.forEach(function (cb) { cb.checked = true; fire(cb, 'change', L); });
+        var tip = q(doc, '#batch-tip');
+        var batchBtn = q(doc, '#batch-btn');
+        batchBtn.click();
+        await waitBatchFinish(tip, batchBtn, '批量收尾');
+
+        assertMatch(text(tip), /^批量出图完成，共 1 张/, '成功的那张应照常打包落盘，实际：' + text(tip));
+        assertMatch(text(tip), /另有 1 张未生成/, '未生成的张数必须写明，实际：' + text(tip));
+        assertMatch(text(tip), /模拟渲染异常/, '未生成的原因必须可见，实际：' + text(tip));
+        var retry = q(doc, '#batch-retry-btn');
+        assert(!retry.hidden && /重试失败项（1）/.test(text(retry)),
+          '失败项应给出一键重试入口，实际：' + text(retry));
+
+        // 安全区参考层（4 条红虚线 + 「安全区内/超出安全区域」红字 + 「主体位置」水印）必须从结构上排除。
+        // 单张与批量共用 captureCanvas，这条断言同时守住两侧（任一侧漏传都会把红线红字画进图里）。
+        assert(seen.length >= 1, '应至少调用过一次 html2canvas');
+        var opts = seen[0].opts;
+        assertEq(typeof opts.ignoreElements, 'function', 'captureCanvas 必须传 ignoreElements 以排除安全区参考层');
+        assert(opts.ignoreElements(q(doc, '#safe-zone')) === true, 'ignoreElements 必须命中安全区参考层 #safe-zone');
+        assert(opts.ignoreElements(q(doc, '#export-target')) === false, 'ignoreElements 不得误伤正文内容');
+        assertEq(opts.scale, 4, '批量出图必须与单张一致按 4× 导出（1500 × 2668）');
+      } finally {
+        L.html2canvas = real;
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        setValue(q(doc, '#input-title'), '', L);
+      }
+    });
+
+    // 用户报的现象：「橱窗排版的安全区内照片没有跟顶部摘要左右对齐和大小缩放」。
+    // 根因：摘要用 width:fit-content 居中（短句比图片行窄、长句又能宽出去），
+    // 而图片行固定按 --content-w 取宽，两者左右边界必然对不齐。
+    test('layout/橱窗排版：顶部摘要与图片行左右严格对齐（P-34）', async function () {
+      var tpl = q(doc, '#template-select');
+      tpl.value = 'window';
+      fire(tpl, 'change', L);
+      await sleep(60);
+      assertEq(q(doc, '#export-target').dataset.activeTpl, 'window', '前置：应处于橱窗模板');
+      var summary = q(doc, '#preview-summary');
+      var row = q(doc, '.image-row[data-tpl="window"]');
+      // 短句（旧实现下明显比图片行窄）与长句（旧实现下会宽出内容宽）都要对齐
+      ['短', '这是一句明显更长的顶部总结文案，用来把摘要撑到内容宽上限附近再多加一些字']
+        .forEach(function (s) {
+          setValue(q(doc, '#input-summary'), s, L);
+          var a = summary.getBoundingClientRect(), b = row.getBoundingClientRect();
+          assert(Math.abs(a.left - b.left) <= 1,
+            '摘要左边界应与图片行对齐（文案「' + s.slice(0, 4) + '…」）：' + a.left + ' vs ' + b.left);
+          assert(Math.abs(a.right - b.right) <= 1,
+            '摘要右边界应与图片行对齐（文案「' + s.slice(0, 4) + '…」）：' + a.right + ' vs ' + b.right);
+          assert(Math.abs(a.width - b.width) <= 1,
+            '摘要宽度应与图片行同宽（随 --fit 等比缩放）：' + a.width + ' vs ' + b.width);
+        });
+      setValue(q(doc, '#input-summary'), '', L);
+    });
+
+    // 用户报的现象：批量出图「有没有失灵或者不合理的地方」。
+    // 早先批量没有「内容超出安全区」这道校验（单张导出一直有），超长文案的草稿会静默产出缺内容的图。
+    test('layout/批量出图：内容超出安全区的草稿单独跳过并写明原因', async function () {
+      var t = app();
+      var lock = q(doc, '#fit-lock');
+      var lockWas = lock.checked;
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        // 关闭自动适配（--fit 恒为 1）后灌入超长标题 → 内容必然溢出安全区
+        lock.checked = false;
+        fire(lock, 'change', L);
+        setValue(q(doc, '#input-title'), new Array(120).join('超长'), L);
+        await sleep(80);
+        var target = q(doc, '#export-target');
+        assert(target.scrollHeight > target.clientHeight + 1,
+          '前置：内容应已超出安全区（scrollHeight=' + target.scrollHeight + ' clientHeight=' + target.clientHeight + '）');
+        assert((await t.saveDraft('超区草稿')).ok, '前置：应能保存该草稿');
+
+        var cbs = await until(function () {
+          var list = qa(doc, '#batch-tasks input[type="checkbox"]');
+          return list.length ? list : null;
+        }, 3000, '批量清单渲染');
+        cbs[0].checked = true;
+        fire(cbs[0], 'change', L);
+        var tip = q(doc, '#batch-tip');
+        var batchBtn = q(doc, '#batch-btn');
+        batchBtn.click();
+        await waitBatchFinish(tip, batchBtn, '批量收尾');
+        assertEq(text(tip), '批量出图失败：未生成任何图片，另有 1 张未生成（内容超出安全区 1 张）',
+          '超区草稿必须被跳过并写明原因，实际：' + text(tip));
+      } finally {
+        lock.checked = lockWas;
+        fire(lock, 'change', L);
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        setValue(q(doc, '#input-title'), '', L);
+      }
     });
   }
 

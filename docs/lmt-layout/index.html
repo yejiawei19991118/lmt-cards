@@ -383,6 +383,13 @@
             text-align: left;
             color: var(--tpl-summary-color);
         }
+
+        /* 橱窗排版：顶部摘要与图片行 / 截图行取同一份内容宽，左右边界严格对齐并随 --fit 等比缩放。
+           默认的 fit-content 会让摘要宽度随文字长短浮动（短句时比图片行窄、长句时又能宽出 20%），
+           看上去照片与顶部摘要左右都不齐。三图竖排的摘要仍按原样居中，不受此规则影响。 */
+        .safe-content-area[data-active-tpl="window"] .header-summary {
+            width: calc(var(--content-w) * var(--fit));
+        }
         
         .main-title {
             font-size: calc(var(--tpl-title-size) * var(--fit));
@@ -1276,7 +1283,8 @@
             <!-- 可编辑内容区：承载全部文案与图片，被限制在安全区像素内。
                  导出截取的是整个画布（#canvas-wrapper）；安全区参考层（#safe-zone）在离屏渲染时
                  由 ignoreElements 从结构上排除，不参与导出，不依赖临时隐藏。 -->
-            <div class="safe-content-area" id="export-target">
+            <!-- data-active-tpl 由 applyTemplate() 维护；这里给初值，保证首帧就命中橱窗排版的样式 -->
+            <div class="safe-content-area" id="export-target" data-active-tpl="window">
                 <div class="header-summary handwriting-font" id="preview-summary">
                     总结一下：<br>
                     宽松灰开衫弱化肩背臃肿感，不挑上身<br>
@@ -2756,12 +2764,10 @@
         // 裁切/缩放后绘制到一个 <canvas> 子元素里。画布位图按导出分辨率(EXPORT_SCALE)生成，
         // html2canvas 对 <canvas> 是像素级复制，导出即为清晰原图。
         const EXPORT_SCALE = 4;
-        // 批量出图专用倍率：单张导出 4×（P-33），批量按 4× 逐张 html2canvas 时
-        // 每张临时画布高达 1500×2668（约 16MB），数量一多内存与耗时都明显上升。
-        // 批量降到 2×（750×1334）：图片框位图仍是 4× 生成，无需提清晰度，够分享用。
-        // 若想恢复 4×，把这里改成 4 即可（画质↑、内存/耗时↑）。
-        const BATCH_EXPORT_SCALE = 2;
-        // 各图片框的导出像素尺寸（CSS 尺寸 132×132 / 132×176，乘以 EXPORT_SCALE）
+        // 各图片框的位图尺寸（按 EXPORT_SCALE 生成）。这个值必须 ≥ 图片框最终占用的设备像素：
+        // 图片框 CSS 宽 = 安全区 275px × --content-w(80%) × 48% ≈ 105.6px，4 倍导出即 ≈ 422px，
+        // 这里按 132（= 安全区整宽的 48%）预留到 528px，只多不少，html2canvas 复制时是降采样，
+        // 照片既不糊也不会被二次放大——这就是「原图直出」在本排版里的落地口径。
         const BOX_SIZE = {
             cover: [132 * EXPORT_SCALE, 132 * EXPORT_SCALE],   // 模特图：铺满方框
             contain: [132 * EXPORT_SCALE, 176 * EXPORT_SCALE], // 截图：完整显示不裁剪
@@ -2845,7 +2851,26 @@
             return true;
         }
 
-        function handleImageUpload(inputElement, targetElement, mode) {
+        // 把解码好的图片压成 JPEG dataURL（长边不超过 PHOTO_MAX_SIDE），作为「原图」存档。
+        // 裁切与圆角仍交给 paintPhoto 在导出倍率下完成，这里只负责把原图压到合理体积。
+        function encodePhotoSource(img) {
+            const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+            if (!w || !h) return '';
+            const k = Math.min(1, PHOTO_MAX_SIDE / Math.max(w, h));
+            const cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+            const c = document.createElement('canvas');
+            c.width = cw;
+            c.height = ch;
+            const ctx = c.getContext('2d');
+            // JPEG 没有透明通道：先铺白底，避免带透明通道的 PNG 被编码成黑块
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, cw, ch);
+            ctx.drawImage(img, 0, 0, cw, ch);
+            try { return c.toDataURL('image/jpeg', PHOTO_JPEG_Q); } catch (e) { return ''; }
+        }
+
+        // key 与 IMG_TARGETS 一致：上传成功后要顺手记下这格的原图，供草稿/快照保存
+        function handleImageUpload(inputElement, targetElement, mode, key) {
             const label = document.querySelector('label[for="' + inputElement.id + '"]');
             // 每次选择自增令牌：连续快速更换图片时，较早一次的解码可能较晚完成，
             // 若不丢弃过期结果，旧图会覆盖掉后选的图片。
@@ -2881,6 +2906,7 @@
                             return;
                         }
                         paintPhoto(targetElement, mode, img);
+                        photoSource[key] = encodePhotoSource(img); // 存档原图（草稿/快照都取这份）
                         syncClearButtons();
                         if (label) {
                             label.textContent = '已上传：' + file.name;
@@ -2893,13 +2919,13 @@
             });
         }
 
-        handleImageUpload(uploadLeft, previewImgLeft, 'cover');
-        handleImageUpload(uploadRight, previewImgRight, 'cover');
-        handleImageUpload(uploadScreenshotLeft, previewScreenshotLeft, 'contain');
-        handleImageUpload(uploadScreenshotRight, previewScreenshotRight, 'contain');
-        handleImageUpload(uploadWide1, previewWide1, 'notch');
-        handleImageUpload(uploadWide2, previewWide2, 'notch');
-        handleImageUpload(uploadWide3, previewWide3, 'notch');
+        handleImageUpload(uploadLeft, previewImgLeft, 'cover', 'left');
+        handleImageUpload(uploadRight, previewImgRight, 'cover', 'right');
+        handleImageUpload(uploadScreenshotLeft, previewScreenshotLeft, 'contain', 'shotLeft');
+        handleImageUpload(uploadScreenshotRight, previewScreenshotRight, 'contain', 'shotRight');
+        handleImageUpload(uploadWide1, previewWide1, 'notch', 'wide1');
+        handleImageUpload(uploadWide2, previewWide2, 'notch', 'wide2');
+        handleImageUpload(uploadWide3, previewWide3, 'notch', 'wide3');
 
         // 模板切换：只显示当前模板的预览元素与控制面板分组（其余置 hidden）
         // P-30：专属字段「隐藏但保留值」——只切 hidden，不清空 input.value，
@@ -3057,6 +3083,25 @@
             offEsc = window.__license.onEsc(dispose);
         };
 
+        // 画布 → html2canvas 画布：单张导出与批量出图共用这一份参数。
+        // 之所以收敛成公共入口：早先两处各写一遍，单张那份带了 ignoreElements、
+        // 批量那份漏了，于是安全区参考层（4 条红虚线 + 「安全区内/超出安全区域」红字 +
+        // 「主体位置」水印）被整层画进批量导出图里（P-31 的排除只落在单张路径上）。
+        // 导出倍率固定 4×（1500×2668）：批量与单张一致，照片位图无需再被二次放大。
+        function captureCanvas() {
+            if (typeof html2canvas !== 'function') {
+                return Promise.reject(new Error('导出组件未加载成功（需要联网加载）'));
+            }
+            return html2canvas(canvasWrapper, {
+                scale: currentExportScale(),              // 固定 4× 导出（P-33）
+                backgroundColor: readCurrentStyle().bg,   // 导出背景取「画布底色」，参与导出（P-18）
+                logging: false,
+                width: 375, // 强制截取完整宽度
+                height: 667, // 强制截取完整高度
+                ignoreElements: (el) => el === safeZone,  // 结构上排除安全区参考层（P-31）
+            });
+        }
+
         exportBtn.addEventListener('click', async () => {
             // 导出经离屏渲染：安全区参考层由 ignoreElements 从结构上排除，不再临时隐藏/恢复，
             // 因此导出过程中用户切换勾选也不会造成「遮罩与勾选状态不一致」。
@@ -3095,14 +3140,7 @@
                     await document.fonts.ready;
                 }
 
-                const canvas = await html2canvas(canvasWrapper, {
-                    scale: currentExportScale(),              // 固定 4× 导出（P-33）
-                    backgroundColor: readCurrentStyle().bg,   // 导出背景取「画布底色」，参与导出（P-18）
-                    logging: false,
-                    width: 375, // 强制截取完整宽度
-                    height: 667, // 强制截取完整高度
-                    ignoreElements: (el) => el === safeZone,  // 结构上排除安全区参考层（P-31）
-                });
+                const canvas = await captureCanvas();
 
                 const shot = await canvasToUrl(canvas);
                 const fileName = '排版图_' + new Date().getTime() + '.png';
@@ -3198,6 +3236,15 @@
             shotLeft: [previewScreenshotLeft, 'contain'], shotRight: [previewScreenshotRight, 'contain'],
             wide1: [previewWide1, 'notch'], wide2: [previewWide2, 'notch'], wide3: [previewWide3, 'notch']
         };
+        // 每格「原图」的 JPEG dataURL（键与 IMG_TARGETS 一致）。草稿保存的就是这份原图，
+        // 而不是按图片框烘焙好的小位图：
+        //   · 位图是无损 PNG，一张约 0.5~1MB，一份 4 图草稿就逼近 localStorage 上限，
+        //     于是从第二份草稿起图片被整包丢弃（表现为「只有一张图文里有照片」）；
+        //   · JPEG 体积只有约 1/10，且载入时仍按原图重新裁切，清晰度不会随
+        //     「保存 → 载入 → 再保存」逐次衰减（反复转存无损位图会一代比一代糊）。
+        const photoSource = {}; // key -> dataURL（JPEG）
+        const PHOTO_MAX_SIDE = 1600; // 原图长边上限：图片框最终只需 105.6 CSS px × 4 倍 ≈ 422px
+        const PHOTO_JPEG_Q = 0.9;
         // 空状态占位文案：清空图片时要把框恢复成「可继续上传」的提示态
         const PHOTO_PLACEHOLDER = {
             left: '左图 (1:1)', right: '右图 (1:1)',
@@ -3432,12 +3479,12 @@
             Object.keys(FIELD_INPUTS).forEach((k) => { f[k] = FIELD_INPUTS[k].value; });
             return f;
         }
+        // 采集各图片框的「原图」（见 photoSource）。
+        // 不再回读预览框里的位图：那是按图片框烘焙好的小图，反复转存会逐代损失清晰度，
+        // 且无损 PNG 体积远大于原图 JPEG，是「多份草稿只存得下一份图」的直接原因。
         function captureImgs() {
             const imgs = {};
-            Object.keys(IMG_TARGETS).forEach((k) => {
-                const cv = IMG_TARGETS[k][0].querySelector('canvas.preview-photo');
-                if (cv) { try { imgs[k] = cv.toDataURL('image/png'); } catch (e) {} }
-            });
+            Object.keys(IMG_TARGETS).forEach((k) => { if (photoSource[k]) imgs[k] = photoSource[k]; });
             return imgs;
         }
         // 由输入框回灌预览（载入草稿/恢复记忆时不能只改输入框，否则预览还是旧的）
@@ -3458,6 +3505,7 @@
             const info = IMG_TARGETS[key];
             if (!info) return;
             photoSeq[key] = (photoSeq[key] || 0) + 1;
+            delete photoSource[key]; // 原图与预览框同生共死，否则草稿会把已清除的图带回来
             info[0].textContent = PHOTO_PLACEHOLDER[key];
             info[0].classList.remove('has-photo');
             syncClearButtons();
@@ -3482,7 +3530,12 @@
             return new Promise((resolve) => {
                 const img = new Image();
                 img.onload = () => {
-                    if (photoSeq[key] === seq) { paintPhoto(info[0], info[1], img); syncClearButtons(); }
+                    if (photoSeq[key] === seq) {
+                        paintPhoto(info[0], info[1], img);
+                        // 原样记下这份原图：再保存草稿时直接复用它，不再由位图二次编码
+                        photoSource[key] = dataUrl;
+                        syncClearButtons();
+                    }
                     resolve();
                 };
                 img.onerror = () => {
@@ -3640,6 +3693,72 @@
             }
         }
 
+        // ---- 草稿图片的大容量兜底（IndexedDB） ----
+        // localStorage 只有 ~5MB，还与偏好/模板/片段共用，装不下多份带图草稿。
+        // 图片 JPEG 化后多数情况够用；一旦超限就把图片挪到 IndexedDB（配额按磁盘比例分配，
+        // 通常几百 MB），草稿条目里只留 imgRef='idb' 标记。
+        // 部分 file:// 环境会拒绝 IndexedDB：此时 openImageDb 解析为 null，所有 idb* 都返回失败，
+        // 调用方退回「只存文案与样式」，行为与改动前一致。
+        const IDB_NAME = 'lmt_layout_imgs_v1';
+        const IDB_STORE = 'draftImgs';
+        let idbPromise = null;
+        function openImageDb() {
+            if (idbPromise) return idbPromise;
+            idbPromise = new Promise((resolve) => {
+                let req = null;
+                try {
+                    if (typeof indexedDB === 'undefined' || !indexedDB) { resolve(null); return; }
+                    req = indexedDB.open(IDB_NAME, 1);
+                } catch (e) { resolve(null); return; }
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+                req.onblocked = () => resolve(null);
+                // 个别环境既不 success 也不 error（例如弹窗被挂起），用超时兜底，
+                // 避免「保存草稿」一直停在等待里，用户以为点了没反应
+                setTimeout(() => resolve(null), 3000);
+            });
+            return idbPromise;
+        }
+        function idbPutImages(id, imgs) {
+            return openImageDb().then((db) => new Promise((resolve) => {
+                if (!db) { resolve(false); return; }
+                try {
+                    const tx = db.transaction(IDB_STORE, 'readwrite');
+                    tx.objectStore(IDB_STORE).put(imgs, id);
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                    tx.onabort = () => resolve(false);
+                } catch (e) { resolve(false); }
+            }));
+        }
+        function idbGetImages(id) {
+            return openImageDb().then((db) => new Promise((resolve) => {
+                if (!db) { resolve(null); return; }
+                try {
+                    const tx = db.transaction(IDB_STORE, 'readonly');
+                    const rq = tx.objectStore(IDB_STORE).get(id);
+                    rq.onsuccess = () => resolve(rq.result || null);
+                    rq.onerror = () => resolve(null);
+                } catch (e) { resolve(null); }
+            }));
+        }
+        function idbDeleteImages(id) {
+            return openImageDb().then((db) => new Promise((resolve) => {
+                if (!db) { resolve(false); return; }
+                try {
+                    const tx = db.transaction(IDB_STORE, 'readwrite');
+                    tx.objectStore(IDB_STORE).delete(id);
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                    tx.onabort = () => resolve(false);
+                } catch (e) { resolve(false); }
+            }));
+        }
+
         // ---- 草稿箱（①） ----
         function listDrafts() {
             const d = readJSON(DRAFT_KEY, { v: 1, items: [] });
@@ -3663,10 +3782,58 @@
         function approxDraftBytes(item) {
             try { return JSON.stringify(item).length; } catch (e) { return 0; }
         }
-        function saveDraft(name) {
+        // 一份草稿的图片张数：图片存在 localStorage 里就数 imgs，挪进 IndexedDB 后回落到 imgCount。
+        // 单独记 imgCount 是为了「批量出图」列表能在同步渲染时标注「含图 N 张 / 无图」。
+        function draftImageCount(d) {
+            if (!d) return 0;
+            if (d.imgRef === 'idb') return Number(d.imgCount) || 0;
+            return Object.keys(d.imgs || {}).length;
+        }
+        // 取出草稿的图片：localStorage 里有 imgs 就直接用，标记 imgRef='idb' 就去 IndexedDB 取。
+        // 取不到（IndexedDB 被拒或记录已丢）时返回空对象，草稿的文案与样式照常可用。
+        function hydrateDraftImages(d) {
+            if (!d) return Promise.resolve({});
+            if (d.imgRef === 'idb') return idbGetImages(d.id).then((v) => (v && typeof v === 'object') ? v : {});
+            return Promise.resolve((d.imgs && typeof d.imgs === 'object') ? d.imgs : {});
+        }
+        // 把一份草稿写入草稿箱（同 id 视为覆盖）。三级降级，尽量保住图片：
+        //   1) 整条写进 localStorage；
+        //   2) 装不下且带图 → 图片挪进 IndexedDB，条目里只留 imgRef='idb'；
+        //   3) 仍装不下 → 丢图只保文案与样式（与改动前一致）。
+        // 返回 { ok, withImgs, where }；ok=false 表示本地存储空间彻底不足。
+        async function persistDraftItem(item) {
+            const others = listDrafts().filter((x) => x.id !== item.id);
+            const countImgs = () => Object.keys(item.imgs || {}).length;
+            const refreshBytes = () => { item.bytes = approxDraftBytes(item); };
+            item.imgCount = countImgs();
+            refreshBytes();
+            if (persistDrafts(others.concat([item]))) {
+                return { ok: true, withImgs: item.imgCount > 0, where: 'local' };
+            }
+            if (item.imgCount && await idbPutImages(item.id, item.imgs)) {
+                const keptImgs = item.imgs;
+                item.imgs = {};
+                item.imgRef = 'idb';
+                refreshBytes();
+                if (persistDrafts(others.concat([item]))) return { ok: true, withImgs: true, where: 'idb' };
+                // 图片已进 IndexedDB 但条目仍写不下：撤回这次搬运，交给下面的丢图分支
+                await idbDeleteImages(item.id);
+                item.imgs = keptImgs;
+                delete item.imgRef;
+                refreshBytes();
+            }
+            item.imgs = {};
+            delete item.imgRef;
+            refreshBytes();
+            if (persistDrafts(others.concat([item]))) return { ok: true, withImgs: false, where: 'text' };
+            // 最后一档：只保留这一份（配额被别的键占满时，仍让用户存得下最新方案）
+            if (persistDrafts([item])) return { ok: true, withImgs: false, where: 'text-only' };
+            return { ok: false };
+        }
+        async function saveDraft(name) {
             const now = Date.now();
             const item = {
-                id: 'd_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                id: 'd_' + now.toString(36) + Math.random().toString(36).slice(2, 6),
                 name: sanitizeName(name || defaultName('草稿'), 24),
                 tpl: templateSelect.value,
                 savedAt: now,
@@ -3675,53 +3842,52 @@
                 imgs: captureImgs(),
                 style: collectStyleFromControls()
             };
-            item.bytes = approxDraftBytes(item);
-            let items = listDrafts().concat([item]);
-            // 守卫①：连图片一起存；写不下就丢图片再存（文案与样式始终保住）
-            if (persistDrafts(items)) {
-                refreshDraftOptions();
-                setMsg(draftMsg, '已保存草稿：' + item.name);
-                return { ok: true, withImgs: true, name: item.name };
+            const res = await persistDraftItem(item);
+            if (!res.ok) {
+                setMsg(draftMsg, '保存草稿失败：本地存储空间不足');
+                return { ok: false };
             }
-            item.imgs = {};
-            item.bytes = approxDraftBytes(item);
-            if (persistDrafts(items)) {
-                refreshDraftOptions();
-                setMsg(draftMsg, '草稿过大，已仅保存文案与样式（未含图片）');
-                return { ok: true, withImgs: false, name: item.name };
-            }
-            // 守卫②：仍失败（配额被别的键占满）→ 降级为只保留最新 1 份重试
-            items = [item];
-            if (persistDrafts(items)) {
-                refreshDraftOptions();
-                setMsg(draftMsg, '草稿过大，已仅保留最新 1 份草稿（未含图片）');
-                return { ok: true, withImgs: false, name: item.name };
-            }
-            setMsg(draftMsg, '保存草稿失败：本地存储空间不足');
-            return { ok: false };
+            refreshDraftOptions();
+            if (res.where === 'idb') setMsg(draftMsg, '已保存草稿：' + item.name + '（图片存于大容量存储）');
+            else if (!res.withImgs && item.imgCount > 0) setMsg(draftMsg, '草稿过大，已仅保存文案与样式（未含图片）');
+            else setMsg(draftMsg, '已保存草稿：' + item.name);
+            return { ok: true, withImgs: res.withImgs, name: item.name };
         }
-        function loadDraft(id) {
+        // 载入草稿：返回 { ok, imgsMissing }。imgsMissing=true 表示草稿记录了图片却一张都没取回
+        //（IndexedDB 被拒或记录已丢），文案与样式照常载入，由调用方给出明确提示。
+        async function loadDraft(id) {
             const d = listDrafts().filter((x) => x.id === id)[0];
-            if (!d) return false;
+            if (!d) return { ok: false, imgsMissing: false };
             if (d.tpl) {
                 selectTemplateValue(d.tpl);
                 onTemplateSelectChange(templateSelect.value);
             }
-            applySnapshot(d);
-            return true;
+            const imgs = await hydrateDraftImages(d);
+            await applySnapshot({ fields: d.fields, imgs: imgs, style: d.style });
+            return { ok: true, imgsMissing: draftImageCount(d) > 0 && !Object.keys(imgs).length };
         }
         function deleteDraft(id) {
+            const d = listDrafts().filter((x) => x.id === id)[0];
             persistDrafts(listDrafts().filter((x) => x.id !== id));
+            // 顺手清掉 IndexedDB 里的图片，避免删掉草稿后仍有残留占空间
+            if (d && d.imgRef === 'idb') idbDeleteImages(id);
             refreshDraftOptions();
             return true;
         }
-        function exportDrafts() {
+        // 导出草稿：图片可能存放在 IndexedDB 里，必须先取回来，否则备份文件是「没有图」的
+        async function exportDrafts() {
             const name = '排版草稿_' + tsName() + '.json';
-            saveText(JSON.stringify({ v: 1, items: listDrafts() }, null, 2), name, 'application/json');
+            const items = [];
+            for (const it of listDrafts()) {
+                const out = Object.assign({}, it, { imgs: await hydrateDraftImages(it) });
+                delete out.imgRef; // 备份文件自带图片、不依赖本机的 IndexedDB，故不带该标记
+                items.push(out);
+            }
+            saveText(JSON.stringify({ v: 1, items: items }, null, 2), name, 'application/json');
             setMsg(draftMsg, '已导出草稿文件：' + name);
             return true;
         }
-        function importDrafts(json) {
+        async function importDrafts(json) {
             let data;
             try { data = (typeof json === 'string') ? JSON.parse(json) : json; }
             catch (e) { setMsg(draftMsg, '导入失败：文件不是有效的 JSON'); return false; }
@@ -3730,23 +3896,43 @@
             const cleaned = [];
             items.forEach((it) => {
                 if (!it || typeof it !== 'object') return;
-                cleaned.push({
+                const item = {
                     id: 'i_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
                     name: sanitizeName(it.name || '导入草稿', 24),
                     tpl: typeof it.tpl === 'string' ? it.tpl : 'window',
                     savedAt: Date.now(),
+                    updated: Date.now(),
                     fields: (it.fields && typeof it.fields === 'object') ? it.fields : {},
                     imgs: (it.imgs && typeof it.imgs === 'object') ? it.imgs : {},
                     style: (it.style && typeof it.style === 'object') ? it.style : null
-                });
+                };
+                item.imgCount = Object.keys(item.imgs).length;
+                item.bytes = approxDraftBytes(item);
+                cleaned.push(item);
             });
             if (!cleaned.length) { setMsg(draftMsg, '导入失败：没有可用的草稿条目'); return false; }
-            if (!persistDrafts(listDrafts().concat(cleaned)) && !persistDrafts(cleaned)) {
+            const merged = listDrafts().concat(cleaned);
+            if (persistDrafts(merged)) {
+                refreshDraftOptions();
+                setMsg(draftMsg, '已导入 ' + cleaned.length + ' 份草稿');
+                return true;
+            }
+            // 带图导入（尤其一次多份）常超 localStorage 上限：逐份把图片挪进 IndexedDB 后重试
+            let keptImgs = true;
+            for (const it of cleaned) {
+                if (!it.imgCount) continue;
+                if (await idbPutImages(it.id, it.imgs)) { it.imgs = {}; it.imgRef = 'idb'; }
+                else { keptImgs = false; it.imgs = {}; }
+                it.bytes = approxDraftBytes(it);
+            }
+            if (!persistDrafts(listDrafts().concat(cleaned))) {
                 setMsg(draftMsg, '导入失败：本地存储空间不足（可先删除部分草稿）');
                 return false;
             }
             refreshDraftOptions();
-            setMsg(draftMsg, '已导入 ' + cleaned.length + ' 份草稿');
+            setMsg(draftMsg, keptImgs
+                ? '已导入 ' + cleaned.length + ' 份草稿（图片存于大容量存储）'
+                : '已导入 ' + cleaned.length + ' 份草稿（部分图片因空间不足未导入）');
             return true;
         }
         // 草稿排序/体积/时间的展示辅助（纯函数，供下拉与测试复用）
@@ -3846,7 +4032,8 @@
                 snippetSelect.appendChild(o);
             });
             if (Array.prototype.some.call(snippetSelect.options, (o) => o.value === prev)) snippetSelect.value = prev;
-            refreshBatchList();
+            // 这里曾顺手调用 refreshBatchList()：文案库与批量清单毫无关系，
+            // 每次存/删片段都会白白重建一次批量任务 DOM（并清掉勾选之外的状态），已去掉。
         }
 
         // ---- 记忆上次内容/样式（④） ----
@@ -3981,7 +4168,9 @@
         // 任务清单：批量出图以「草稿」为最小单元（每份勾选的草稿产出 1 张图，P-19）。
         // 常用文案库不再作为独立出图任务，而是用于给草稿套用指定字段。
         function buildBatchTasks() {
-            return listDrafts().map((d) => ({ kind: 'draft', id: d.id, name: d.name }));
+            return listDrafts().map((d) => ({
+                kind: 'draft', id: d.id, name: d.name, count: draftImageCount(d)
+            }));
         }
         function refreshBatchList() {
             const tasks = buildBatchTasks();
@@ -4007,7 +4196,9 @@
                     cb.dataset.name = t.name;
                     if (prevChecked[t.kind + ':' + t.id]) cb.checked = true;
                     const span = document.createElement('span');
-                    span.textContent = '草稿：' + t.name;
+                    // 标注每份草稿的图片张数：出图前就能看出「这份没带图」，
+                    // 不必等导出后才发现某张图文里没有照片。
+                    span.textContent = '草稿：' + t.name + (t.count ? '（含图 ' + t.count + ' 张）' : '（无图）');
                     label.appendChild(cb);
                     label.appendChild(span);
                     frag.appendChild(label);
@@ -4023,21 +4214,20 @@
         }
         // 渲染单个草稿任务：先把界面切到该草稿的状态，再截图取字节。
         // draft 由调用方一次性解析好后传入，避免循环内逐张 listDrafts() 全量解析（含图片 base64）。
+        // 返回 { name, bytes } 或 { skip: 原因 }（草稿不存在 / 内容超出安全区）。
         async function renderBatchTask(task, d) {
-            if (!d) return null;
+            if (!d) return { skip: '草稿已不存在' };
             if (d.tpl) { selectTemplateValue(d.tpl); onTemplateSelectChange(templateSelect.value); }
             const imgReady = applySnapshot(d); // 图片解码是异步的，返回 Promise
             exportBtn.disabled = true; // 先禁用，避免等待图片期间被点；applySnapshot 会重算可用性
             await imgReady; // 等图片绘制落地，否则截图时图未就绪会丢图/串图
             // 等字体就绪，否则导出图会回退成系统字体
             if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
-            const canvas = await html2canvas(canvasWrapper, {
-                scale: BATCH_EXPORT_SCALE, // 批量降倍率，控制逐张临时画布的内存与耗时
-                backgroundColor: readCurrentStyle().bg,
-                logging: false,
-                width: 375,
-                height: 667
-            });
+            // 与单张导出同一条底线：内容超出安全区时绝不导出被裁掉的图。
+            // 早先批量没有这道校验，超长文案的草稿会静默产出缺内容的图，用户以为「出图坏了」。
+            if (exportTarget.scrollHeight > exportTarget.clientHeight + 1) return { skip: '内容超出安全区' };
+            // 截图参数与单张导出共用 captureCanvas（含排除安全区参考层），不再各写一遍
+            const canvas = await captureCanvas();
             const bytes = await canvasToPngBytes(canvas);
             // 主动释放大画布：批量循环下避免已用画布驻留内存（width/height 置 0 即让浏览器回收位图）
             try { canvas.width = 0; canvas.height = 0; } catch (e) { /* 个别环境只读，忽略 */ }
@@ -4057,15 +4247,22 @@
                 if (batchRetryBtn) batchRetryBtn.hidden = true;
                 return;
             }
+            // 未生成的张数与其原因必须写清楚：失败静默不可见时，用户只会以为「出图漏了几张」
+            const failed = res.failed || [];
+            const why = {};
+            failed.forEach((f) => { why[f.reason] = (why[f.reason] || 0) + 1; });
+            const failNote = failed.length
+                ? '，另有 ' + failed.length + ' 张未生成（' + Object.keys(why).map((k) => k + ' ' + why[k] + ' 张').join('；') + '）'
+                : '';
             if (res.files.length) {
                 const zipName = '批量排版图_' + tsName() + '.zip';
                 saveBytes(zipStore(res.files), zipName, 'application/zip');
                 setMsg(batchTip, (res.canceled ? '已取消，仍导出已完成的 ' : '批量出图完成，共 ')
-                    + res.files.length + ' 张，已导出 ' + zipName);
+                    + res.files.length + ' 张，已导出 ' + zipName + failNote);
             } else {
-                setMsg(batchTip, res.canceled ? '已取消，未生成任何图片' : '批量出图失败：未生成任何图片');
+                setMsg(batchTip, (res.canceled ? '已取消，未生成任何图片' : '批量出图失败：未生成任何图片') + failNote);
             }
-            lastFailedTasks = res.failed || [];
+            lastFailedTasks = failed.map((f) => f.task);
             if (lastFailedTasks.length) {
                 if (batchRetryBtn) { batchRetryBtn.textContent = '重试失败项（' + lastFailedTasks.length + '）'; batchRetryBtn.hidden = false; }
             } else if (batchRetryBtn) {
@@ -4074,10 +4271,15 @@
         }
         // 执行一批任务（成功、失败、取消都会逐字还原批量前的界面状态），返回结果供收尾处理
         async function performBatch(tasks) {
-            // 草稿表只解析一次：渲染每张时原先都要 listDrafts() 全量解析（含图片 base64，可能数 MB），
-            // 批量 n 张就是 n 次解析，明显拖慢整体出图。
-            const draftMap = {};
-            listDrafts().forEach((dd) => { draftMap[dd.id] = dd; });
+            // 先置忙再解析草稿表：解析里含 await（图片可能要从 IndexedDB 取回），
+            // 若把它排在置忙之前，按钮要等到下一个微任务才禁用——用户在同一拍里再点一次就会重入。
+            batchRunning = true;
+            batchCancel = false;
+            batchBtn.disabled = true;
+            exportBtn.disabled = true;
+            batchCancelBtn.hidden = false;
+            if (batchRetryBtn) batchRetryBtn.hidden = true;
+            if (batchProgress) { batchProgress.hidden = false; setBatchProgress(0, tasks.length); }
             // 记录批量前的完整界面状态：无论成功、失败还是取消，结束时都必须逐字还原
             const beforeSnap = {
                 tpl: templateSelect.value,
@@ -4087,25 +4289,35 @@
                 font: fontSelect.value,
                 safe: toggleSafe.checked
             };
-            batchRunning = true;
-            batchCancel = false;
-            batchBtn.disabled = true;
-            exportBtn.disabled = true;
-            batchCancelBtn.hidden = false;
-            if (batchRetryBtn) batchRetryBtn.hidden = true;
-            if (batchProgress) { batchProgress.hidden = false; setBatchProgress(0, tasks.length); }
             const files = [];
             const failed = [];
             let error = null;
             try {
+                // 草稿表只解析一次：渲染每张时原先都要 listDrafts() 全量解析（含图片 base64，可能数 MB），
+                // 批量 n 张就是 n 次解析，明显拖慢整体出图。
+                // 图片可能放在 IndexedDB 里，这里一并取回；且只取本批勾选到的草稿，不做无谓的解码。
+                const all = listDrafts();
+                const draftMap = {};
+                await Promise.all(tasks.map(async (t) => {
+                    const d = all.filter((x) => x.id === t.id)[0];
+                    if (!d) return;
+                    d.imgs = await hydrateDraftImages(d);
+                    draftMap[d.id] = d;
+                }));
                 for (let i = 0; i < tasks.length; i++) {
                     if (batchCancel) break;
                     setMsg(batchTip, '正在出图 ' + (i + 1) + '/' + tasks.length + '：' + tasks[i].name);
                     setBatchProgress(i, tasks.length);
-                    // 逐个 await：每张都让出主线程一拍，避免长任务把界面卡死
-                    const r = await renderBatchTask(tasks[i], draftMap[tasks[i].id]);
-                    if (r) files.push({ name: '排版图_' + sanitizeName(r.name, 24) + '_' + (i + 1) + '.png', bytes: r.bytes });
-                    else failed.push(tasks[i]);
+                    // 逐个 await：每张都让出主线程一拍，避免长任务把界面卡死。
+                    // 单张内部再单独 try/catch：一张渲染异常不能把整批掀翻——已渲染好的图必须照常落盘，
+                    // 早先一次异常会直接跳出循环，前面几张的成果全被丢弃且只给一句笼统报错。
+                    try {
+                        const r = await renderBatchTask(tasks[i], draftMap[tasks[i].id]);
+                        if (r && r.bytes) files.push({ name: '排版图_' + sanitizeName(r.name, 24) + '_' + (i + 1) + '.png', bytes: r.bytes });
+                        else failed.push({ task: tasks[i], reason: (r && r.skip) || '未能渲染' });
+                    } catch (err) {
+                        failed.push({ task: tasks[i], reason: (err && err.message) || '渲染出错' });
+                    }
                     setBatchProgress(i + 1, tasks.length);
                     await new Promise((res) => setTimeout(res, 0));
                 }
@@ -4319,19 +4531,30 @@
                 okText: '删除', danger: true
             });
             if (!ok) return;
+            // 撤销要用到图片，而图片可能只存在 IndexedDB 里（删除时会连同记录一起清掉），先取出来
+            const imgs = await hydrateDraftImages(item);
             deleteDraft(id);
             setMsg(draftMsg, '已删除草稿');
-            showUndoToast('已删除草稿「' + item.name + '」', () => {
-                persistDrafts(listDrafts().concat([item]));
+            showUndoToast('已删除草稿「' + item.name + '」', async () => {
+                const back = Object.assign({}, item, {
+                    imgs: imgs, imgCount: Object.keys(imgs).length, updated: Date.now()
+                });
+                delete back.imgRef;
+                const res = await persistDraftItem(back);
                 refreshDraftOptions();
-                setMsg(draftMsg, '已撤销删除：' + item.name);
+                if (!res.ok) { setMsg(draftMsg, '撤销失败：本地存储空间不足'); return; }
+                setMsg(draftMsg, res.withImgs ? '已撤销删除：' + item.name : '已撤销删除（图片未能恢复）：' + item.name);
             });
         });
         draftExportBtn.addEventListener('click', () => exportDrafts());
-        draftSelect.addEventListener('change', () => {
+        draftSelect.addEventListener('change', async () => {
             const id = draftSelect.value;
             if (!id) return;
-            setMsg(draftMsg, loadDraft(id) ? '已载入草稿' : '该草稿已不存在');
+            const r = await loadDraft(id);
+            if (!r.ok) { setMsg(draftMsg, '该草稿已不存在'); return; }
+            setMsg(draftMsg, r.imgsMissing
+                ? '已载入草稿，但图片读取失败（大容量存储不可用），仅恢复了文案与样式'
+                : '已载入草稿');
         });
         draftImportFile.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -4503,8 +4726,14 @@
             captureFields: captureFields, captureImgs: captureImgs,
             // 图片还原/清除的稳定入口：还原是异步的（返回 Promise），调用方可据它等待解码落地
             restorePhoto: restorePhoto, clearPhoto: clearPhoto,
+            // 草稿箱：saveDraft/loadDraft/exportDrafts/importDrafts 都是异步的
+            //（图片可能存放在 IndexedDB 里）；loadDraft 返回 { ok, imgsMissing }
             saveDraft: saveDraft, loadDraft: loadDraft, listDrafts: listDrafts, deleteDraft: deleteDraft,
             exportDrafts: exportDrafts, importDrafts: importDrafts,
+            // 草稿图片的 IndexedDB 兜底（供用例直接校验「多份带图草稿都存得住」）
+            hydrateDraftImages: hydrateDraftImages, draftImageCount: draftImageCount,
+            // 单张 / 批量共用的截图入口：用例可替换 html2canvas 检查传参（安全区必须被 ignoreElements 排除）
+            captureCanvas: captureCanvas,
             applyCustomStyle: applyCustomStyle, resetCustomStyle: resetCustomStyle,
             saveMyTemplate: saveMyTemplate, listMyTemplates: listMyTemplates, deleteMyTemplate: deleteMyTemplate,
             savePrefs: savePrefs, loadPrefs: loadPrefs, resetPrefs: resetPrefs,
