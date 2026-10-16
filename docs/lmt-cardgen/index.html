@@ -312,11 +312,13 @@
     /* 状态条的两个终态：同步失败（danger）与同步成功（ok）。颜色只在语义确实成立时使用 */
     .lmt-chip.is-bad { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger); }
     .lmt-chip.is-ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
-    /* 初始为空时不渲染空胶囊 */
+    /* 线上清单状态条：只剩结论胶囊一枚，但结论可能很长（更新时间 + 上传统计 + 差异说明）。
+       原先把它当 flex 行里的弹性项，窄宽下会被压得比文案还窄，文字纵向挤出圆角边框（图二）；
+       改为普通块容器，胶囊按可用宽度整段换行，任何长度都留在边框内。 */
+    .sync-bar { display: block; }
+    .sync-bar .lmt-chip { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+    /* 初始为空时不渲染空胶囊（必须排在覆盖规则之后，否则空胶囊会被 display:inline-block 顶出来） */
     .lmt-chip:empty { display: none; }
-    /* 线上清单状态条：结论胶囊 + 条件出现的「重新同步」挤在一行，结论过长时允许换行 */
-    .sync-bar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-    .sync-bar .lmt-chip { align-self: center; }
     /* 折叠说明块：把长格式说明从 label 里挪出来，标签只留一句人话 */
     .lmt-details { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
     .lmt-details > summary {

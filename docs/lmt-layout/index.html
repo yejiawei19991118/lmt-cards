@@ -805,6 +805,13 @@
             background: #fff; border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--sh-3);
         }
         .lmt-modal-card h3 { margin: 0 0 10px; font-size: 16px; }
+        /* 弹层按钮组：范围三选一的文案较长（仅重置样式 / 重置草稿与偏好），等分到窄宽后必然换行；
+           按钮固定高度会把文字顶出上下边框（图一）。这里让高度随文字自适应，并让同行按钮等高。 */
+        .lmt-modal-card .lmt-btn-row { align-items: stretch; }
+        .lmt-modal-card .lmt-btn-row > button {
+            height: auto; min-height: var(--h-md);
+            padding: 9px var(--sp-2); line-height: 1.3;
+        }
         .lmt-modal-card input[type="text"] {
             width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #dbe1ea;
             border-radius: 9px; font-size: 14px; font-family: inherit; background: #fbfcfe; color: var(--text-main);
@@ -861,9 +868,8 @@
             box-shadow: 0 -6px 16px rgba(24, 33, 51, .06);
         }
         .panel-footer-row { display: flex; align-items: center; gap: var(--sp-2); }
-        /* 尺寸选择占据余下宽度，主按钮保持内容宽度（不与主线操作抢焦点，也不挤压选项文字） */
-        .panel-footer-row > select { flex: 1 1 auto; width: auto; min-width: 0; }
-        .panel-footer-row > .btn-primary { flex: 0 0 auto; width: auto; padding: 0 var(--sp-5); }
+        /* 画质档位已移除：导出固定 4×（1500 × 2668），底栏只剩主按钮，独占整行 */
+        .panel-footer-row > .btn-primary { flex: 1 1 auto; width: 100%; padding: 0 var(--sp-4); }
 
         /* ===== 图片素材区：网格 / 图文配对 ===== */
         .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
@@ -1178,18 +1184,14 @@
             </div>
         </details>
 
-        <!-- 常驻底栏：导出尺寸与「导出为图片」贴住面板底部，
-             出图不必再滚到面板末尾；长度提示也挪到这里，导出前就地可见 -->
+        <!-- 常驻底栏：「导出为图片」贴住面板底部，出图不必再滚到面板末尾；
+             长度提示也挪到这里，导出前就地可见 -->
         <div class="panel-footer">
             <div class="overflow-warn" id="overflow-warn" role="status" aria-live="polite">
                 内容过长：字号已缩到最小仍超出安全区，请精简文案后再导出。
             </div>
             <div class="fit-note" id="fit-note" role="status" aria-live="polite"></div>
             <div class="panel-footer-row">
-                <select id="export-size" aria-label="导出尺寸" title="导出尺寸">
-                    <option value="2.88">1080 × 1920（平台推荐）</option>
-                    <option value="4" selected>1500 × 2668（4× 高清）</option>
-                </select>
                 <button class="btn-primary" id="export-btn">导出为图片</button>
             </div>
             <div class="export-msg" id="export-msg" role="status" aria-live="polite"></div>
@@ -1200,7 +1202,7 @@
     <div class="preview-container">
         <div class="preview-head">
             <span class="preview-head-title">实时预览</span>
-            <span class="preview-head-hint" id="preview-head-hint">画布 375 × 667（按所选尺寸导出高清图）</span>
+            <span class="preview-head-hint" id="preview-head-hint">画布 375 × 667（导出 1500 × 2668 高清图）</span>
             <label class="toggle-safe-zone">
                 <input type="checkbox" id="toggle-safe" checked=""> 显示安全区辅助线
             </label>
@@ -2466,7 +2468,6 @@
         const fitLock = document.getElementById('fit-lock');
         const safeZone = document.getElementById('safe-zone');
         const exportBtn = document.getElementById('export-btn');
-        const exportSize = document.getElementById('export-size');
         const fontSelect = document.getElementById('font-select');
         
         // 导出目标是整个 canvas-wrapper，而不是只截取内部
@@ -2655,11 +2656,10 @@
             // 模板二缺角图：包围盒 1440×600，按“安全区整宽”预留分辨率，显示更小时自动降采样
             notch: [275 * EXPORT_SCALE, Math.round(275 * 600 / 1440 * EXPORT_SCALE)]
         };
-        // 导出倍率：由 #export-size 决定（375×667 × scale）。默认 4× → 1500×2668（P-33）。
+        // 导出倍率固定为 4×（375×667 × 4 = 1500×2668，P-33）：画质档位已移除，不再受界面选择影响。
         // 仅影响最终导出分辨率，不影响图片框位图（那由 BOX_SIZE 固定按 EXPORT_SCALE 生成）。
         function currentExportScale() {
-            const s = exportSize ? parseFloat(exportSize.value) : EXPORT_SCALE;
-            return (isFinite(s) && s > 0) ? s : EXPORT_SCALE;
+            return EXPORT_SCALE;
         }
 
         // 纯函数：计算照片在给定框内的等比绘制矩形（绝不拉伸变形）。
@@ -2973,7 +2973,7 @@
             exportBtn.classList.add('is-busy'); // 与「内容超出安全区而不可用」区分：这里是真的在忙
             exportBtn.textContent = '导出中…';
 
-            // 截取整个画布容器。scale 由 #export-size 决定（默认 4×：375×667 × 4 = 1500×2668），
+            // 截取整个画布容器。固定 4×（375×667 × 4 = 1500×2668），
             // 图片区域约 528px，才能保住上传照片的细节（scale 2 时只有 264px，会明显发糊）。
             try {
                 // 关键：等在线手写字体的字形真正下载完成再截图，
@@ -2983,7 +2983,7 @@
                 }
 
                 const canvas = await html2canvas(canvasWrapper, {
-                    scale: currentExportScale(),              // 取 #export-size 所选倍率（P-33）
+                    scale: currentExportScale(),              // 固定 4× 导出（P-33）
                     backgroundColor: readCurrentStyle().bg,   // 导出背景取「画布底色」，参与导出（P-18）
                     logging: false,
                     width: 375, // 强制截取完整宽度
@@ -3665,7 +3665,6 @@
                     style: collectStyleFromControls(),
                     safe: toggleSafe.checked,
                     fitLock: !!(fitLock && fitLock.checked),
-                    exportScale: currentExportScale(),
                     savedAt: Date.now()
                 }));
             } catch (e) { /* 记忆属于「有则更好」：写不进去也不影响主流程 */ }
@@ -3700,10 +3699,6 @@
                 safeZone.classList.toggle('active', p.safe);
             }
             if (fitLock) fitLock.checked = !!p.fitLock;
-            if (exportSize && isFinite(parseFloat(p.exportScale))) {
-                const v = String(p.exportScale);
-                if (Array.prototype.some.call(exportSize.options, (o) => o.value === v)) exportSize.value = v;
-            }
             checkContentFit();
             return true;
         }
@@ -3748,7 +3743,6 @@
             toggleSafe.checked = true;
             safeZone.classList.add('active');
             if (fitLock) fitLock.checked = false;
-            if (exportSize) exportSize.value = '4';
             syncFieldPreview();
             syncStyleControls();
             checkContentFit();

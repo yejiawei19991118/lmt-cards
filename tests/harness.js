@@ -823,18 +823,12 @@
       }
     });
 
-    test('layout/导出尺寸与字号锁定（P-17 / P-33）', async function () {
+    test('layout/导出固定 4× 高清 + 字号锁定（P-17 / P-33）', async function () {
       var t = app();
-      var size = q(doc, '#export-size');
-      assertEq(qa(doc, '#export-size option').length, 2, '导出尺寸应提供两档（平台推荐 / 4× 高清）');
-      assertEq(size.value, '4', '默认应为 4× 高清档');
-      assertEq(t.currentExportScale(), 4, '默认导出倍率应为 4');
-      size.value = '2.88';
-      fire(size, 'change', L);
-      assertEq(t.currentExportScale(), 2.88, '切到平台推荐档后导出倍率应为 2.88');
-      size.value = '4';
-      fire(size, 'change', L);
-      assertEq(t.currentExportScale(), 4, '切回高清档应恢复 4');
+      // 画质档位组件已按需求移除：导出固定 4×（1500 × 2668），界面不再暴露尺寸选择
+      assertEq(doc.querySelector('#export-size'), null, '「导出尺寸」选择框应已删除（导出固定 4×）');
+      assertEq(qa(doc, '.panel-footer-row > select').length, 0, '底栏不应再有任何尺寸选择控件');
+      assertEq(t.currentExportScale(), 4, '导出倍率应恒为 4（1500 × 2668）');
 
       // P-17：文案长到「原字号放不下、缩小才放得下」时必须明示当前缩放比例。
       // 该中间状态对应的文案长度取决于运行时排版，因此按长度递增去命中它
@@ -980,6 +974,15 @@
       // 取消：什么都不该发生
       reset.click();
       await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '重置应弹出范围选择');
+      // 几何回归（图一）：范围三选一的文案较长（仅重置样式 / 重置草稿与偏好），
+      // 在 375 宽的手机壳里等分后必然换行，按钮高度必须随文字自适应——
+      // 文字不得纵向或横向撑出按钮边框（溢出时 scrollHeight/scrollWidth 会大于可视区）。
+      qa(doc, '.lmt-modal-card .lmt-btn-row > button').forEach(function (b) {
+        assert(b.scrollHeight <= b.clientHeight + 1,
+          '弹层按钮文字不得纵向撑出边框（' + text(b) + '）：scrollHeight=' + b.scrollHeight + ' clientHeight=' + b.clientHeight);
+        assert(b.scrollWidth <= b.clientWidth + 1,
+          '弹层按钮文字不得横向撑出边框（' + text(b) + '）：scrollWidth=' + b.scrollWidth + ' clientWidth=' + b.clientWidth);
+      });
       dialogButton(doc, /^取消$/).click();
       await until(function () { return !doc.querySelector('.lmt-modal-mask'); }, 3000, '取消后应关闭弹层');
       assertEq(t.listDrafts().length, 1, '取消重置不应动草稿');
@@ -1003,7 +1006,7 @@
       assertEq(t.listSnippets().length, 0, '应清空文案片段');
       assertEq(q(doc, '#input-title').value, '受保护的标题', '重置草稿与偏好不得动当前内容');
 
-      // 3) 重置全部：内容 / 模板 / 安全区 / 导出尺寸一并回到默认
+      // 3) 重置全部：内容 / 模板 / 安全区一并回到默认（导出倍率恒为 4×，无档位可重置）
       setValue(q(doc, '#input-title'), '再来一次', L);
       reset.click();
       await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '重置应弹出范围选择');
@@ -1012,7 +1015,7 @@
       assertEq(q(doc, '#input-title').value, '', '重置全部应清空当前内容');
       assertEq(q(doc, '#template-select').value, 'window', '重置全部应回落橱窗模板');
       assertEq(q(doc, '#toggle-safe').checked, true, '重置全部应恢复安全区辅助线勾选');
-      assertEq(q(doc, '#export-size').value, '4', '重置全部应恢复 4× 导出尺寸');
+      assertEq(t.currentExportScale(), 4, '导出倍率恒为 4×（画质档位已移除，不受重置影响）');
     });
 
     test('layout/自动化承接：样式重置并入「重置偏好」、片段选中即写入指定字段（O-L10 / O-L11）', async function () {
@@ -1672,6 +1675,18 @@
       assert(/线上新增 2 条/.test(tip), '状态条应报告线上新增条数，实际：' + tip);
       assert(!/已并入/.test(tip), '状态条不应再说「已并入」（线上条目不再写进台账输入框），实际：' + tip);
       assert(/已上传 3/.test(tip), '三条都在线上 → 状态条应显示已上传 3，实际：' + tip);
+
+      // 几何回归（图二）：结论可能很长（更新时间 + 验签来源 + 上传统计 + 差异说明 + 本机同步时间），
+      // 胶囊必须按可用宽度整段换行，文字不得横向/纵向撑出圆角边框，也不得越出状态条边界。
+      var tipEl = q(doc, '#online-tip');
+      assert(tipEl.scrollWidth <= tipEl.clientWidth + 1,
+        '长结论胶囊文字不得横向撑出圆角边框：scrollWidth=' + tipEl.scrollWidth + ' clientWidth=' + tipEl.clientWidth);
+      assert(tipEl.scrollHeight <= tipEl.clientHeight + 1,
+        '长结论胶囊文字不得纵向撑出圆角边框：scrollHeight=' + tipEl.scrollHeight + ' clientHeight=' + tipEl.clientHeight);
+      var bar = doc.querySelector('.sync-bar');
+      var vb = tipEl.getBoundingClientRect(), bb = bar.getBoundingClientRect();
+      assert(vb.left >= bb.left - 0.5 && vb.right <= bb.right + 0.5,
+        '结论胶囊不得越出状态条左右边界：chip=[' + vb.left + ',' + vb.right + '] bar=[' + bb.left + ',' + bb.right + ']');
 
       var badges = qa(doc, '#out .status-badge');
       assertEq(badges.length, 3, '同步成功过之后每行都应带在线状态徽标');
