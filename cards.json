@@ -1,13 +1,13 @@
 {
   "ver": 2,
-  "updated": "2026-10-16T08:03:48+08:00",
-  "rev": "d8d2317e62873474",
+  "updated": "2026-10-16T15:53:16+08:00",
+  "rev": "66a9bdad825a266a",
   "cards": [
     {
       "card": "JYEB-9339-4V2R-S4GG-2JVJ",
       "mc": "8TBZ-R6T3-6KF7-BS1K",
       "note": "菜头",
-      "exp": "2026-10-15"
+      "exp": "2026-11-15"
     },
     {
       "card": "DFV7-54ZB-25TD-HCY4-R1QH",
@@ -16,8 +16,6 @@
       "exp": "2026-11-16"
     }
   ],
-  "revoked": [
-    "GQB1-FCMH-R2Y7-FSME-R901"
-  ],
-  "sig2": "SB05P2JHVQNQ66Q5VNF7NBRSZNC2FQHSYJC1SYABNCV0FWR52WRJPYBH31CR30R47SF1FB6TVJ21GHDJ5SF4KQZ79PQQAVB8V32YJ28"
+  "revoked": [],
+  "sig2": "2ZW37KM144P66KE241Z2TG0AWK3PJ3QG83B9H5TMJV6W6ZPYMR12B57WBRF3ZJH60GXH3QC3P5T2RGF2K12JSDJF25BCFYJMS5NNR30"
 }
