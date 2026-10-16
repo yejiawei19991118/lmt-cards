@@ -872,7 +872,7 @@
       assertEq(t.listSnippets().length, 0, '删除后文案库应为空');
     });
 
-    test('layout/批量出图：未勾选给提示，勾选后打包出图并恢复界面', async function () {
+    test('layout/批量出图：勾选后打包出图并恢复界面', async function () {
       var t = app();
       var btn = q(doc, '#batch-btn');
       var tip = q(doc, '#batch-tip');
@@ -883,10 +883,10 @@
         return list.length ? list : null;
       }, 3000, '批量清单渲染（草稿是批量的最小单元）');
 
-      // 未勾选：必须有即时提示，且不能进入批量流程
+      // 未勾选：按钮直接禁用（不再让用户点了才收到一句「请先勾选」）
+      assert(btn.disabled, '一张都没勾时「批量出图」应直接禁用');
       btn.click();
-      assertEq(text(tip), '请先勾选要出图的草稿', '未勾选点批量出图应给出提示');
-      assert(!btn.disabled, '未勾选时不应进入批量流程（按钮不应被禁用）');
+      assert(!/正在出图/.test(text(tip)), '未勾选点批量出图不应进入批量流程（实际：' + text(tip) + '）');
 
       var before = saverCalls.layout.length;
       cbs[0].checked = true;
@@ -1041,7 +1041,7 @@
       await until(function () { return t.listSnippets().length === 1; }, 3000, '撤销后片段应恢复');
       assertEq(t.listSnippets()[0].text, '待删除的片段', '撤销应恢复原片段内容');
       await until(function () { return !doc.querySelector('.lmt-undo-toast'); }, 3000, '撤销后提示条应消失');
-      assertMatch(text(q(doc, '#tool-msg')), /已撤销删除/, '撤销应有反馈');
+      assertMatch(text(q(doc, '#snippet-msg')), /已撤销删除/, '撤销应有反馈');
     });
 
     test('layout/分层重置：仅样式 / 草稿与偏好 / 全部（P-29）', async function () {
@@ -1057,7 +1057,7 @@
       fire(q(doc, '#fit-lock'), 'change', L);
 
       var reset = q(doc, '#prefs-reset-btn');
-      var msg = q(doc, '#tool-msg');
+      var msg = q(doc, '#prefs-msg');
 
       // 取消：什么都不该发生
       reset.click();
@@ -1131,7 +1131,7 @@
       assertEq(q(doc, '#input-cap-1').value, '片段内容甲',
         '选中片段后应自动写入 #snippet-field-select 指定的字段（不再需要手动点「插入」）');
       assertEq(text(q(doc, '#preview-cap-1')), '片段内容甲', '自动写入后预览应同步');
-      assertMatch(text(q(doc, '#tool-msg')), /已写入/, '自动写入应有回执，实际：' + text(q(doc, '#tool-msg')));
+      assertMatch(text(q(doc, '#snippet-msg')), /已写入/, '自动写入应有回执，实际：' + text(q(doc, '#snippet-msg')));
 
       // 收尾：切回橱窗模板并清空该字段，避免影响后续用例
       tpl.value = 'window';
@@ -1214,10 +1214,10 @@
           assertMatch(imgs.left, /^data:image\/jpeg/, list[m].name + '：草稿里存的应是原图 JPEG（不是无损 PNG 位图）');
         }
 
-        // 列表标注：出图前就能看出每份草稿带没带图（原先只能导出后才发现某张没有照片）
+        // 列表标注：出图前就能看出每份草稿「用什么模板、带没带图」（原先只能导出后才发现某张没有照片）
         var rows = qa(doc, '#batch-tasks label');
         assertEq(rows.length, 2, '批量清单应列出 2 份草稿');
-        assertMatch(text(rows[0]), /（含图 4 张）$/, '带图草稿的行应标注含图张数，实际：' + text(rows[0]));
+        assertMatch(text(rows[0]), /（[^）]+\/ 含图 4 张）$/, '带图草稿的行应标注模板名与含图张数，实际：' + text(rows[0]));
 
         // 无图草稿：清掉照片再存一份，行上必须直接标成「无图」
         KEYS.forEach(function (k) { t.clearPhoto(k); });
@@ -1226,7 +1226,7 @@
         var rows2 = qa(doc, '#batch-tasks label');
         var rowC = rows2.filter(function (r) { return /无图草稿丙/.test(text(r)); })[0];
         assert(rowC, '清单里应有无图草稿丙这一行');
-        assertMatch(text(rowC), /（无图）$/, '无图草稿的行应标注「无图」，实际：' + text(rowC));
+        assertMatch(text(rowC), /（[^）]+\/ 无图）$/, '无图草稿的行应标注模板名与「无图」，实际：' + text(rowC));
       } finally {
         t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
         KEYS.forEach(function (k) { t.clearPhoto(k); });
@@ -1353,6 +1353,107 @@
         fire(lock, 'change', L);
         t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
         setValue(q(doc, '#input-title'), '', L);
+      }
+    });
+
+    // 用户诉求：「批量出图组件的增减功能有没有失灵或者不合理的地方」。
+    // 这组用例守住本次「先删减后自动化」的落地：
+    //   ① 0 勾选时按钮直接禁用（不再点了才收到一句提示）；②「全选/全不选」一键勾选；
+    //   ③ 行上能看出「用哪套模板」；④ 短批不出「取消」、长批才出；
+    //   ⑤ 批量进行中锁住草稿增删改，收尾后必须解锁。
+    test('layout/批量出图：0 勾选禁用 / 全选全不选 / 行标模板名 / 出图中锁住草稿增删改', async function () {
+      var t = app();
+      var tplEl = q(doc, '#template-select');
+      var tplWas = tplEl.value;
+      var real = L.html2canvas;
+      var batchBtn = q(doc, '#batch-btn');
+      var allBtn = q(doc, '#batch-select-all-btn');
+      var cancelBtn = q(doc, '#batch-cancel-btn');
+      function killToasts() {
+        qa(doc, '.lmt-undo-toast').forEach(function (el) { if (el.__dispose) el.__dispose(); });
+      }
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        setValue(q(doc, '#input-title'), '增减草稿甲', L);
+        assert((await t.saveDraft('增减草稿甲')).ok, '前置：应存入 1 份草稿');
+        // 明确切成「三图竖排」再存一份：行文案必须显示该草稿自己存下的模板名
+        tplEl.value = 'three';
+        fire(tplEl, 'change', L);
+        await sleep(60);
+        setValue(q(doc, '#input-title'), '三图草稿', L);
+        assert((await t.saveDraft('三图草稿')).ok, '前置：应存入三图草稿');
+        setValue(q(doc, '#input-title'), '增减草稿丙', L);
+        assert((await t.saveDraft('增减草稿丙')).ok, '前置：应存入第 3 份草稿');
+        assertEq(t.listDrafts().length, 3, '前置：清单里应有 3 份草稿');
+
+        // ③ 行文案带模板名（草稿存的是什么模板就显示什么，不跟着当前下拉走）
+        var rows = qa(doc, '#batch-tasks label');
+        assertEq(rows.length, 3, '批量清单应列出 3 份草稿');
+        var rowThree = rows.filter(function (r) { return /三图草稿/.test(text(r)); })[0];
+        assert(rowThree, '清单里应有三图草稿这一行');
+        assertMatch(text(rowThree), /（三图竖排 \/ (无图|含图 \d+ 张)）$/,
+          '行上应显示该草稿所用的模板名，实际：' + text(rowThree));
+
+        // ① 0 勾选 → 按钮直接禁用
+        assertEq(qa(doc, '#batch-tasks input[type="checkbox"]:checked').length, 0, '前置：初始应一张都没勾');
+        assert(batchBtn.disabled, '一张都没勾时「批量出图」应直接禁用');
+        assert(!allBtn.hidden, '有草稿时「全选」按钮应可见');
+        assertEq(text(allBtn), '全选', '未全选时按钮文案应为「全选」');
+
+        // ② 一键全选：3 份草稿一次勾上，按钮变「全不选」并同步预计张数
+        allBtn.click();
+        assertEq(qa(doc, '#batch-tasks input[type="checkbox"]:checked').length, 3, '「全选」应一次勾上全部草稿');
+        assertEq(text(allBtn), '全不选', '全选后按钮应变为「全不选」');
+        assertMatch(text(batchBtn), /将生成 3 张/, '全选后按钮应同步预计张数');
+        assert(!batchBtn.disabled, '有勾选时「批量出图」应可用');
+
+        // 再点一次：全部取消，回到禁用
+        allBtn.click();
+        assertEq(qa(doc, '#batch-tasks input[type="checkbox"]:checked').length, 0, '「全不选」应一次取消全部勾选');
+        assert(batchBtn.disabled, '全部取消后「批量出图」应回到禁用');
+        assertEq(text(allBtn), '全选', '全部取消后按钮文案应回到「全选」');
+
+        // ④⑤ 短批不出「取消」，且出图中锁住草稿增删改
+        // 截图入口换成同步返回小画布的桩：批量会很快跑完，但置忙/加锁都发生在第一个 await 之前，
+        // 因此点击返回的同一拍就能检查中间态。
+        L.html2canvas = function () {
+          var cv = L.document.createElement('canvas');
+          cv.width = 40; cv.height = 60;
+          var cx = cv.getContext('2d');
+          cx.fillStyle = '#0a0'; cx.fillRect(0, 0, 40, 60);
+          return Promise.resolve(cv);
+        };
+        var cbs = qa(doc, '#batch-tasks input[type="checkbox"]');
+        cbs[0].checked = true;
+        fire(cbs[0], 'change', L);
+        var saveBtn = q(doc, '#draft-save-btn');
+        var delBtn = q(doc, '#draft-delete-btn');
+        var renameBtn = q(doc, '#draft-rename-btn');
+        var importFile = q(doc, '#draft-import-file');
+        var draftSel = q(doc, '#draft-select');
+        batchBtn.click();
+        assert(cancelBtn.hidden, '短批（少于 3 张）不应出现「取消」按钮');
+        assert(saveBtn.disabled && delBtn.disabled && renameBtn.disabled && importFile.disabled && draftSel.disabled,
+          '批量进行中应锁住草稿的增删改（保存/删除/重命名/导入/下拉）');
+        assert(hasClass(q(doc, '#draft-import-btn'), 'is-disabled'),
+          '「导入草稿」是 label 没有 disabled 属性，只能靠 is-disabled 拦截指针');
+        await waitBatchFinish(q(doc, '#batch-tip'), batchBtn, '批量收尾');
+        assert(!saveBtn.disabled && !delBtn.disabled && !renameBtn.disabled && !importFile.disabled && !draftSel.disabled,
+          '批量结束后必须解锁草稿的增删改');
+        assert(!hasClass(q(doc, '#draft-import-btn'), 'is-disabled'), '批量结束后应撤掉「导入草稿」的指针拦截');
+
+        // 长批（= 3 张）才给「取消」：勾满 3 份再点一次，中间态应能看到取消按钮
+        allBtn.click();
+        batchBtn.click();
+        assert(!cancelBtn.hidden, '3 张的批量应出现「取消」按钮');
+        await waitBatchFinish(q(doc, '#batch-tip'), batchBtn, '长批收尾');
+      } finally {
+        L.html2canvas = real;
+        tplEl.value = tplWas;
+        fire(tplEl, 'change', L);
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        setValue(q(doc, '#input-title'), '', L);
+        killToasts(); // 批量收尾会往底部常显提示条写回执，清掉避免影响后续用例
       }
     });
   }

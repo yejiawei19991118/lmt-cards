@@ -767,6 +767,11 @@
         .lmt-batch-list label input { accent-color: var(--accent); margin: 0; }
         .lmt-batch-list label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .lmt-batch-list .lmt-group-title { font-size: 12px; font-weight: 600; color: var(--text-sub); margin: 4px 0 2px; }
+        /* 批量清单标题行：左标题 + 右「全选/全不选」小按钮（N 份草稿不再要点 N 次） */
+        .lmt-batch-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+        .lmt-batch-head .btn-ghost { height: 28px; padding: 0 10px; font-size: var(--fs-xs); }
+        /* 批量进行中锁住的「导入草稿」是 label 而非 button，禁用态只能靠指针事件 */
+        .upload-btn.is-disabled { pointer-events: none; opacity: .55; }
         /* 批量出图进度条：仅批量进行中显示 */
         .lmt-progress {
             height: 6px; margin-top: 8px; border-radius: 4px; overflow: hidden;
@@ -1161,6 +1166,7 @@
                     <div class="lmt-btn-row is-split">
                         <button type="button" class="btn-danger" id="style-delete-btn">删除预设</button>
                     </div>
+                    <div class="lmt-tip" id="preset-msg" role="status" aria-live="polite"></div>
                 </details>
             </div>
         </section>
@@ -1175,10 +1181,6 @@
                     <select id="draft-select"><option value="">— 载入草稿 —</option></select>
                     <div class="lmt-btn-row">
                         <input type="text" id="draft-search" placeholder="搜索草稿">
-                        <select id="draft-sort">
-                            <option value="updated">最近更新</option>
-                            <option value="name">名称</option>
-                        </select>
                         <button type="button" class="btn-ghost" id="draft-rename-btn">重命名</button>
                     </div>
                     <div class="lmt-btn-row">
@@ -1195,7 +1197,10 @@
 
                 <!-- 批量出图：以草稿为最小单元，勾选若干草稿逐张渲染后打包成一个 ZIP -->
                 <div class="control-group">
-                    <label>批量出图任务（以草稿为最小单元）</label>
+                    <div class="lmt-batch-head">
+                        <label>批量出图任务（以草稿为最小单元）</label>
+                        <button type="button" class="btn-ghost" id="batch-select-all-btn" hidden>全选</button>
+                    </div>
                     <div class="lmt-batch-list" id="batch-tasks"></div>
                     <div class="lmt-progress" id="batch-progress" hidden><div class="lmt-progress-bar" id="batch-progress-bar"></div></div>
                     <div class="lmt-btn-row">
@@ -1205,8 +1210,6 @@
                     </div>
                     <div class="lmt-tip" id="batch-tip" role="status" aria-live="polite"></div>
                 </div>
-
-                <div class="lmt-tip" id="tool-msg" role="status" aria-live="polite"></div>
             </div>
         </details>
 
@@ -1227,11 +1230,12 @@
                         <option value="cap3">段落小标题 3</option>
                     </select>
                     <!-- 原「插入」按钮已删除：先选目标字段，再选 #snippet-select 片段即自动写入该字段，
-                         回执走 #tool-msg（不再需要点一次「插入」）。 -->
+                         回执走本块内的 #snippet-msg（不再需要点一次「插入」）。 -->
                     <div class="lmt-btn-row">
                         <button type="button" class="btn-ghost" id="snippet-save-btn">存为片段</button>
                         <button type="button" class="btn-danger" id="snippet-delete-btn">删除片段</button>
                     </div>
+                    <div class="lmt-tip" id="snippet-msg" role="status" aria-live="polite"></div>
                 </div>
             </div>
         </details>
@@ -1250,6 +1254,7 @@
                     <div class="lmt-btn-row is-split">
                         <button type="button" class="btn-link" id="prefs-reset-btn">重置设置…</button>
                     </div>
+                    <div class="lmt-tip" id="prefs-msg" role="status" aria-live="polite"></div>
                 </div>
             </div>
         </details>
@@ -3204,10 +3209,16 @@
         const snippetSaveBtn = document.getElementById('snippet-save-btn');
         const snippetDeleteBtn = document.getElementById('snippet-delete-btn');
         const prefsResetBtn = document.getElementById('prefs-reset-btn');
-        const toolMsg = document.getElementById('tool-msg');
+        // 回执分块承载：文案片段 / 样式预设 / 设置各回自己的块内。
+        // 早先三者共用一个挂在「草稿与批量」面板体内的回执位，而该面板默认收起，
+        // 于是「别的块」的操作结果用户根本看不到。
+        const presetMsg = document.getElementById('preset-msg');
+        const snippetMsg = document.getElementById('snippet-msg');
+        const prefsMsg = document.getElementById('prefs-msg');
         const draftSearch = document.getElementById('draft-search');
-        const draftSort = document.getElementById('draft-sort');
         const draftRenameBtn = document.getElementById('draft-rename-btn');
+        const draftImportBtn = document.getElementById('draft-import-btn');
+        const batchSelectAllBtn = document.getElementById('batch-select-all-btn');
         const batchProgress = document.getElementById('batch-progress');
         const batchProgressBar = document.getElementById('batch-progress-bar');
         const batchRetryBtn = document.getElementById('batch-retry-btn');
@@ -3644,7 +3655,7 @@
                 style: style || collectStyleFromControls()
             };
             if (!persistMyTemplates(listMyTemplates().concat([item]))) {
-                setMsg(toolMsg, '保存模板失败：本地存储空间不足');
+                setMsg(presetMsg, '保存模板失败：本地存储空间不足');
                 return null;
             }
             refreshMyTemplateOptions();
@@ -3946,17 +3957,18 @@
             if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + 'MB';
             return Math.max(1, Math.round(n / 1024)) + 'KB';
         }
-        function refreshDraftOptions() {
-            let items = listDrafts();
-            // 按搜索词过滤（名称匹配，大小写不敏感）
+        // 草稿的统一取数入口：按搜索词过滤（名称匹配，大小写不敏感）+ 固定按「最近更新」排序。
+        // 「载入草稿」下拉与批量出图清单必须共用这一份口径：早先两处各取各的
+        // （下拉跟随搜索、批量清单永远全量），同一个面板里两个列表行为不一致。
+        // 原先还有个「排序」下拉只作用于下拉，选择项只有两条、默认顺序本就是最近更新，已删除。
+        function queryDrafts() {
             const kw = (draftSearch ? draftSearch.value : '').trim().toLowerCase();
+            let items = listDrafts();
             if (kw) items = items.filter((it) => String(it.name || '').toLowerCase().indexOf(kw) >= 0);
-            // 按所选规则排序：最近更新（updated 降序）/ 名称（升序）
-            const sortBy = draftSort ? draftSort.value : 'updated';
-            items = items.slice().sort((a, b) => {
-                if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN');
-                return (Number(b.updated) || 0) - (Number(a.updated) || 0);
-            });
+            return items.slice().sort((a, b) => (Number(b.updated) || 0) - (Number(a.updated) || 0));
+        }
+        function refreshDraftOptions() {
+            const items = queryDrafts();
             const prev = draftSelect.value;
             draftSelect.textContent = '';
             const ph = document.createElement('option');
@@ -4126,7 +4138,7 @@
                 syncStyleControls();
                 if (fitLock) fitLock.checked = true; // 恢复默认：自动适配字号开启
                 savePrefs();
-                setMsg(toolMsg, '已重置样式（内容与图片保持不变）');
+                setMsg(prefsMsg, '已重置样式（内容与图片保持不变）');
                 return true;
             }
 
@@ -4139,7 +4151,7 @@
             refreshDraftOptions();
             refreshSnippetOptions();
             if (scope === 'drafts') {
-                setMsg(toolMsg, '已重置草稿与偏好（内容与图片保持不变）');
+                setMsg(prefsMsg, '已重置草稿与偏好（内容与图片保持不变）');
                 return true;
             }
 
@@ -4157,20 +4169,30 @@
             syncFieldPreview();
             syncStyleControls();
             checkContentFit();
-            setMsg(toolMsg, '已重置全部（含当前内容与图片）');
+            setMsg(prefsMsg, '已重置全部（含当前内容与图片）');
             return true;
         }
 
         // ---- 批量出图（②） ----
         let batchRunning = false; // 批量期间禁用导出，避免并发导出互相抢画布
         let batchCancel = false;
+        // 少于这么多张时不给「取消」按钮：短批一键就完了，多一个按钮反而增加选择成本
+        const BATCH_CANCEL_MIN = 3;
         let lastFailedTasks = []; // 上一批未能出图的草稿任务，供「重试失败项」重跑
         // 任务清单：批量出图以「草稿」为最小单元（每份勾选的草稿产出 1 张图，P-19）。
         // 常用文案库不再作为独立出图任务，而是用于给草稿套用指定字段。
         function buildBatchTasks() {
-            return listDrafts().map((d) => ({
-                kind: 'draft', id: d.id, name: d.name, count: draftImageCount(d)
+            // 与「载入草稿」下拉共用 queryDrafts()：搜索词、排序口径只有一份，
+            // 否则同一面板里两个列表会各取各的（下拉跟随搜索、批量清单永远全量）。
+            return queryDrafts().map((d) => ({
+                kind: 'draft', id: d.id, name: d.name, count: draftImageCount(d), tpl: d.tpl
             }));
+        }
+        // 模板 value → 中文名（直接取下拉里的文案，新增模板无需再维护一份映射）
+        function tplLabelOf(v) {
+            if (!v) return '默认模板';
+            const opt = Array.prototype.filter.call(templateSelect.options, (o) => o.value === v)[0];
+            return opt ? opt.textContent : v;
         }
         function refreshBatchList() {
             const tasks = buildBatchTasks();
@@ -4196,9 +4218,10 @@
                     cb.dataset.name = t.name;
                     if (prevChecked[t.kind + ':' + t.id]) cb.checked = true;
                     const span = document.createElement('span');
-                    // 标注每份草稿的图片张数：出图前就能看出「这份没带图」，
-                    // 不必等导出后才发现某张图文里没有照片。
-                    span.textContent = '草稿：' + t.name + (t.count ? '（含图 ' + t.count + ' 张）' : '（无图）');
+                    // 标注模板名与图片张数：出图前就能看出「这份用什么模板、有没有带图」，
+                    // 不必等导出后才发现某张图文里没有照片或套错了模板。
+                    span.textContent = '草稿：' + t.name + '（' + tplLabelOf(t.tpl)
+                        + (t.count ? ' / 含图 ' + t.count + ' 张）' : ' / 无图）');
                     label.appendChild(cb);
                     label.appendChild(span);
                     frag.appendChild(label);
@@ -4207,10 +4230,27 @@
             }
             updateBatchCount();
         }
-        // 按钮旁实时显示「预计生成张数」= 已勾选的草稿数（P-19）
+        // 按钮旁实时显示「预计生成张数」= 已勾选的草稿数（P-19）；
+        // 一张都没勾时直接禁用按钮，而不是让用户点了才收到一句「请先勾选」。
         function updateBatchCount() {
             const n = batchTasks.querySelectorAll('input[type="checkbox"]:checked').length;
-            batchBtn.textContent = n ? ('批量出图（将生成 ' + n + ' 张）') : '批量出图';
+            if (!batchRunning) batchBtn.textContent = n ? ('批量出图（将生成 ' + n + ' 张）') : '批量出图';
+            batchBtn.disabled = batchRunning || !n;
+            // 「全选 / 全不选」：N 份草稿不再需要点 N 次；已全选时按钮改为「全不选」
+            const total = batchTasks.querySelectorAll('input[type="checkbox"]').length;
+            if (batchSelectAllBtn) {
+                batchSelectAllBtn.hidden = !total;
+                batchSelectAllBtn.disabled = batchRunning || !total;
+                batchSelectAllBtn.textContent = (total && n === total) ? '全不选' : '全选';
+            }
+        }
+        // 一键全选 / 全不选（批量清单里的所有草稿）
+        function toggleBatchSelectAll() {
+            if (batchRunning) return;
+            const boxes = batchTasks.querySelectorAll('input[type="checkbox"]');
+            const allOn = boxes.length > 0 && Array.prototype.every.call(boxes, (cb) => cb.checked);
+            Array.prototype.forEach.call(boxes, (cb) => { cb.checked = !allOn; });
+            updateBatchCount();
         }
         // 渲染单个草稿任务：先把界面切到该草稿的状态，再截图取字节。
         // draft 由调用方一次性解析好后传入，避免循环内逐张 listDrafts() 全量解析（含图片 base64）。
@@ -4233,8 +4273,10 @@
             try { canvas.width = 0; canvas.height = 0; } catch (e) { /* 个别环境只读，忽略 */ }
             return { name: task.name, bytes: bytes };
         }
-        // 进度条：按 i/n 更新 bar 宽度（完成后由 performBatch 隐藏容器）
+        // 进度条：按 i/n 更新 bar 宽度（完成后由 performBatch 隐藏容器）；
+        // 同时把 N/M 写到按钮上——面板可能只露出按钮，进度不能只藏在进度条里
         function setBatchProgress(done, total) {
+            if (batchRunning) batchBtn.textContent = '出图中 ' + done + '/' + total;
             if (!batchProgressBar) return;
             const pct = total > 0 ? Math.round(done / total * 100) : 0;
             batchProgressBar.style.width = pct + '%';
@@ -4242,7 +4284,9 @@
         // 批量收尾统一出口：落盘 ZIP、提示文案与「失败项重试」按钮的显隐/文案
         function finishBatch(res) {
             if (res.error) {
-                setMsg(batchTip, '批量出图失败：' + ((res.error && res.error.message) || res.error || '未知错误'));
+                const errText = '批量出图失败：' + ((res.error && res.error.message) || res.error || '未知错误');
+                setMsg(batchTip, errText);
+                showToast(errText); // 面板默认收起，回执必须同时走底部常显提示条
                 lastFailedTasks = [];
                 if (batchRetryBtn) batchRetryBtn.hidden = true;
                 return;
@@ -4254,20 +4298,34 @@
             const failNote = failed.length
                 ? '，另有 ' + failed.length + ' 张未生成（' + Object.keys(why).map((k) => k + ' ' + why[k] + ' 张').join('；') + '）'
                 : '';
+            let summary;
             if (res.files.length) {
                 const zipName = '批量排版图_' + tsName() + '.zip';
                 saveBytes(zipStore(res.files), zipName, 'application/zip');
-                setMsg(batchTip, (res.canceled ? '已取消，仍导出已完成的 ' : '批量出图完成，共 ')
-                    + res.files.length + ' 张，已导出 ' + zipName + failNote);
+                summary = (res.canceled ? '已取消，仍导出已完成的 ' : '批量出图完成，共 ')
+                    + res.files.length + ' 张，已导出 ' + zipName + failNote;
             } else {
-                setMsg(batchTip, (res.canceled ? '已取消，未生成任何图片' : '批量出图失败：未生成任何图片') + failNote);
+                summary = (res.canceled ? '已取消，未生成任何图片' : '批量出图失败：未生成任何图片') + failNote;
             }
+            setMsg(batchTip, summary);
+            showToast(summary); // 同上：折叠面板也看得见收尾结果
             lastFailedTasks = failed.map((f) => f.task);
             if (lastFailedTasks.length) {
                 if (batchRetryBtn) { batchRetryBtn.textContent = '重试失败项（' + lastFailedTasks.length + '）'; batchRetryBtn.hidden = false; }
             } else if (batchRetryBtn) {
                 batchRetryBtn.hidden = true;
             }
+        }
+        // 批量进行中锁住草稿的增删改：出图中途改草稿会与本批已解析的草稿表脱节
+        //（改完再出图，结果对不上用户看到的那份），宁可先锁住。
+        function setDraftLocked(locked) {
+            if (draftSaveBtn) draftSaveBtn.disabled = locked;
+            if (draftDeleteBtn) draftDeleteBtn.disabled = locked;
+            if (draftRenameBtn) draftRenameBtn.disabled = locked;
+            if (draftImportFile) draftImportFile.disabled = locked;
+            if (draftSelect) draftSelect.disabled = locked;
+            // 「导入草稿」是 label（触发 file input），没有 disabled 属性可用，只能靠指针事件拦截
+            if (draftImportBtn) draftImportBtn.classList.toggle('is-disabled', locked);
         }
         // 执行一批任务（成功、失败、取消都会逐字还原批量前的界面状态），返回结果供收尾处理
         async function performBatch(tasks) {
@@ -4277,9 +4335,12 @@
             batchCancel = false;
             batchBtn.disabled = true;
             exportBtn.disabled = true;
-            batchCancelBtn.hidden = false;
+            // 「取消」只对长批有意义（短批一键就完了），2 张及以下不出现，免得平白多一个按钮
+            batchCancelBtn.hidden = tasks.length < BATCH_CANCEL_MIN;
+            setDraftLocked(true);
             if (batchRetryBtn) batchRetryBtn.hidden = true;
             if (batchProgress) { batchProgress.hidden = false; setBatchProgress(0, tasks.length); }
+            updateBatchCount(); // 同步锁住「全选/全不选」
             // 记录批量前的完整界面状态：无论成功、失败还是取消，结束时都必须逐字还原
             const beforeSnap = {
                 tpl: templateSelect.value,
@@ -4335,10 +4396,12 @@
                 toggleSafe.checked = beforeSnap.safe;
                 safeZone.classList.toggle('active', beforeSnap.safe);
                 batchRunning = false;
-                batchBtn.disabled = false;
                 batchCancelBtn.hidden = true;
+                setDraftLocked(false);
                 if (batchProgress) batchProgress.hidden = true;
-                updateBatchCount(); // 恢复按钮文案（含预计张数）
+                // 按钮可用性交给 updateBatchCount 统一决定（batchRunning || !n）：
+                // 收尾后再单独写一次 disabled=false 会与「0 勾选即禁用」的规则打架
+                updateBatchCount(); // 恢复按钮文案（含预计张数）与可用性
                 checkContentFit(); // 由适配结果决定导出按钮是否可用
             }
             return { files: files, failed: failed, canceled: batchCancel, error: error };
@@ -4361,6 +4424,7 @@
         });
         batchCancelBtn.addEventListener('click', () => { batchCancel = true; setMsg(batchTip, '正在取消…'); });
         batchTasks.addEventListener('change', updateBatchCount); // 勾选变化即刻刷新「将生成 N 张」
+        batchSelectAllBtn.addEventListener('click', toggleBatchSelectAll); // 一键全选 / 全不选
 
         // ---- 自绘名称浮层（不用 prompt/alert：安卓 WebView 常不接管系统弹窗） ----
         function promptName(title, defaultValue) {
@@ -4482,6 +4546,7 @@
 
         // 底部「可撤销」提示条（P-28：草稿删除支持 toast undo）
         // 浮出提示 +「撤销」按钮，超时或点击后销毁；同屏只保留一条。
+        // onUndo 传 null 时退化为纯提示（如批量出图收尾回执），不渲染用不上的「撤销」按钮。
         function showUndoToast(message, onUndo, ttlMs) {
             document.querySelectorAll('.lmt-undo-toast').forEach((el) => { if (el.__dispose) el.__dispose(); });
             const bar = document.createElement('div');
@@ -4490,12 +4555,7 @@
             bar.setAttribute('aria-live', 'polite');
             const span = document.createElement('span');
             span.textContent = message;
-            const undo = document.createElement('button');
-            undo.type = 'button';
-            undo.className = 'lmt-undo-btn';
-            undo.textContent = '撤销';
             bar.appendChild(span);
-            bar.appendChild(undo);
             let done = false, timer = 0;
             const dispose = () => {
                 if (done) return;
@@ -4504,7 +4564,15 @@
                 bar.remove();
             };
             bar.__dispose = dispose;
-            undo.addEventListener('click', () => { if (done) return; dispose(); if (typeof onUndo === 'function') onUndo(); });
+            let undo = null;
+            if (typeof onUndo === 'function') {
+                undo = document.createElement('button');
+                undo.type = 'button';
+                undo.className = 'lmt-undo-btn';
+                undo.textContent = '撤销';
+                undo.addEventListener('click', () => { if (done) return; dispose(); onUndo(); });
+                bar.appendChild(undo);
+            }
             document.body.appendChild(bar);
             // 撤销提示时长默认取「设置」里的 #pref-undo-seconds（缺省回 8 秒）
             const undoDefaultMs = (() => {
@@ -4512,6 +4580,10 @@
                 return (s > 0 ? s : 8) * 1000;
             })();
             timer = setTimeout(dispose, ttlMs || undoDefaultMs);
+        }
+        // 纯提示（底部常显，无撤销）：用于批量出图这类「面板默认收起、回执不该被藏起来」的场景
+        function showToast(message, ttlMs) {
+            showUndoToast(message, null, ttlMs);
         }
 
         // ---- 新增控件的监听 ----
@@ -4565,9 +4637,8 @@
             reader.onerror = () => setMsg(draftMsg, '读取文件失败，请重试');
             reader.readAsText(file);
         });
-        // 草稿搜索/排序：重渲染下拉（保留当前选中项）
+        // 草稿搜索：重渲染下拉与批量清单（两者共用 queryDrafts 的取数口径，保留当前选中项）
         if (draftSearch) draftSearch.addEventListener('input', () => refreshDraftOptions());
-        if (draftSort) draftSort.addEventListener('change', () => refreshDraftOptions());
         // 重命名草稿：复用命名浮层（标题「重命名草稿」），改完刷新下拉并保持选中
         draftRenameBtn.addEventListener('click', async () => {
             if (!draftSelect.value) { setMsg(draftMsg, '请先在下拉框选择要重命名的草稿'); return; }
@@ -4619,11 +4690,11 @@
             onTemplateSelectChange(t.id);
             styleNameInput.value = '';
             savePrefs();
-            setMsg(toolMsg, '已存为「样式预设」（仅样式）：' + t.name);
+            setMsg(presetMsg, '已存为「样式预设」（仅样式）：' + t.name);
         });
         styleDeleteBtn.addEventListener('click', async () => {
             const myNow = myTemplateById(templateSelect.value);
-            if (!myNow) { setMsg(toolMsg, '当前未选中「样式预设」，无需删除'); return; }
+            if (!myNow) { setMsg(presetMsg, '当前未选中「样式预设」，无需删除'); return; }
             const ok = await confirmDialog({
                 title: '删除样式预设',
                 message: '确定删除样式预设「' + myNow.name + '」吗？此操作不可撤销。',
@@ -4632,34 +4703,34 @@
             if (!ok) return;
             deleteMyTemplate(myNow.id);
             savePrefs();
-            setMsg(toolMsg, '已删除样式预设');
+            setMsg(presetMsg, '已删除样式预设');
         });
 
         snippetSaveBtn.addEventListener('click', () => {
             const field = snippetFieldSelect.value;
             const text = FIELD_INPUTS[field] ? FIELD_INPUTS[field].value : '';
             if (!text.trim()) {
-                setMsg(toolMsg, '当前「' + (FIELD_LABELS[field] || field) + '」为空，没有可存内容');
+                setMsg(snippetMsg, '当前「' + (FIELD_LABELS[field] || field) + '」为空，没有可存内容');
                 return;
             }
-            setMsg(toolMsg, saveSnippet(field, text) ? '已存为文案片段' : '保存片段失败：本地存储空间不足');
+            setMsg(snippetMsg, saveSnippet(field, text) ? '已存为文案片段' : '保存片段失败：本地存储空间不足');
         });
         // 原「插入」按钮已删除（O-L11）：次序固定为「先选目标字段 → 再选片段」，
-        // 选中片段立即写入 #snippet-field-select 指定的字段，回执走 #tool-msg（无需再点一次）。
+        // 选中片段立即写入 #snippet-field-select 指定的字段，回执走本块内的 #snippet-msg（无需再点一次）。
         snippetSelect.addEventListener('change', () => {
             const id = snippetSelect.value;
             if (!id) return; // 回到占位项（— 选择文案片段 —）不算一次写入动作
             const field = snippetFieldSelect.value;
             const okIns = insertSnippet(id, field);
-            setMsg(toolMsg, okIns
+            setMsg(snippetMsg, okIns
                 ? ('已写入「' + (FIELD_LABELS[field] || field) + '」')
                 : '写入失败：该片段已不存在');
         });
         snippetDeleteBtn.addEventListener('click', async () => {
-            if (!snippetSelect.value) { setMsg(toolMsg, '请先选择要删除的片段'); return; }
+            if (!snippetSelect.value) { setMsg(snippetMsg, '请先选择要删除的片段'); return; }
             const id = snippetSelect.value;
             const item = listSnippets().filter((x) => x.id === id)[0];
-            if (!item) { setMsg(toolMsg, '该片段已不存在'); return; }
+            if (!item) { setMsg(snippetMsg, '该片段已不存在'); return; }
             const label = (FIELD_LABELS[item.field] || item.field) + '：' + item.text.replace(/\s+/g, ' ').slice(0, 12);
             const ok = await confirmDialog({
                 title: '删除片段',
@@ -4668,11 +4739,11 @@
             });
             if (!ok) return;
             deleteSnippet(id);
-            setMsg(toolMsg, '已删除片段');
+            setMsg(snippetMsg, '已删除片段');
             showUndoToast('已删除片段「' + label + '」', () => {
                 persistSnippets(listSnippets().concat([item]));
                 refreshSnippetOptions();
-                setMsg(toolMsg, '已撤销删除：' + label);
+                setMsg(snippetMsg, '已撤销删除：' + label);
             });
         });
         // P-29：偏好重置改为分层（仅样式 / 草稿与偏好 / 全部），不再一键抹掉所有本地记录
@@ -4689,7 +4760,7 @@
             });
             if (!scope) return;
             resetPrefs(scope);
-            setMsg(toolMsg, scope === 'style' ? '已重置样式自定义' : (scope === 'drafts' ? '已重置草稿与偏好' : '已重置全部本地记录'));
+            setMsg(prefsMsg, scope === 'style' ? '已重置样式自定义' : (scope === 'drafts' ? '已重置草稿与偏好' : '已重置全部本地记录'));
         });
 
         // 5. 内容变化后重新检查是否超出安全区
