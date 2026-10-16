@@ -791,7 +791,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
                 buffer = buffer & ((1 << bits) - 1);
             }
         }
-        if (oi < byteLen) return null;
+        if (oi < byteLen) return null; // 数据不足
+        if (i < s.length) return null; // 已凑满 byteLen 却仍有剩余字符：长度不符，拒绝
+        if (buffer !== 0) return null; // 末尾补位必须为 0（非规范编码）
         return out;
     }
 
@@ -1347,6 +1349,9 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (!m) return '';
         var y = +m[1], mo = +m[2], d = +m[3];
         if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+        // 回环校验：排除 2026-02-31、2026-04-31 这类「范围合法但不存在的日期」
+        var chk = new Date(y, mo - 1, d);
+        if (chk.getFullYear() !== y || chk.getMonth() !== mo - 1 || chk.getDate() !== d) return '';
         var pad = function (x) { return (x < 10 ? '0' : '') + x; };
         return y + '-' + pad(mo) + '-' + pad(d);
     }
@@ -1367,12 +1372,15 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
     }
 
     // 是否已过期：与本地「今天」比较，YYYY-MM-DD 的字典序即时序。
+    // 线上清单里的 exp 未经过 parseExpiry 归一化，直接做字典序比较会误判非 YYYY-MM-DD 写法
+    // （如 2026/01/05）；这里先归一化，无法解析的值视为不过期（与客户端同口径）。
     function isExpired(exp) {
-        if (!exp) return false;
+        var norm = parseExpiry(exp);
+        if (!norm) return false;
         var d = new Date();
         var pad = function (x) { return (x < 10 ? '0' : '') + x; };
         var today = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-        return String(exp) < today;
+        return norm < today;
     }
 
     // 解析一行台账：机器码，后面可选「,备注」，末尾可选「,有效期」。
@@ -4182,9 +4190,13 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         flashButton(b, res ? (res.added > 0 ? ('已恢复 +' + res.added) : '已合并（无新增）') : '无快照');
     });
     // 筛选 + 批量操作
+    // 筛选框与台账/吊销框一致加 300ms 防抖：render() 会全量重建列表并在末尾重算签名，
+    // 逐键触发时（长名单下）输入明显卡顿。
+    var filterTimer = null;
     document.getElementById('filter-input').addEventListener('input', function () {
         filterText = String(this.value || '').trim().toLowerCase();
-        render();
+        if (filterTimer) clearTimeout(filterTimer);
+        filterTimer = setTimeout(function () { filterTimer = 0; render(); }, 300);
     });
     document.getElementById('select-all-btn').addEventListener('click', function () {
         var btn = document.getElementById('select-all-btn');

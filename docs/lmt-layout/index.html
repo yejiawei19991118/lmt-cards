@@ -1491,7 +1491,9 @@
                     buffer = buffer & ((1 << bits) - 1);
                 }
             }
-            if (oi < byteLen) return null;
+            if (oi < byteLen) return null; // 数据不足
+            if (i < s.length) return null; // 已凑满 byteLen 却仍有剩余字符：长度不符，拒绝
+            if (buffer !== 0) return null; // 末尾补位必须为 0（非规范编码）
             return out;
         }
 
@@ -1907,7 +1909,10 @@
         function credAgeMs() {
             var c = readCache();
             if (!c || !c.fetchedAt || !c.data) return Infinity;
-            return Date.now() - Number(c.fetchedAt);
+            var age = Date.now() - Number(c.fetchedAt);
+            // 系统时钟被回拨时 age 会变成负数：这会「看起来」永远新鲜，导致离线凭证永不超期、
+            // 吊销状态无法生效。统一按「不新鲜」（Infinity）处理，强制联网刷新。
+            return age < 0 ? Infinity : age;
         }
         function credFresh() { return credAgeMs() <= CRED_TTL_DAYS * 86400000; }
         function credLastOnlineText() {
@@ -2008,9 +2013,9 @@
             var token = ++manifestReqToken;
             manifestSigInvalid = false; // 新一轮拉取，重置验签失败标记
             // url 传 ''（或主源留空）= 清空清单、回到纯离线；url 省略 = 主源 + 备用镜像
-            if (url != null && !String(url)) { manifest = null; return Promise.resolve(null); }
+            if (url != null && !String(url)) { manifest = null; manifestFromNetwork = false; return Promise.resolve(null); }
             var sources = (url == null) ? manifestSourceList() : [String(url)];
-            if (!sources.length || typeof fetch !== 'function') { manifest = null; return Promise.resolve(null); }
+            if (!sources.length || typeof fetch !== 'function') { manifest = null; manifestFromNetwork = false; return Promise.resolve(null); }
             var i = 0;
             function next() {
                 if (token !== manifestReqToken) return Promise.resolve(null); // 已被更新的请求取代
@@ -3288,8 +3293,9 @@
             if (tryNativeSave('data:' + mime + ';base64,' + bytesToBase64(b), fileName, mime)) return true;
             const url = URL.createObjectURL(new Blob([b], { type: mime }));
             triggerDownload(url, fileName);
-            // 触屏设备额外弹浮层供长按保存（与图片导出一致，避免「点了没反应」）
-            if (isTouchPrimary()) { showImagePreview(url, fileName, () => { try { URL.revokeObjectURL(url); } catch (e) {} }); }
+            // 触屏设备额外弹浮层供长按保存（与图片导出一致，避免「点了没反应」）。
+            // 仅对图片弹预览：批量出图落盘的是 ZIP，若也弹图片浮层会显示成破图。
+            if (isTouchPrimary() && /^image\//i.test(mime)) { showImagePreview(url, fileName, () => { try { URL.revokeObjectURL(url); } catch (e) {} }); }
             else setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 8000);
             return true;
         }
@@ -3327,44 +3333,57 @@
             info[0].textContent = PHOTO_PLACEHOLDER[key];
             info[0].classList.remove('has-photo');
         }
-        // 把 dataURL 还原进预览框：复用 paintPhoto，保证裁切/圆角与手动上传逐像素一致
+        // 把 dataURL 还原进预览框：复用 paintPhoto，保证裁切/圆角与手动上传逐像素一致。
+        // 返回 Promise：Image 解码是异步的，批量出图/载入草稿前必须等它落地，
+        // 否则 html2canvas 可能在图片尚未绘制时就截图，导致丢图或与相邻草稿串图。
         function restorePhoto(key, dataUrl) {
             const info = IMG_TARGETS[key];
-            if (!info) return;
-            if (!dataUrl) { clearPhoto(key); return; }
-            const img = new Image();
-            img.onload = () => { paintPhoto(info[0], info[1], img); };
-            img.src = dataUrl;
+            if (!info) return Promise.resolve();
+            if (!dataUrl) { clearPhoto(key); return Promise.resolve(); }
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => { paintPhoto(info[0], info[1], img); resolve(); };
+                img.onerror = () => { clearPhoto(key); resolve(); };
+                img.src = dataUrl;
+            });
         }
+        // 应用快照：字段/样式同步生效（保证同步调用方行为不变）；
+        // 返回「图片全部还原完成」的 Promise，供批量出图等需要等待图片落地的场景 await。
         function applySnapshot(snap) {
-            if (!snap) return;
+            if (!snap) return Promise.resolve();
             if (snap.fields) {
                 Object.keys(FIELD_INPUTS).forEach((k) => {
                     if (typeof snap.fields[k] === 'string') FIELD_INPUTS[k].value = snap.fields[k];
                 });
                 syncFieldPreview();
             }
+            let imgReady = Promise.resolve();
             if (snap.imgs) {
-                Object.keys(IMG_TARGETS).forEach((k) => {
-                    if (snap.imgs[k]) restorePhoto(k, snap.imgs[k]);
-                    else clearPhoto(k);
-                });
+                imgReady = Promise.all(Object.keys(IMG_TARGETS).map((k) => (
+                    snap.imgs[k] ? restorePhoto(k, snap.imgs[k]) : Promise.resolve(clearPhoto(k))
+                )));
             }
             if (snap.style) { applyCustomStyle(snap.style); }
             syncStyleControls();
             checkContentFit();
+            return imgReady;
         }
 
         // ---- 样式自定义（③） ----
         // 全部变量都写在 canvasWrapper 上：canvasWrapper 是 exportTarget 的祖先，
         // 变量经继承即可覆盖整个预览区；--tpl-bg 作用于 canvasWrapper 自身也能生效。
-        function applyCustomStyle(style) {
+        // 只写入 CSS 变量，不触发安全区适配计算（供拖动样式控件时高频调用）
+        function applyStyleVars(style) {
             if (!style) return;
             Object.keys(STYLE_VARS).forEach((k) => {
                 if (style[k] == null) return;
                 const v = STYLE_UNITS[k] ? (style[k] + STYLE_UNITS[k]) : style[k];
                 canvasWrapper.style.setProperty(STYLE_VARS[k], v);
             });
+        }
+        function applyCustomStyle(style) {
+            if (!style) return;
+            applyStyleVars(style);
             checkContentFit();
         }
         function resetCustomStyle() {
@@ -3578,11 +3597,15 @@
             ph.value = '';
             ph.textContent = '— 载入草稿 —';
             draftSelect.appendChild(ph);
+            // 模板表只读取（JSON.parse）一次：原先在 items 循环里逐个 myTemplateById →
+            // 每次都重新解析整张模板表，草稿多时是 O(n²) 的解析开销，打开下拉会明显卡顿。
+            const tplMap = {};
+            listMyTemplates().forEach((t) => { tplMap[t.id] = t; });
             items.forEach((it) => {
                 const o = document.createElement('option');
                 o.value = it.id;
                 // P-27：草稿记录并显示所用样式模板名（tpl 指向「我的模板」id 或内置模板名）
-                const my = myTemplateById(it.tpl);
+                const my = tplMap[it.tpl];
                 const styleName = my ? my.name : (it.tpl === 'three' ? '三图竖排' : (it.tpl === 'window' ? '橱窗排版' : ''));
                 o.textContent = styleName ? (it.name + '（' + styleName + '）') : it.name;
                 draftSelect.appendChild(o);
@@ -3796,13 +3819,14 @@
             const n = batchTasks.querySelectorAll('input[type="checkbox"]:checked').length;
             batchBtn.textContent = n ? ('批量出图（将生成 ' + n + ' 张）') : '批量出图';
         }
-        // 渲染单个草稿任务：先把界面切到该草稿的状态，再截图取字节
-        async function renderBatchTask(task) {
-            const d = listDrafts().filter((x) => x.id === task.id)[0];
+        // 渲染单个草稿任务：先把界面切到该草稿的状态，再截图取字节。
+        // draft 由调用方一次性解析好后传入，避免循环内逐张 listDrafts() 全量解析（含图片 base64）。
+        async function renderBatchTask(task, d) {
             if (!d) return null;
             if (d.tpl) { selectTemplateValue(d.tpl); onTemplateSelectChange(templateSelect.value); }
-            applySnapshot(d);
-            exportBtn.disabled = true; // applySnapshot 会重算可用性，这里再压一次，防止批量途中被点
+            const imgReady = applySnapshot(d); // 图片解码是异步的，返回 Promise
+            exportBtn.disabled = true; // 先禁用，避免等待图片期间被点；applySnapshot 会重算可用性
+            await imgReady; // 等图片绘制落地，否则截图时图未就绪会丢图/串图
             // 等字体就绪，否则导出图会回退成系统字体
             if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
             const canvas = await html2canvas(canvasWrapper, {
@@ -3820,6 +3844,10 @@
             const checked = Array.prototype.slice.call(batchTasks.querySelectorAll('input[type="checkbox"]:checked'));
             if (!checked.length) { setMsg(batchTip, '请先勾选要出图的草稿'); return; }
             const tasks = checked.map((cb) => ({ kind: cb.dataset.kind, id: cb.dataset.id, name: cb.dataset.name }));
+            // 草稿表只解析一次：渲染每张时原先都要 listDrafts() 全量解析（含图片 base64，可能数 MB），
+            // 批量 n 张就是 n 次解析，明显拖慢整体出图。
+            const draftMap = {};
+            listDrafts().forEach((dd) => { draftMap[dd.id] = dd; });
             // 记录批量前的完整界面状态：无论成功、失败还是取消，结束时都必须逐字还原
             const beforeSnap = {
                 tpl: templateSelect.value,
@@ -3840,7 +3868,7 @@
                     if (batchCancel) break;
                     setMsg(batchTip, '正在出图 ' + (i + 1) + '/' + tasks.length + '：' + tasks[i].name);
                     // 逐个 await：每张都让出主线程一拍，避免长任务把界面卡死
-                    const r = await renderBatchTask(tasks[i]);
+                    const r = await renderBatchTask(tasks[i], draftMap[tasks[i].id]);
                     if (r) files.push({ name: '排版图_' + sanitizeName(r.name, 24) + '_' + (i + 1) + '.png', bytes: r.bytes });
                     await new Promise((res) => setTimeout(res, 0));
                 }
@@ -4065,8 +4093,10 @@
 
         Object.keys(STYLE_INPUTS).forEach((k) => {
             STYLE_INPUTS[k].addEventListener('input', () => {
-                applyCustomStyle(collectStyleFromControls());
-                scheduleSavePrefs();
+                // 拖动滑块时只即时写入样式变量；安全区适配（scheduleFit）与偏好落盘（scheduleSavePrefs）
+                // 已由 .control-panel 上的统一监听合并处理（rAF / 500ms 防抖），
+                // 避免每次 input 都同步强制回流。
+                applyStyleVars(collectStyleFromControls());
             });
         });
         styleSaveBtn.addEventListener('click', () => {
