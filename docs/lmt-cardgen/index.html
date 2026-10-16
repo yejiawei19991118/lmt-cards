@@ -316,8 +316,14 @@
        原先把它当 flex 行里的弹性项，窄宽下会被压得比文案还窄，文字纵向挤出圆角边框（图二）；
        改为普通块容器，胶囊按可用宽度整段换行，任何长度都留在边框内。 */
     .sync-bar { display: block; }
-    .sync-bar .lmt-chip { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
-    /* 初始为空时不渲染空胶囊（必须排在覆盖规则之后，否则空胶囊会被 display:inline-block 顶出来） */
+    /* 胶囊占满状态条整行：盒子宽度不再依赖「收缩到内容」的推导，无论文字多长、
+       真机字号被如何放大，文字都只能在这个盒子里换行，不会再跑到圆角边框外。 */
+    .sync-bar .lmt-chip {
+        display: block; box-sizing: border-box;
+        width: 100%; max-width: 100%;
+        white-space: normal; word-break: break-word; overflow-wrap: anywhere;
+    }
+    /* 初始为空时不渲染空胶囊（必须排在覆盖规则之后，否则空胶囊会被 display:block 顶出来） */
     .lmt-chip:empty { display: none; }
     /* 折叠说明块：把长格式说明从 label 里挪出来，标签只留一句人话 */
     .lmt-details { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }

@@ -1688,6 +1688,34 @@
       assert(vb.left >= bb.left - 0.5 && vb.right <= bb.right + 0.5,
         '结论胶囊不得越出状态条左右边界：chip=[' + vb.left + ',' + vb.right + '] bar=[' + bb.left + ',' + bb.right + ']');
 
+      // 关键：harness 里 cardgen 的 iframe 固定 1024 宽，胶囊文字在那么宽的容器里根本挤不出边框，
+      // 上面那几条断言等于空跑（真机是 ~375 宽的手机，缺陷只在这种窄宽下出现）。
+      // 因此这里把 iframe 临时压到手机宽度，复现真机条件后再量一次，量完还原。
+      var frame = document.getElementById('frame-cardgen');
+      var oldW = frame.style.width, oldH = frame.style.height;
+      frame.style.width = '375px';
+      frame.style.height = '667px';
+      await sleep(80);
+      try {
+        var cs = C.getComputedStyle(tipEl);
+        assert(cs.overflowX === 'visible' && cs.overflowY === 'visible',
+          '胶囊不得靠 overflow 裁剪掩盖溢出（否则几何断言会假通过）：实际 overflow=' + cs.overflowX + '/' + cs.overflowY);
+        assert(tipEl.scrollWidth <= tipEl.clientWidth + 1,
+          '手机宽度（375）下长结论胶囊文字不得横向撑出边框：scrollWidth=' + tipEl.scrollWidth + ' clientWidth=' + tipEl.clientWidth);
+        assert(tipEl.scrollHeight <= tipEl.clientHeight + 1,
+          '手机宽度（375）下长结论胶囊文字不得纵向撑出边框：scrollHeight=' + tipEl.scrollHeight + ' clientHeight=' + tipEl.clientHeight);
+        assert(tipEl.getBoundingClientRect().right <= bar.getBoundingClientRect().right + 0.5,
+          '手机宽度下结论胶囊不得越出状态条右边界：chip.right=' + tipEl.getBoundingClientRect().right + ' bar.right=' + bar.getBoundingClientRect().right);
+        // 真机症状是「整页出现横向滚动条」。这里直接盯住根因：手机宽度下文档不得横向溢出。
+        var de = C.document.documentElement;
+        assert(de.scrollWidth <= de.clientWidth + 1,
+          '手机宽度下整页不得横向溢出（真机上会表现为底部横向滚动条）：scrollWidth=' + de.scrollWidth + ' clientWidth=' + de.clientWidth);
+      } finally {
+        frame.style.width = oldW;
+        frame.style.height = oldH;
+        await sleep(80);
+      }
+
       var badges = qa(doc, '#out .status-badge');
       assertEq(badges.length, 3, '同步成功过之后每行都应带在线状态徽标');
       badges.forEach(function (b) {
