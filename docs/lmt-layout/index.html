@@ -680,6 +680,8 @@
         .license-hint { margin-top: 8px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
         .license-exp { margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
         .license-cred { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--text-sub); }
+        .license-cred.is-warn { color: var(--warn-ink); }
+        .license-cred.is-bad { color: var(--danger); }
 
         /* 导出失败的内联提示：移动端 WebView 里 alert() 可能被静默忽略，
            改用页内提示，保证用户一定看得到反馈。 */
@@ -758,6 +760,15 @@
         .lmt-batch-list label input { accent-color: var(--accent); margin: 0; }
         .lmt-batch-list label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .lmt-batch-list .lmt-group-title { font-size: 12px; font-weight: 600; color: var(--text-sub); margin: 4px 0 2px; }
+        /* 批量出图进度条：仅批量进行中显示 */
+        .lmt-progress {
+            height: 6px; margin-top: 8px; border-radius: 4px; overflow: hidden;
+            background: #e8ecf3;
+        }
+        .lmt-progress-bar {
+            width: 0; height: 100%; background: var(--accent);
+            transition: width .2s ease;
+        }
         /* 「样式自定义」折叠区 */
         .lmt-details { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); padding: var(--sp-3); }
         .lmt-details > summary { font-size: var(--fs-sm); font-weight: 600; color: var(--text-sub); cursor: pointer; }
@@ -966,9 +977,11 @@
             </div>
 
             <button type="button" class="btn-primary" id="license-activate">激活</button>
+            <button type="button" class="btn-ghost" id="license-refresh">刷新凭证</button>
             <div class="license-msg" id="license-msg" role="status" aria-live="polite"></div>
             <div class="license-exp" id="license-exp" role="status" aria-live="polite"></div>
             <div class="license-cred" id="license-cred"></div>
+            <div class="license-cred" id="license-cred-ttl" role="status" aria-live="polite"></div>
             <div class="license-net" id="license-net">校验方式：正在同步在线清单…</div>
         </div>
     </div>
@@ -987,11 +1000,11 @@
                     <option value="window">橱窗排版</option>
                     <option value="three">三图竖排</option>
                 </select>
-                <p class="lmt-field-help">在「样式自定义」里存下的样式会作为一条模板出现在本下拉中。</p>
+                <p class="lmt-field-help">在「样式预设」里存下的样式会作为一条模板出现在本下拉中。</p>
             </div>
 
             <div class="control-group">
-                <label for="input-summary">顶部文案</label>
+                <label for="input-summary">顶部摘要</label>
                 <textarea id="input-summary" class="handwriting-font" placeholder="总结一下：&#10;宽松灰开衫弱化肩背臃肿感，不挑上身&#10;深色阔腿牛仔裤重感在线，拉长腿线&#10;平衡上下身比例，藏肉又显利落"></textarea>
             </div>
 
@@ -1020,24 +1033,28 @@
                     <label>左侧模特图 (1:1)</label>
                     <label for="upload-left" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-left" class="file-upload" accept="image/*">
+                    <button type="button" class="btn-link" data-clear-img="upload-left" hidden>清除</button>
                 </div>
 
                 <div class="control-group">
                     <label>右侧模特图 (1:1)</label>
                     <label for="upload-right" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-right" class="file-upload" accept="image/*">
+                    <button type="button" class="btn-link" data-clear-img="upload-right" hidden>清除</button>
                 </div>
 
                 <div class="control-group">
                     <label>底部左侧截图 (3:4)</label>
                     <label for="upload-screenshot-left" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-screenshot-left" class="file-upload" accept="image/*">
+                    <button type="button" class="btn-link" data-clear-img="upload-screenshot-left" hidden>清除</button>
                 </div>
 
                 <div class="control-group">
                     <label>底部右侧截图 (3:4)</label>
                     <label for="upload-screenshot-right" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-screenshot-right" class="file-upload" accept="image/*">
+                    <button type="button" class="btn-link" data-clear-img="upload-screenshot-right" hidden>清除</button>
                 </div>
             </div>
 
@@ -1046,9 +1063,10 @@
                     <label>图片一 (1440×600)</label>
                     <label for="upload-wide-1" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-wide-1" class="file-upload" accept="image/*">
+                    <button type="button" class="btn-link" data-clear-img="upload-wide-1" hidden>清除</button>
                 </div>
                 <div class="control-group">
-                    <label for="input-cap-1">小标题一</label>
+                    <label for="input-cap-1">段落小标题 1</label>
                     <textarea id="input-cap-1" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
                 </div>
             </div>
@@ -1058,9 +1076,10 @@
                     <label>图片二 (1440×600)</label>
                     <label for="upload-wide-2" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-wide-2" class="file-upload" accept="image/*">
+                    <button type="button" class="btn-link" data-clear-img="upload-wide-2" hidden>清除</button>
                 </div>
                 <div class="control-group">
-                    <label for="input-cap-2">小标题二</label>
+                    <label for="input-cap-2">段落小标题 2</label>
                     <textarea id="input-cap-2" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
                 </div>
             </div>
@@ -1070,9 +1089,10 @@
                     <label>图片三 (1440×600)</label>
                     <label for="upload-wide-3" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-wide-3" class="file-upload" accept="image/*">
+                    <button type="button" class="btn-link" data-clear-img="upload-wide-3" hidden>清除</button>
                 </div>
                 <div class="control-group">
-                    <label for="input-cap-3">小标题三</label>
+                    <label for="input-cap-3">段落小标题 3</label>
                     <textarea id="input-cap-3" class="handwriting-font" rows="2" placeholder="关键词🔍 黑色原牛复古直筒裤"></textarea>
                 </div>
             </div>
@@ -1090,10 +1110,10 @@
                 <div class="font-status" id="font-status" role="status" aria-live="polite">正在加载在线字体…</div>
             </div>
 
-            <!-- 模板自定义：颜色/字号即时覆盖预览，可存为「我的模板」 -->
+            <!-- 样式参数：颜色/字号即时覆盖预览；样式预设另存为可复用的一份样式 -->
             <div class="control-group">
                 <details class="lmt-details">
-                    <summary>样式自定义</summary>
+                    <summary>样式参数</summary>
                     <div class="lmt-style-grid">
                         <div class="lmt-style-group-title">文字</div>
                         <label>标题颜色<input type="color" id="style-color-title" value="#14181f"></label>
@@ -1107,16 +1127,22 @@
                         <label>画布底色·参与导出<input type="color" id="style-color-bg" value="#ffffff"></label>
                     </div>
                     <label class="toggle-fit-lock">
-                        <input type="checkbox" id="fit-lock"> 锁定字号（不自动缩放）
+                        <input type="checkbox" id="fit-lock" checked> 自动适配字号（关闭后不缩放）
                     </label>
-                    <input type="text" id="style-name-input" placeholder="我的模板名称（如：暖色调）">
+                </details>
+            </div>
+
+            <div class="control-group">
+                <details class="lmt-details">
+                    <summary>样式预设</summary>
+                    <input type="text" id="style-name-input" placeholder="预设名称（如：暖色调）">
                     <div class="lmt-btn-row">
-                        <button type="button" class="btn-ghost" id="style-save-btn">存为我的模板</button>
+                        <button type="button" class="btn-ghost" id="style-save-btn">存为预设</button>
                     </div>
-                    <!-- 原「恢复默认样式」按钮已删除：样式重置统一走区块 5 的「恢复全部默认设置」三选一
-                         （仅重置样式）；收尾行只剩删除我的模板一枚危险按钮、行尾右推、不参与等分。 -->
+                    <!-- 原「恢复默认样式」按钮已删除：样式重置统一走「设置」里的「重置设置…」三选一
+                         （仅重置样式）；收尾行只剩删除预设一枚危险按钮、行尾右推、不参与等分。 -->
                     <div class="lmt-btn-row is-split">
-                        <button type="button" class="btn-danger" id="style-delete-btn">删除我的模板</button>
+                        <button type="button" class="btn-danger" id="style-delete-btn">删除预设</button>
                     </div>
                 </details>
             </div>
@@ -1124,12 +1150,20 @@
 
         <!-- 区块四：高级工具（低频操作，默认收起，需要时再展开） -->
         <details class="panel-block is-aux">
-            <summary class="panel-block-title">草稿箱与批量工具</summary>
+            <summary class="panel-block-title">草稿与批量</summary>
             <div class="panel-block-body">
                 <!-- 方案草稿：把当前内容/图片/样式整体存为一份可复用的方案 -->
                 <div class="control-group">
                     <label for="draft-select">方案草稿</label>
                     <select id="draft-select"><option value="">— 载入草稿 —</option></select>
+                    <div class="lmt-btn-row">
+                        <input type="text" id="draft-search" placeholder="搜索草稿">
+                        <select id="draft-sort">
+                            <option value="updated">最近更新</option>
+                            <option value="name">名称</option>
+                        </select>
+                        <button type="button" class="btn-ghost" id="draft-rename-btn">重命名</button>
+                    </div>
                     <div class="lmt-btn-row">
                         <button type="button" class="btn-ghost" id="draft-save-btn">保存草稿</button>
                         <button type="button" class="btn-danger" id="draft-delete-btn">删除草稿</button>
@@ -1146,25 +1180,34 @@
                 <div class="control-group">
                     <label>批量出图任务（以草稿为最小单元）</label>
                     <div class="lmt-batch-list" id="batch-tasks"></div>
+                    <div class="lmt-progress" id="batch-progress" hidden><div class="lmt-progress-bar" id="batch-progress-bar"></div></div>
                     <div class="lmt-btn-row">
                         <button type="button" class="btn-ghost" id="batch-btn">批量出图</button>
                         <button type="button" class="btn-ghost" id="batch-cancel-btn" hidden>取消</button>
+                        <button type="button" class="btn-ghost" id="batch-retry-btn" hidden>重试失败项</button>
                     </div>
                     <div class="lmt-tip" id="batch-tip" role="status" aria-live="polite"></div>
                 </div>
 
-                <!-- 常用文案库：把常写的文案存成片段；先选目标字段，再选片段即自动写入该字段 -->
+                <div class="lmt-tip" id="tool-msg" role="status" aria-live="polite"></div>
+            </div>
+        </details>
+
+        <!-- 文案片段：把常写的文案存成片段；先选目标字段，再选片段即自动写入该字段 -->
+        <details class="panel-block is-aux">
+            <summary class="panel-block-title">文案片段</summary>
+            <div class="panel-block-body">
                 <div class="control-group">
-                    <label for="snippet-select">常用文案库</label>
+                    <label for="snippet-select">文案片段</label>
                     <select id="snippet-select"><option value="">— 选择文案片段 —</option></select>
                     <select id="snippet-field-select">
-                        <option value="summary">顶部文案</option>
+                        <option value="summary">顶部摘要</option>
                         <option value="title">主标题</option>
                         <option value="keywords">关键词</option>
                         <option value="subtitle">副标题</option>
-                        <option value="cap1">小标题一</option>
-                        <option value="cap2">小标题二</option>
-                        <option value="cap3">小标题三</option>
+                        <option value="cap1">段落小标题 1</option>
+                        <option value="cap2">段落小标题 2</option>
+                        <option value="cap3">段落小标题 3</option>
                     </select>
                     <!-- 原「插入」按钮已删除：先选目标字段，再选 #snippet-select 片段即自动写入该字段，
                          回执走 #tool-msg（不再需要点一次「插入」）。 -->
@@ -1173,13 +1216,23 @@
                         <button type="button" class="btn-danger" id="snippet-delete-btn">删除片段</button>
                     </div>
                 </div>
+            </div>
+        </details>
 
+        <!-- 设置：内容/样式记忆、在线清单自动同步、撤销提示时长与分层重置 -->
+        <details class="panel-block is-aux">
+            <summary class="panel-block-title">设置</summary>
+            <div class="panel-block-body">
                 <div class="control-group">
-                    <p class="lmt-field-help">恢复默认会清空草稿箱、样式偏好与常用文案库中的全部本地数据。</p>
+                    <label class="toggle-fit-lock"><input type="checkbox" id="pref-auto-remember" checked> 自动记忆上次内容与样式</label>
+                    <label class="toggle-fit-lock"><input type="checkbox" id="pref-auto-sync" checked> 后台自动同步在线清单</label>
+                    <label>撤销提示时长（秒）<input type="range" id="pref-undo-seconds" min="3" max="30" step="1" value="8"></label>
+                </div>
+                <div class="control-group">
+                    <p class="lmt-field-help">重置设置可按范围清空本地数据：仅重置样式只清掉样式自定义；重置草稿与偏好会清空草稿、样式预设、文案片段与记忆；重置全部还会清掉当前内容与图片。</p>
                     <div class="lmt-btn-row is-split">
-                        <button type="button" class="btn-link" id="prefs-reset-btn">恢复全部默认设置</button>
+                        <button type="button" class="btn-link" id="prefs-reset-btn">重置设置…</button>
                     </div>
-                    <div class="lmt-tip" id="tool-msg" role="status" aria-live="polite"></div>
                 </div>
             </div>
         </details>
@@ -2305,6 +2358,8 @@
             var netEl = document.getElementById('license-net');
             var expEl = document.getElementById('license-exp');
             var credEl = document.getElementById('license-cred');
+            var credTtlEl = document.getElementById('license-cred-ttl');
+            var refreshBtn = document.getElementById('license-refresh');
             if (mcInput) {
                 mcInput.value = machineCode();
                 // 点一下自动全选：即便系统/WebView 拦掉了自动复制，
@@ -2335,6 +2390,19 @@
                         txt += '最近在线 ' + credLastOnlineText() + '，剩余 ' + leftDays + ' 天';
                     }
                     credEl.textContent = txt;
+                }
+                // 剩余天数徽标：<=3 天告警、=0/过期标红（联网刷新可续期）
+                if (credTtlEl) {
+                    var ageTtl = credAgeMs();
+                    credTtlEl.className = 'license-cred';
+                    if (ageTtl === Infinity) {
+                        credTtlEl.textContent = '离线凭证：尚未取得（联网刷新可续期）';
+                    } else {
+                        var leftTtl = Math.max(0, Math.ceil((CRED_TTL_DAYS * 86400000 - ageTtl) / 86400000));
+                        credTtlEl.textContent = '离线凭证：剩余 ' + leftTtl + ' 天（联网刷新可续期）';
+                        if (leftTtl <= 0) credTtlEl.className = 'license-cred is-bad';
+                        else if (leftTtl <= 3) credTtlEl.className = 'license-cred is-warn';
+                    }
                 }
             }
             // 在线清单正在拉取中：此时既不能报「已同步」，也不该报「连接失败」，
@@ -2383,17 +2451,43 @@
                 copyWithFeedback(mcInput ? mcInput.value : '', copyBtn, '已复制');
             });
 
+            // 读取「后台自动同步在线清单」开关（与主程序共用 lmt_layout_prefs_v1，缺省视为开启）
+            function prefAutoSyncOn() {
+                try {
+                    var raw = localStorage.getItem('lmt_layout_prefs_v1');
+                    if (!raw) return true;
+                    var p = JSON.parse(raw);
+                    return !p || p.autoSync !== false;
+                } catch (e) { return true; }
+            }
             // 重新拉取在线清单并刷新首屏网络状态：启动时与「网络恢复」时共用同一段逻辑。
-            function syncManifestOnline() {
-                if (!MANIFEST_URL) return;
+            // force=true 时无视「后台自动同步」开关强制同步（供「刷新凭证」按钮使用）。
+            function syncManifestOnline(force) {
+                if (!MANIFEST_URL) return Promise.resolve();
+                if (!force && !prefAutoSyncOn()) {
+                    // 用户关闭了后台自动同步：不发起拉取，仅把首屏状态从「正在同步」收敛掉
+                    manifestSyncing = false;
+                    updateNetStatus();
+                    return Promise.resolve();
+                }
                 manifestSyncing = true;
                 updateNetStatus();
-                fetchManifest().then(function () {
+                return fetchManifest().then(function () {
                     manifestSyncing = false;
                     updateNetStatus();
                     if (!isActivated()) document.body.classList.add('locked');
                 });
             }
+            // 「刷新凭证」：强制联网同步并刷新状态文案，同步中按钮禁用且显示「刷新中…」
+            if (refreshBtn) refreshBtn.addEventListener('click', function () {
+                if (refreshBtn.disabled) return;
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = '刷新中…';
+                var done = function () {
+                    if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = '刷新凭证'; }
+                };
+                syncManifestOnline(true).then(done, done);
+            });
 
             // 先载入本地缓存的「已验签清单」：断网时也能完成校验（离线凭证）
             if (!manifest) {
@@ -2626,8 +2720,8 @@
         function checkContentFit() {
             let fit = 1;
             let ok;
-            if (fitLock && fitLock.checked) {
-                // 锁定字号：手动字号即最终值，不做任何自动缩放（--fit 恒为 1）；仍溢出时只报警并禁用导出。
+            if (fitLock && !fitLock.checked) {
+                // 关闭「自动适配字号」：手动字号即最终值，不做任何自动缩放（--fit 恒为 1）；仍溢出时只报警并禁用导出。
                 ok = fitsAt(1);
             } else {
                 // fitsAt 会读取 scrollHeight，每次都触发一次同步布局/回流。字号越小越容易放下，
@@ -2646,8 +2740,8 @@
             }
 
             overflowWarn.classList.toggle('show', !ok);
-            // 明示「当前按 X% 缩放」（P-17）：仅在确实发生自动缩放时提示；锁定字号时不提示
-            const scaled = ((!fitLock || !fitLock.checked) && ok && fit < 1);
+            // 明示「当前按 X% 缩放」（P-17）：仅在确实发生自动缩放时提示；关闭自动适配时不提示
+            const scaled = ((!fitLock || fitLock.checked) && ok && fit < 1);
             fitNote.classList.toggle('show', scaled);
             if (scaled) fitNote.textContent = '已自动适配安全区：当前按 ' + Math.round(fit * 100) + '% 缩放。';
             updateExportEnabled(ok);
@@ -2795,6 +2889,7 @@
                             return;
                         }
                         paintPhoto(targetElement, mode, img);
+                        syncClearButtons();
                         if (label) {
                             label.textContent = '已上传：' + file.name;
                             label.classList.add('done');
@@ -3080,6 +3175,15 @@
         const snippetDeleteBtn = document.getElementById('snippet-delete-btn');
         const prefsResetBtn = document.getElementById('prefs-reset-btn');
         const toolMsg = document.getElementById('tool-msg');
+        const draftSearch = document.getElementById('draft-search');
+        const draftSort = document.getElementById('draft-sort');
+        const draftRenameBtn = document.getElementById('draft-rename-btn');
+        const batchProgress = document.getElementById('batch-progress');
+        const batchProgressBar = document.getElementById('batch-progress-bar');
+        const batchRetryBtn = document.getElementById('batch-retry-btn');
+        const prefAutoRemember = document.getElementById('pref-auto-remember');
+        const prefAutoSync = document.getElementById('pref-auto-sync');
+        const prefUndoSeconds = document.getElementById('pref-undo-seconds');
 
         // ---- 字段/图片/样式的元数据表：新增功能全部按「表驱动」复用，避免到处写死 ----
         const FIELD_INPUTS = {
@@ -3087,8 +3191,14 @@
             cap1: inputCap1, cap2: inputCap2, cap3: inputCap3
         };
         const FIELD_LABELS = {
-            summary: '顶部文案', title: '主标题', keywords: '关键词', subtitle: '副标题',
-            cap1: '小标题一', cap2: '小标题二', cap3: '小标题三'
+            summary: '顶部摘要', title: '主标题', keywords: '关键词', subtitle: '副标题',
+            cap1: '段落小标题 1', cap2: '段落小标题 2', cap3: '段落小标题 3'
+        };
+        // 图片上传 input id → IMG_TARGETS 的键（「清除」按钮据此定位要清空的预览框）
+        const CLEAR_MAP = {
+            'upload-left': 'left', 'upload-right': 'right',
+            'upload-screenshot-left': 'shotLeft', 'upload-screenshot-right': 'shotRight',
+            'upload-wide-1': 'wide1', 'upload-wide-2': 'wide2', 'upload-wide-3': 'wide3'
         };
         // [预览目标元素, 裁切模式]，与 handleImageUpload 的注册表一一对应
         const IMG_TARGETS = {
@@ -3353,6 +3463,16 @@
             if (!info) return;
             info[0].textContent = PHOTO_PLACEHOLDER[key];
             info[0].classList.remove('has-photo');
+            syncClearButtons();
+        }
+        // 依据各预览框是否已有图片，同步「清除」按钮的显隐（有图才显示）
+        function syncClearButtons() {
+            document.querySelectorAll('[data-clear-img]').forEach((btn) => {
+                const key = CLEAR_MAP[btn.dataset.clearImg];
+                const info = key ? IMG_TARGETS[key] : null;
+                const has = !!(info && info[0].querySelector('canvas.preview-photo'));
+                btn.hidden = !has;
+            });
         }
         // 把 dataURL 还原进预览框：复用 paintPhoto，保证裁切/圆角与手动上传逐像素一致。
         // 返回 Promise：Image 解码是异步的，批量出图/载入草稿前必须等它落地，
@@ -3363,8 +3483,8 @@
             if (!dataUrl) { clearPhoto(key); return Promise.resolve(); }
             return new Promise((resolve) => {
                 const img = new Image();
-                img.onload = () => { paintPhoto(info[0], info[1], img); resolve(); };
-                img.onerror = () => { clearPhoto(key); resolve(); };
+                img.onload = () => { paintPhoto(info[0], info[1], img); syncClearButtons(); resolve(); };
+                img.onerror = () => { clearPhoto(key); syncClearButtons(); resolve(); };
                 img.src = dataUrl;
             });
         }
@@ -3386,6 +3506,7 @@
             }
             if (snap.style) { applyCustomStyle(snap.style); }
             syncStyleControls();
+            syncClearButtons();
             checkContentFit();
             return imgReady;
         }
@@ -3461,7 +3582,7 @@
         function saveMyTemplate(name, base, style) {
             const item = {
                 id: 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-                name: sanitizeName(name || defaultName('我的模板'), 16),
+                name: sanitizeName(name || defaultName('样式预设'), 16),
                 base: (base === 'three') ? 'three' : 'window',
                 style: style || collectStyleFromControls()
             };
@@ -3485,7 +3606,7 @@
             const items = listMyTemplates();
             if (!items.length) return;
             const group = document.createElement('optgroup');
-            group.label = '我的模板';
+            group.label = '样式预设';
             group.dataset.mine = '1';
             items.forEach((t) => {
                 const o = document.createElement('option');
@@ -3518,7 +3639,14 @@
         // ---- 草稿箱（①） ----
         function listDrafts() {
             const d = readJSON(DRAFT_KEY, { v: 1, items: [] });
-            return Array.isArray(d.items) ? d.items : [];
+            const items = Array.isArray(d.items) ? d.items : [];
+            // 兜底补齐 updated / bytes：旧数据（导入或历史版本）缺字段时不得报错
+            return items.map((it) => {
+                if (!it || typeof it !== 'object') return it;
+                if (typeof it.updated !== 'number') it.updated = Number(it.savedAt) || 0;
+                if (typeof it.bytes !== 'number') it.bytes = 0;
+                return it;
+            });
         }
         function persistDrafts(items) {
             // 写入前先按 JSON 长度估算：超过阈值直接判定为「太大」，走丢弃图片的降级路径
@@ -3528,16 +3656,22 @@
             try { localStorage.setItem(DRAFT_KEY, text); return true; }
             catch (e) { return false; }
         }
+        function approxDraftBytes(item) {
+            try { return JSON.stringify(item).length; } catch (e) { return 0; }
+        }
         function saveDraft(name) {
+            const now = Date.now();
             const item = {
                 id: 'd_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
                 name: sanitizeName(name || defaultName('草稿'), 24),
                 tpl: templateSelect.value,
-                savedAt: Date.now(),
+                savedAt: now,
+                updated: now,
                 fields: captureFields(),
                 imgs: captureImgs(),
                 style: collectStyleFromControls()
             };
+            item.bytes = approxDraftBytes(item);
             let items = listDrafts().concat([item]);
             // 守卫①：连图片一起存；写不下就丢图片再存（文案与样式始终保住）
             if (persistDrafts(items)) {
@@ -3546,6 +3680,7 @@
                 return { ok: true, withImgs: true, name: item.name };
             }
             item.imgs = {};
+            item.bytes = approxDraftBytes(item);
             if (persistDrafts(items)) {
                 refreshDraftOptions();
                 setMsg(draftMsg, '草稿过大，已仅保存文案与样式（未含图片）');
@@ -3610,25 +3745,39 @@
             setMsg(draftMsg, '已导入 ' + cleaned.length + ' 份草稿');
             return true;
         }
+        // 草稿排序/体积/时间的展示辅助（纯函数，供下拉与测试复用）
+        function fmtDraftTime(ts) {
+            const d = new Date(Number(ts) || Date.now());
+            const p = (n) => String(n).padStart(2, '0');
+            return (d.getMonth() + 1) + '-' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+        }
+        function fmtDraftBytes(b) {
+            const n = Number(b) || 0;
+            if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + 'MB';
+            return Math.max(1, Math.round(n / 1024)) + 'KB';
+        }
         function refreshDraftOptions() {
-            const items = listDrafts();
+            let items = listDrafts();
+            // 按搜索词过滤（名称匹配，大小写不敏感）
+            const kw = (draftSearch ? draftSearch.value : '').trim().toLowerCase();
+            if (kw) items = items.filter((it) => String(it.name || '').toLowerCase().indexOf(kw) >= 0);
+            // 按所选规则排序：最近更新（updated 降序）/ 名称（升序）
+            const sortBy = draftSort ? draftSort.value : 'updated';
+            items = items.slice().sort((a, b) => {
+                if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN');
+                return (Number(b.updated) || 0) - (Number(a.updated) || 0);
+            });
             const prev = draftSelect.value;
             draftSelect.textContent = '';
             const ph = document.createElement('option');
             ph.value = '';
             ph.textContent = '— 载入草稿 —';
             draftSelect.appendChild(ph);
-            // 模板表只读取（JSON.parse）一次：原先在 items 循环里逐个 myTemplateById →
-            // 每次都重新解析整张模板表，草稿多时是 O(n²) 的解析开销，打开下拉会明显卡顿。
-            const tplMap = {};
-            listMyTemplates().forEach((t) => { tplMap[t.id] = t; });
             items.forEach((it) => {
                 const o = document.createElement('option');
                 o.value = it.id;
-                // P-27：草稿记录并显示所用样式模板名（tpl 指向「我的模板」id 或内置模板名）
-                const my = tplMap[it.tpl];
-                const styleName = my ? my.name : (it.tpl === 'three' ? '三图竖排' : (it.tpl === 'window' ? '橱窗排版' : ''));
-                o.textContent = styleName ? (it.name + '（' + styleName + '）') : it.name;
+                // 选项文案：名称 · 修改时间 · 体积
+                o.textContent = it.name + ' · ' + fmtDraftTime(it.updated) + ' · ' + fmtDraftBytes(it.bytes);
                 draftSelect.appendChild(o);
             });
             if (Array.prototype.some.call(draftSelect.options, (o) => o.value === prev)) draftSelect.value = prev;
@@ -3700,18 +3849,36 @@
         let prefsTimer = 0;
         function savePrefs() {
             if (prefsTimer) { clearTimeout(prefsTimer); prefsTimer = 0; }
-            try {
-                localStorage.setItem(PREFS_KEY, JSON.stringify({
-                    v: 1,
-                    tpl: templateSelect.value,
-                    fontFamily: fontSelect.value,
-                    fields: captureFields(),
-                    style: collectStyleFromControls(),
-                    safe: toggleSafe.checked,
-                    fitLock: !!(fitLock && fitLock.checked),
-                    savedAt: Date.now()
-                }));
-            } catch (e) { /* 记忆属于「有则更好」：写不进去也不影响主流程 */ }
+            // 设置三项始终随本体持久化；内容/样式类偏好仅在「自动记忆」勾选时写入
+            const remember = !prefAutoRemember || prefAutoRemember.checked;
+            const prev = readJSON(PREFS_KEY, null) || {};
+            const out = {
+                v: 1,
+                autoRemember: remember,
+                autoSync: !prefAutoSync || prefAutoSync.checked,
+                undoSec: prefUndoSeconds ? (Number(prefUndoSeconds.value) || 8) : 8
+            };
+            if (remember) {
+                out.tpl = templateSelect.value;
+                out.fontFamily = fontSelect.value;
+                out.fields = captureFields();
+                out.style = collectStyleFromControls();
+                out.safe = toggleSafe.checked;
+                out.fitLockAuto = !!(!fitLock || fitLock.checked); // 语义反转后记录「自动适配字号」是否开启
+                out.savedAt = Date.now();
+            } else {
+                // 未开启自动记忆：不写入内容/样式，仅沿用已存在的旧值（若有）
+                if (prev.tpl != null) out.tpl = prev.tpl;
+                if (prev.fontFamily != null) out.fontFamily = prev.fontFamily;
+                if (prev.fields) out.fields = prev.fields;
+                if (prev.style) out.style = prev.style;
+                if (typeof prev.safe === 'boolean') out.safe = prev.safe;
+                if (typeof prev.fitLockAuto === 'boolean') out.fitLockAuto = prev.fitLockAuto;
+                else if (typeof prev.fitLock === 'boolean') out.fitLockAuto = !prev.fitLock; // 旧键（锁定态）迁移
+                if (prev.savedAt != null) out.savedAt = prev.savedAt;
+            }
+            try { localStorage.setItem(PREFS_KEY, JSON.stringify(out)); }
+            catch (e) { /* 记忆属于「有则更好」：写不进去也不影响主流程 */ }
         }
         // 输入防抖：每敲一个字都写 localStorage 既慢又伤寿命，500ms 静默后再落一次
         function scheduleSavePrefs() {
@@ -3720,6 +3887,10 @@
         }
         function loadPrefs() {
             const p = readJSON(PREFS_KEY, null);
+            // 设置三项独立回填：即便从未记忆过内容，也要把开关/时长恢复到已存值或默认值
+            if (prefAutoRemember) prefAutoRemember.checked = !p || p.autoRemember !== false;
+            if (prefAutoSync) prefAutoSync.checked = !p || p.autoSync !== false;
+            if (prefUndoSeconds) prefUndoSeconds.value = String(p && Number(p.undoSec) ? Number(p.undoSec) : 8);
             if (!p) return false; // 首次使用：保持现有默认值（示例文案、默认模板与样式都不动）
             if (typeof p.fontFamily === 'string' &&
                 Array.prototype.some.call(fontSelect.options, (o) => o.value === p.fontFamily)) {
@@ -3742,13 +3913,18 @@
                 toggleSafe.checked = p.safe;
                 safeZone.classList.toggle('active', p.safe);
             }
-            if (fitLock) fitLock.checked = !!p.fitLock;
+            if (fitLock) {
+                // 兼容旧键 fitLock（true = 锁定字号 → 自动适配关闭）；新键 fitLockAuto 直接表示自动适配开关
+                fitLock.checked = (typeof p.fitLockAuto === 'boolean')
+                    ? p.fitLockAuto
+                    : (typeof p.fitLock === 'boolean' ? !p.fitLock : true);
+            }
             checkContentFit();
             return true;
         }
         // 分层重置（P-29）：
-        //   scope='style'  仅重置样式（颜色/字号/圆角/底色/锁定字号），不动内容/图片/草稿
-        //   scope='drafts' 重置草稿与偏好（草稿箱 / 我的模板 / 文案片段 / 记忆），不动当前内容与图片
+        //   scope='style'  仅重置样式（颜色/字号/圆角/底色/自动适配字号），不动内容/图片/草稿
+        //   scope='drafts' 重置草稿与偏好（草稿箱 / 样式预设 / 文案片段 / 记忆），不动当前内容与图片
         //   scope='all'    重置全部（含当前内容、图片、模板、字体、安全区）
         function resetPrefs(scope) {
             scope = scope || 'all';
@@ -3757,7 +3933,7 @@
             if (scope === 'style') {
                 resetCustomStyle();
                 syncStyleControls();
-                if (fitLock) fitLock.checked = false;
+                if (fitLock) fitLock.checked = true; // 恢复默认：自动适配字号开启
                 savePrefs();
                 setMsg(toolMsg, '已重置样式（内容与图片保持不变）');
                 return true;
@@ -3786,17 +3962,18 @@
             applyHandwritingFont(fontSelect.selectedOptions[0]);
             toggleSafe.checked = true;
             safeZone.classList.add('active');
-            if (fitLock) fitLock.checked = false;
+            if (fitLock) fitLock.checked = true; // 恢复默认：自动适配字号开启
             syncFieldPreview();
             syncStyleControls();
             checkContentFit();
-            setMsg(toolMsg, '已恢复默认设置（全部）');
+            setMsg(toolMsg, '已重置全部（含当前内容与图片）');
             return true;
         }
 
         // ---- 批量出图（②） ----
         let batchRunning = false; // 批量期间禁用导出，避免并发导出互相抢画布
         let batchCancel = false;
+        let lastFailedTasks = []; // 上一批未能出图的草稿任务，供「重试失败项」重跑
         // 任务清单：批量出图以「草稿」为最小单元（每份勾选的草稿产出 1 张图，P-19）。
         // 常用文案库不再作为独立出图任务，而是用于给草稿套用指定字段。
         function buildBatchTasks() {
@@ -3862,11 +4039,37 @@
             try { canvas.width = 0; canvas.height = 0; } catch (e) { /* 个别环境只读，忽略 */ }
             return { name: task.name, bytes: bytes };
         }
-        batchBtn.addEventListener('click', async () => {
-            if (batchRunning) return;
-            const checked = Array.prototype.slice.call(batchTasks.querySelectorAll('input[type="checkbox"]:checked'));
-            if (!checked.length) { setMsg(batchTip, '请先勾选要出图的草稿'); return; }
-            const tasks = checked.map((cb) => ({ kind: cb.dataset.kind, id: cb.dataset.id, name: cb.dataset.name }));
+        // 进度条：按 i/n 更新 bar 宽度（完成后由 performBatch 隐藏容器）
+        function setBatchProgress(done, total) {
+            if (!batchProgressBar) return;
+            const pct = total > 0 ? Math.round(done / total * 100) : 0;
+            batchProgressBar.style.width = pct + '%';
+        }
+        // 批量收尾统一出口：落盘 ZIP、提示文案与「失败项重试」按钮的显隐/文案
+        function finishBatch(res) {
+            if (res.error) {
+                setMsg(batchTip, '批量出图失败：' + ((res.error && res.error.message) || res.error || '未知错误'));
+                lastFailedTasks = [];
+                if (batchRetryBtn) batchRetryBtn.hidden = true;
+                return;
+            }
+            if (res.files.length) {
+                const zipName = '批量排版图_' + tsName() + '.zip';
+                saveBytes(zipStore(res.files), zipName, 'application/zip');
+                setMsg(batchTip, (res.canceled ? '已取消，仍导出已完成的 ' : '批量出图完成，共 ')
+                    + res.files.length + ' 张，已导出 ' + zipName);
+            } else {
+                setMsg(batchTip, res.canceled ? '已取消，未生成任何图片' : '批量出图失败：未生成任何图片');
+            }
+            lastFailedTasks = res.failed || [];
+            if (lastFailedTasks.length) {
+                if (batchRetryBtn) { batchRetryBtn.textContent = '重试失败项（' + lastFailedTasks.length + '）'; batchRetryBtn.hidden = false; }
+            } else if (batchRetryBtn) {
+                batchRetryBtn.hidden = true;
+            }
+        }
+        // 执行一批任务（成功、失败、取消都会逐字还原批量前的界面状态），返回结果供收尾处理
+        async function performBatch(tasks) {
             // 草稿表只解析一次：渲染每张时原先都要 listDrafts() 全量解析（含图片 base64，可能数 MB），
             // 批量 n 张就是 n 次解析，明显拖慢整体出图。
             const draftMap = {};
@@ -3885,31 +4088,30 @@
             batchBtn.disabled = true;
             exportBtn.disabled = true;
             batchCancelBtn.hidden = false;
+            if (batchRetryBtn) batchRetryBtn.hidden = true;
+            if (batchProgress) { batchProgress.hidden = false; setBatchProgress(0, tasks.length); }
             const files = [];
+            const failed = [];
+            let error = null;
             try {
                 for (let i = 0; i < tasks.length; i++) {
                     if (batchCancel) break;
                     setMsg(batchTip, '正在出图 ' + (i + 1) + '/' + tasks.length + '：' + tasks[i].name);
+                    setBatchProgress(i, tasks.length);
                     // 逐个 await：每张都让出主线程一拍，避免长任务把界面卡死
                     const r = await renderBatchTask(tasks[i], draftMap[tasks[i].id]);
                     if (r) files.push({ name: '排版图_' + sanitizeName(r.name, 24) + '_' + (i + 1) + '.png', bytes: r.bytes });
+                    else failed.push(tasks[i]);
+                    setBatchProgress(i + 1, tasks.length);
                     await new Promise((res) => setTimeout(res, 0));
                 }
-                if (files.length) {
-                    const zipName = '批量排版图_' + tsName() + '.zip';
-                    saveBytes(zipStore(files), zipName, 'application/zip');
-                    setMsg(batchTip, (batchCancel ? '已取消，仍导出已完成的 ' : '批量出图完成，共 ')
-                        + files.length + ' 张，已导出 ' + zipName);
-                } else {
-                    setMsg(batchTip, '已取消，未生成任何图片');
-                }
             } catch (err) {
-                setMsg(batchTip, '批量出图失败：' + ((err && err.message) || err || '未知错误'));
+                error = err;
             } finally {
                 // 恢复界面：模板、字段、图片、样式、字体、安全区逐项还原
                 selectTemplateValue(beforeSnap.tpl);
                 onTemplateSelectChange(templateSelect.value);
-                applySnapshot({ fields: beforeSnap.fields, imgs: beforeSnap.imgs, style: beforeSnap.style });
+                await applySnapshot({ fields: beforeSnap.fields, imgs: beforeSnap.imgs, style: beforeSnap.style });
                 if (Array.prototype.some.call(fontSelect.options, (o) => o.value === beforeSnap.font)) {
                     fontSelect.value = beforeSnap.font;
                     applyHandwritingFont(fontSelect.selectedOptions[0]);
@@ -3919,9 +4121,27 @@
                 batchRunning = false;
                 batchBtn.disabled = false;
                 batchCancelBtn.hidden = true;
+                if (batchProgress) batchProgress.hidden = true;
                 updateBatchCount(); // 恢复按钮文案（含预计张数）
                 checkContentFit(); // 由适配结果决定导出按钮是否可用
             }
+            return { files: files, failed: failed, canceled: batchCancel, error: error };
+        }
+        batchBtn.addEventListener('click', async () => {
+            if (batchRunning) return;
+            const checked = Array.prototype.slice.call(batchTasks.querySelectorAll('input[type="checkbox"]:checked'));
+            if (!checked.length) { setMsg(batchTip, '请先勾选要出图的草稿'); return; }
+            const tasks = checked.map((cb) => ({ kind: cb.dataset.kind, id: cb.dataset.id, name: cb.dataset.name }));
+            const res = await performBatch(tasks);
+            finishBatch(res);
+        });
+        // 「重试失败项」：仅重跑上一批里未能出图的草稿，完成后刷新计数与按钮
+        batchRetryBtn.addEventListener('click', async () => {
+            if (batchRunning) return;
+            if (!lastFailedTasks.length) { batchRetryBtn.hidden = true; return; }
+            const tasks = lastFailedTasks.slice();
+            const res = await performBatch(tasks);
+            finishBatch(res);
         });
         batchCancelBtn.addEventListener('click', () => { batchCancel = true; setMsg(batchTip, '正在取消…'); });
         batchTasks.addEventListener('change', updateBatchCount); // 勾选变化即刻刷新「将生成 N 张」
@@ -4070,7 +4290,12 @@
             bar.__dispose = dispose;
             undo.addEventListener('click', () => { if (done) return; dispose(); if (typeof onUndo === 'function') onUndo(); });
             document.body.appendChild(bar);
-            timer = setTimeout(dispose, ttlMs || 8000);
+            // 撤销提示时长默认取「设置」里的 #pref-undo-seconds（缺省回 8 秒）
+            const undoDefaultMs = (() => {
+                const s = prefUndoSeconds ? Number(prefUndoSeconds.value) : 0;
+                return (s > 0 ? s : 8) * 1000;
+            })();
+            timer = setTimeout(dispose, ttlMs || undoDefaultMs);
         }
 
         // ---- 新增控件的监听 ----
@@ -4113,6 +4338,40 @@
             reader.onerror = () => setMsg(draftMsg, '读取文件失败，请重试');
             reader.readAsText(file);
         });
+        // 草稿搜索/排序：重渲染下拉（保留当前选中项）
+        if (draftSearch) draftSearch.addEventListener('input', () => refreshDraftOptions());
+        if (draftSort) draftSort.addEventListener('change', () => refreshDraftOptions());
+        // 重命名草稿：复用命名浮层（标题「重命名草稿」），改完刷新下拉并保持选中
+        draftRenameBtn.addEventListener('click', async () => {
+            if (!draftSelect.value) { setMsg(draftMsg, '请先在下拉框选择要重命名的草稿'); return; }
+            const id = draftSelect.value;
+            const item = listDrafts().filter((x) => x.id === id)[0];
+            if (!item) { setMsg(draftMsg, '该草稿已不存在'); return; }
+            const name = await promptName('重命名草稿', item.name);
+            if (name == null) return;
+            const newName = sanitizeName(name, 24);
+            const items = listDrafts().map((x) => (
+                x.id === id ? Object.assign({}, x, { name: newName, updated: Date.now() }) : x
+            ));
+            if (!persistDrafts(items)) { setMsg(draftMsg, '重命名失败：本地存储空间不足'); return; }
+            refreshDraftOptions();
+            draftSelect.value = id;
+            setMsg(draftMsg, '已重命名草稿：' + newName);
+        });
+        // 图片「清除」按钮：点击后清空对应预览框并恢复为「点击上传图片」提示态
+        document.querySelectorAll('[data-clear-img]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const key = CLEAR_MAP[btn.dataset.clearImg];
+                if (!key) return;
+                clearPhoto(key);
+                const label = document.querySelector('label[for="' + btn.dataset.clearImg + '"]');
+                if (label) { label.textContent = '点击上传图片'; label.classList.remove('done'); }
+                scheduleSavePrefs();
+                checkContentFit();
+                syncClearButtons();
+            });
+        });
+        syncClearButtons(); // 初始（无图）隐藏全部「清除」按钮
 
         Object.keys(STYLE_INPUTS).forEach((k) => {
             STYLE_INPUTS[k].addEventListener('input', () => {
@@ -4133,20 +4392,20 @@
             onTemplateSelectChange(t.id);
             styleNameInput.value = '';
             savePrefs();
-            setMsg(toolMsg, '已存为「我的模板」（仅样式）：' + t.name);
+            setMsg(toolMsg, '已存为「样式预设」（仅样式）：' + t.name);
         });
         styleDeleteBtn.addEventListener('click', async () => {
             const myNow = myTemplateById(templateSelect.value);
-            if (!myNow) { setMsg(toolMsg, '当前未选中「我的模板」，无需删除'); return; }
+            if (!myNow) { setMsg(toolMsg, '当前未选中「样式预设」，无需删除'); return; }
             const ok = await confirmDialog({
-                title: '删除我的模板',
-                message: '确定删除我的模板「' + myNow.name + '」吗？此操作不可撤销。',
+                title: '删除样式预设',
+                message: '确定删除样式预设「' + myNow.name + '」吗？此操作不可撤销。',
                 okText: '删除', danger: true
             });
             if (!ok) return;
             deleteMyTemplate(myNow.id);
             savePrefs();
-            setMsg(toolMsg, '已删除我的模板');
+            setMsg(toolMsg, '已删除样式预设');
         });
 
         snippetSaveBtn.addEventListener('click', () => {

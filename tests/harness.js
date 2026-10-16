@@ -852,16 +852,16 @@
       }
       assert(hit, '应存在「缩小字号后才放得下」的中间状态，此时必须提示缩放比例');
 
-      // 锁定字号：锁定后不再自动缩放（--fit 恒为 1），缩放提示也不再出现
+      // 自动适配字号：关闭后不再自动缩放（--fit 恒为 1），缩放提示也不再出现
       var lock = q(doc, '#fit-lock');
-      lock.checked = true;
+      lock.checked = false;
       fire(lock, 'change', L);
       await until(function () {
         return q(doc, '#export-target').style.getPropertyValue('--fit') === '1';
-      }, 4000, '锁定字号后 --fit 应恒为 1（不再自动缩放）');
-      assert(!hasClass(note, 'show'), '锁定字号时不应再提示自动缩放');
+      }, 4000, '关闭自动适配后 --fit 应恒为 1（不再自动缩放）');
+      assert(!hasClass(note, 'show'), '关闭自动适配时不应再提示自动缩放');
 
-      lock.checked = false;
+      lock.checked = true;
       fire(lock, 'change', L);
       setValue(title, '', L);
       await until(function () { return !hasClass(note, 'show'); }, 4000, '清空文案后缩放提示应消失');
@@ -965,7 +965,7 @@
       setValue(q(doc, '#input-title'), '受保护的标题', L);
       assert(t.saveDraft('分层重置草稿').ok, '前置：应存入 1 份草稿');
       assertEq(t.saveSnippet('summary', '受保护的片段'), true, '前置：应存入 1 条片段');
-      q(doc, '#fit-lock').checked = true;
+      q(doc, '#fit-lock').checked = false; // 关闭自动适配（= 原先的「锁定字号」）
       fire(q(doc, '#fit-lock'), 'change', L);
 
       var reset = q(doc, '#prefs-reset-btn');
@@ -987,12 +987,12 @@
       await until(function () { return !doc.querySelector('.lmt-modal-mask'); }, 3000, '取消后应关闭弹层');
       assertEq(t.listDrafts().length, 1, '取消重置不应动草稿');
 
-      // 1) 仅重置样式：样式（含锁定字号）回落默认，草稿 / 片段 / 内容全部保留
+      // 1) 仅重置样式：样式（含自动适配字号）恢复默认（开启），草稿 / 片段 / 内容全部保留
       reset.click();
       await until(function () { return doc.querySelector('.lmt-modal-mask'); }, 3000, '重置应弹出范围选择');
       dialogButton(doc, /^仅重置样式$/).click();
       await until(function () { return /已重置样式/.test(text(msg)); }, 3000, '应有「已重置样式」反馈');
-      assertEq(q(doc, '#fit-lock').checked, false, '仅重置样式应解除字号锁定');
+      assertEq(q(doc, '#fit-lock').checked, true, '仅重置样式应恢复默认（自动适配字号开启）');
       assertEq(t.listDrafts().length, 1, '仅重置样式不得动草稿');
       assertEq(t.listSnippets().length, 1, '仅重置样式不得动片段');
       assertEq(q(doc, '#input-title').value, '受保护的标题', '仅重置样式不得动当前内容');
@@ -1121,7 +1121,9 @@
     test('cardgen/复制按钮：点击必有反馈（含手动复制兜底）', async function () {
       var btn = qa(doc, '#out .item button')[0];
       await clickCopyAndAssertFeedback(btn, '结果列表的复制卡密');
-      var mask = doc.querySelector('.manual-copy-mask');
+      // 只认「当前真正可见」的那一层：#import-confirm 是静态写在 HTML 里的 .manual-copy-mask 模板
+      // （平时 display:none），且它是文档里第一个匹配项，直接 querySelector 会命中它而误判成「未锁滚动」。
+      var mask = qa(doc, '.manual-copy-mask').filter(isRendered)[0];
       if (mask) {
         assertEq(mask.getAttribute('role'), 'dialog', '手动复制兜底层应声明 role=dialog');
         assertEq(mask.getAttribute('aria-modal'), 'true', '手动复制兜底层应声明 aria-modal');
