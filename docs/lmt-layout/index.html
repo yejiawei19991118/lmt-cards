@@ -979,8 +979,7 @@
             <button type="button" class="btn-primary" id="license-activate">激活</button>
             <div class="license-msg" id="license-msg" role="status" aria-live="polite"></div>
             <div class="license-exp" id="license-exp" role="status" aria-live="polite"></div>
-            <div class="license-cred" id="license-cred"></div>
-            <div class="license-cred" id="license-cred-ttl" role="status" aria-live="polite"></div>
+            <div class="license-cred" id="license-cred" role="status" aria-live="polite"></div>
             <div class="license-net" id="license-net">校验方式：正在同步在线清单…</div>
         </div>
     </div>
@@ -1984,11 +1983,6 @@
             return age < 0 ? Infinity : age;
         }
         function credFresh() { return credAgeMs() <= CRED_TTL_DAYS * 86400000; }
-        function credLastOnlineText() {
-            var c = readCache();
-            if (!c || !c.fetchedAt) return '从未';
-            try { return new Date(Number(c.fetchedAt)).toLocaleString(); } catch (e) { return '未知'; }
-        }
         // 从缓存载入「已验签」清单（离线可用）；验签失败的一律不采纳
         function loadCachedManifest() {
             var c = readCache();
@@ -2357,7 +2351,6 @@
             var netEl = document.getElementById('license-net');
             var expEl = document.getElementById('license-exp');
             var credEl = document.getElementById('license-cred');
-            var credTtlEl = document.getElementById('license-cred-ttl');
             if (mcInput) {
                 mcInput.value = machineCode();
                 // 点一下自动全选：即便系统/WebView 拦掉了自动复制，
@@ -2370,7 +2363,8 @@
                 msg.textContent = text || '';
                 msg.className = 'license-msg' + (kind && kind !== 'error' ? ' ' + kind : '');
             }
-            // 离线凭证与到期日常驻显示：让用户随时知道「这张卡什么时候到期」「多久没联网了」
+            // 离线凭证剩余天数（内置自动刷新）：<=3 天黄色告警、=0/过期红色；
+            // 尚未取得凭证时不显示这一行（不做任何提示）。
             function updateCredStatus() {
                 var rec = readStat();
                 if (expEl) {
@@ -2380,26 +2374,14 @@
                 }
                 if (credEl) {
                     var age = credAgeMs();
-                    var txt = '离线凭证：';
+                    credEl.className = 'license-cred';
                     if (age === Infinity) {
-                        txt += '尚无（需联网成功获取一次清单）';
+                        credEl.textContent = '';
                     } else {
                         var leftDays = Math.max(0, Math.ceil((CRED_TTL_DAYS * 86400000 - age) / 86400000));
-                        txt += '最近在线 ' + credLastOnlineText() + '，剩余 ' + leftDays + ' 天';
-                    }
-                    credEl.textContent = txt;
-                }
-                // 剩余天数徽标：<=3 天告警、=0/过期标红
-                if (credTtlEl) {
-                    var ageTtl = credAgeMs();
-                    credTtlEl.className = 'license-cred';
-                    if (ageTtl === Infinity) {
-                        credTtlEl.textContent = '离线凭证：尚未取得';
-                    } else {
-                        var leftTtl = Math.max(0, Math.ceil((CRED_TTL_DAYS * 86400000 - ageTtl) / 86400000));
-                        credTtlEl.textContent = '离线凭证：剩余 ' + leftTtl + ' 天';
-                        if (leftTtl <= 0) credTtlEl.className = 'license-cred is-bad';
-                        else if (leftTtl <= 3) credTtlEl.className = 'license-cred is-warn';
+                        credEl.textContent = '离线凭证：剩余 ' + leftDays + ' 天';
+                        if (leftDays <= 0) credEl.className = 'license-cred is-bad';
+                        else if (leftDays <= 3) credEl.className = 'license-cred is-warn';
                     }
                 }
             }
