@@ -61,6 +61,19 @@
   }
   function test(name, fn) { CASES.push({ name: name, fn: fn }); }
 
+  // 单跑开关（tests/run.ps1 -Suite，经查询串 ?suite= 传进来）：
+  //   all（默认）全量；layout 覆盖 layout/ 与 layout-unit/ 两套（同属图文排版生成器）；
+  //   layout-unit 只跑专项用例组；cardgen 只跑卡密生成器；cross 只跑跨应用与全局收尾。
+  // 值写错时按全量跑，并由 run() 的「命中 0 条」兜底报错——不能让参数笔误变成「0 项全绿」。
+  function suiteMatch(name, suite) {
+    var isLayout = name.indexOf('layout/') === 0 || name.indexOf('layout-unit/') === 0;
+    if (suite === 'layout') return isLayout;
+    if (suite === 'layout-unit') return name.indexOf('layout-unit/') === 0;
+    if (suite === 'cardgen') return name.indexOf('cardgen/') === 0;
+    if (suite === 'cross') return name.indexOf('跨应用') === 0 || name.indexOf('全局') === 0;
+    return true;
+  }
+
   // 跳过：专供两端外壳差异明确的用例。不计入失败，但报告里必须写明原因，
   // 免得「本端没有这条路径、所以没跑」被误读成「本端也验过了」。
   function skip(reason) { var e = new Error(reason); e.__skip = true; throw e; }
@@ -119,12 +132,16 @@
 
   // 等一次批量出图收尾。不能只判「提示文案匹配终态」：#batch-tip 是常驻元素，
   // 上一批留下的「批量出图完成…」会让匹配立刻成立，用例就会拿着上一条的文案继续断言（假通过/假失败）。
-  // 因此这里以「文案从点击前变为终态」+「按钮已恢复可用」为双重条件。
+  // 因此先把它清空，再以「出现了终态文案」+「按钮已恢复可用」为双重条件。
   async function waitBatchFinish(tip, btn, label) {
-    var prev = text(tip);
+    // #batch-tip 是常驻回执：上一条批量用例留在里面的终态文案可能与本次逐字相同
+    //（同一分钟内 tsName() 一样 →「共 N 张，已导出 批量排版图_YYYYMMDD_HHMM.zip」一模一样），
+    // 那样「文案相对点击前发生了变化」这条永远不会成立，只能干等到超时。
+    // 先清空，让「变化」这件事可判定；判定条件本身（终态文案 + 按钮恢复可用）不变。
+    tip.textContent = '';
     await until(function () {
       var s = text(tip);
-      return !btn.disabled && s !== prev && /批量出图完成|批量出图失败/.test(s);
+      return !btn.disabled && /批量出图完成|批量出图失败/.test(s);
     }, 90000, (label || '批量出图收尾') + '（当前：' + text(tip) + '）');
   }
 
@@ -298,6 +315,17 @@
     await lic.fetchManifest(url);
     L.URL.revokeObjectURL(url);
     return { lic: lic, gen: gen, mc: mc, card: card, updated: updated, pub: pub, manifest: obj };
+  }
+
+  // 单跑某一组用例时的开机前置：主程序只有「用卡密激活」后才会 bootApp（__layoutTool 才出现），
+  // 而激活是 layout/授权门 那条用例干的活。单跑 layout-unit 这类不含授权门的组时，
+  // 整组会以「前置未满足：主程序未启动」集体红掉——那是假红，不是被测逻辑的问题。
+  // 这里按与授权门用例完全相同的路径把主程序启动起来。
+  async function bootLayoutApp(L, C) {
+    var setup = await prepareLicense(L, C, { exp: '2099-12-31' });
+    q(L.document, '#license-input').value = setup.card;
+    q(L.document, '#license-activate').click();
+    await until(function () { return !!L.__layoutTool; }, 8000, '单跑前置：主程序启动（卡密激活）');
   }
 
   // ================================================================
@@ -1003,22 +1031,25 @@
       }
       t.refreshSnippetFieldOptions('window');
       assertDeepEq(opts(), ['summary', 'title', 'keywords', 'subtitle'], '橱窗模板应只列出它用得到的字段');
+      // 三图竖排也有「顶部摘要」（模板数据隔离的 TPL_FIELD_KEYS.three 就含 summary）。
+      // 这里曾写成 ['title','cap1','cap2','cap3']——那是照着早已漂移的 TEMPLATE_FIELDS 抄的；
+      // 现在两处合并成同一份 TPL_FIELD_KEYS，以它为准。
       t.refreshSnippetFieldOptions('three');
-      assertDeepEq(opts(), ['title', 'cap1', 'cap2', 'cap3'], '三图竖排应只列出它用得到的字段');
+      assertDeepEq(opts(), ['summary', 'title', 'cap1', 'cap2', 'cap3'], '三图竖排应只列出它用得到的字段');
 
       // 与界面联动：切模板时字段下拉必须跟着刷新
       var tpl = q(doc, '#template-select');
       tpl.value = 'three';
       fire(tpl, 'change', L);
-      assertDeepEq(opts(), ['title', 'cap1', 'cap2', 'cap3'], '切到三图竖排后字段下拉应被刷新');
+      assertDeepEq(opts(), ['summary', 'title', 'cap1', 'cap2', 'cap3'], '切到三图竖排后字段下拉应被刷新');
 
       // 选中项在新模板里仍存在 → 保留；不存在 → 回落到第一个可用项
       sel.value = 'cap2';
       t.refreshSnippetFieldOptions('three');
       assertEq(sel.value, 'cap2', '仍存在的选中字段应被保留');
-      sel.value = 'summary';
+      sel.value = 'keywords'; // 橱窗专属字段，三图竖排里不存在
       t.refreshSnippetFieldOptions('three');
-      assertEq(sel.value, 'title', '新模板里不存在的字段应回落到第一个可用项');
+      assertEq(sel.value, 'summary', '新模板里不存在的字段应回落到第一个可用项');
 
       tpl.value = 'window';
       fire(tpl, 'change', L);
@@ -1136,28 +1167,33 @@
         '「插入片段」按钮应已删除（改为「先选目标字段 → 再选片段」即自动写入）');
 
       t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
-      assertEq(t.saveSnippet('cap1', '片段内容甲'), true, '前置：应能存入一条片段');
-
       // 次序：先选目标字段（cap1 属三图竖排专属，先把模板切过去），再选片段 → 选中即写入。
+      // 切模板必须在 saveSnippet 之前：片段归属的就是「保存时的模板」，列表按它严格过滤。
+      // cap1 在橱窗模板下连目标字段下拉里都选不到，在橱窗下存出来的 cap1 片段也不该出现在三图竖排里。
       var tpl = q(doc, '#template-select');
-      tpl.value = 'three';
-      fire(tpl, 'change', L);
-      var fieldSel = q(doc, '#snippet-field-select');
-      fieldSel.value = 'cap1';
-      setValue(q(doc, '#input-cap-1'), '', L);
+      try {
+        tpl.value = 'three';
+        fire(tpl, 'change', L);
+        assertEq(t.saveSnippet('cap1', '片段内容甲'), true, '前置：应能存入一条片段');
 
-      var sel = q(doc, '#snippet-select');
-      sel.value = t.listSnippets()[0].id;
-      fire(sel, 'change', L);
-      assertEq(q(doc, '#input-cap-1').value, '片段内容甲',
-        '选中片段后应自动写入 #snippet-field-select 指定的字段（不再需要手动点「插入」）');
-      assertEq(text(q(doc, '#preview-cap-1')), '片段内容甲', '自动写入后预览应同步');
-      assertMatch(text(q(doc, '#snippet-msg')), /已写入/, '自动写入应有回执，实际：' + text(q(doc, '#snippet-msg')));
+        var fieldSel = q(doc, '#snippet-field-select');
+        fieldSel.value = 'cap1';
+        setValue(q(doc, '#input-cap-1'), '', L);
 
-      // 收尾：切回橱窗模板并清空该字段，避免影响后续用例
-      tpl.value = 'window';
-      fire(tpl, 'change', L);
-      setValue(q(doc, '#input-cap-1'), '', L);
+        var sel = q(doc, '#snippet-select');
+        sel.value = t.listSnippets()[0].id;
+        fire(sel, 'change', L);
+        assertEq(q(doc, '#input-cap-1').value, '片段内容甲',
+          '选中片段后应自动写入 #snippet-field-select 指定的字段（不再需要手动点「插入」）');
+        assertEq(text(q(doc, '#preview-cap-1')), '片段内容甲', '自动写入后预览应同步');
+        assertMatch(text(q(doc, '#snippet-msg')), /已写入/, '自动写入应有回执，实际：' + text(q(doc, '#snippet-msg')));
+      } finally {
+        // 收尾：切回橱窗模板并清空该字段，避免影响后续用例。
+        // 放在 finally 里是必须的：失败路径若把模板残留在 three，后续「橱窗 4 图」类用例会集体误判。
+        tpl.value = 'window';
+        fire(tpl, 'change', L);
+        setValue(q(doc, '#input-cap-1'), '', L);
+      }
     });
 
     test('layout/外壳：安卓壳读原生设备 ID，PWA 侧刻意不含该引用', async function () {
@@ -1781,6 +1817,791 @@
         t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
         await go(tplWas);
         setValue(title, '', L);
+        killToasts();
+      }
+    });
+  }
+
+  // ================================================================
+  // lmt-layout 专项组件交互用例组（layout-unit/）
+  //
+  // 与 layout/ 那套的分工：layout/ 守「界面细节与既有回归」，这一套只守
+  // 「各功能组件之间的交互契约」——模板隔离 / 草稿 / 批量 / 片段 / 安全区几何。
+  // 用 window.__layoutTool 直接驱动内部入口，不重复 layout/ 已覆盖的界面细节。
+  // 单跑：tests/run.ps1 -Suite layout-unit
+  // ================================================================
+  function layoutUnitCases(L, C) {
+    var doc = L.document;
+    function app() {
+      assert(L.__layoutTool, '前置未满足：主程序未启动（未激活或 bootApp 未执行）');
+      return L.__layoutTool;
+    }
+    function tplEl() { return q(doc, '#template-select'); }
+    // 切模板 + 等布局/适配算完，节奏与 layout/ 那套一致
+    function go(v) { var el = tplEl(); el.value = v; fire(el, 'change', L); return sleep(60); }
+    function killToasts() {
+      qa(doc, '.lmt-undo-toast').forEach(function (el) { if (el.__dispose) el.__dispose(); });
+    }
+    function modal() { return doc.querySelector('.lmt-modal-mask'); }
+
+    var SEL = {
+      summary: '#input-summary', title: '#input-title', keywords: '#input-keywords', subtitle: '#input-subtitle',
+      cap1: '#input-cap-1', cap2: '#input-cap-2', cap3: '#input-cap-3'
+    };
+    var IMG_UP = {
+      left: '#upload-left', right: '#upload-right',
+      shotLeft: '#upload-screenshot-left', shotRight: '#upload-screenshot-right',
+      wide1: '#upload-wide-1', wide2: '#upload-wide-2', wide3: '#upload-wide-3'
+    };
+    var IMG_BOX = {
+      left: '#preview-img-left', right: '#preview-img-right',
+      shotLeft: '#preview-screenshot-left', shotRight: '#preview-screenshot-right',
+      wide1: '#preview-wide-1', wide2: '#preview-wide-2', wide3: '#preview-wide-3'
+    };
+    var W_FIELDS = ['summary', 'title', 'keywords', 'subtitle'];
+    var T_FIELDS = ['summary', 'title', 'cap1', 'cap2', 'cap3'];
+    var ALL_FIELDS = W_FIELDS.concat(['cap1', 'cap2', 'cap3']);
+    var ALL_IMGS = Object.keys(IMG_BOX);
+    function val(k) { return q(doc, SEL[k]).value; }
+    function photoEl(k) { return q(doc, IMG_BOX[k]).querySelector('canvas.preview-photo'); }
+    // 「参与渲染」而不是「存在」：另一套模板的图片节点仍在 DOM 里，只是所在块被 hidden
+    function vis(k) { var c = photoEl(k); return !!c && isRendered(c); }
+    async function upload(k, w, h) {
+      attachFile(L, q(doc, IMG_UP[k]), k + '.png', 'image/png', pngBytes(L, w, h));
+      await until(function () { return !!photoEl(k); }, FILE_WAIT_MS, k + ' 图片应绘制进预览框');
+    }
+    // 两套模板各清一遍，让「槽」本身也为空（切走会把当前值写回槽）
+    async function clearBothSlots() {
+      await go('window'); W_FIELDS.forEach(function (k) { setValue(q(doc, SEL[k]), '', L); });
+      await go('three'); T_FIELDS.forEach(function (k) { setValue(q(doc, SEL[k]), '', L); });
+    }
+    function snippetIds() {
+      return qa(q(doc, '#snippet-select'), 'option').map(function (o) { return o.value; })
+        .filter(function (v) { return !!v; });
+    }
+
+    // ---------- 模板隔离 ----------
+
+    test('layout-unit/模板隔离：文案两套各自成槽，来回切换互不串味', async function () {
+      var tplWas = tplEl().value;
+      var was = {};
+      ALL_FIELDS.forEach(function (k) { was[k] = val(k); });
+      try {
+        await clearBothSlots();
+        await go('window');
+        W_FIELDS.forEach(function (k) {
+          assertEq(val(k), '', '前置：橱窗这一份应为空，实际 ' + k + '=' + val(k));
+        });
+        setValue(q(doc, SEL.summary), '橱窗摘要', L);
+        setValue(q(doc, SEL.keywords), '橱窗关键词', L);
+        setValue(q(doc, SEL.subtitle), '橱窗副标题', L);
+
+        // 切到三图竖排：它这一份必须是空的，橱窗的 4 项一个都不能漏出来
+        await go('three');
+        T_FIELDS.forEach(function (k) {
+          assertEq(val(k), '', '三图竖排这一份应为空（不得沿用橱窗文案），实际 ' + k + '=' + val(k));
+        });
+        setValue(q(doc, SEL.cap1), '小标题一', L);
+
+        await go('window');
+        assertEq(val('summary'), '橱窗摘要', '切回橱窗应还原它自己的摘要');
+        assertEq(val('keywords'), '橱窗关键词', '切回橱窗应还原它自己的关键词');
+        assertEq(val('subtitle'), '橱窗副标题', '切回橱窗应还原它自己的副标题');
+
+        await go('three');
+        assertEq(val('cap1'), '小标题一', '切回三图竖排应还原它自己的小标题一');
+        assertEq(val('summary'), '', '三图竖排的摘要仍应为空（没被橱窗那一份覆盖）');
+      } finally {
+        await clearBothSlots();
+        await go('window'); W_FIELDS.forEach(function (k) { setValue(q(doc, SEL[k]), was[k], L); });
+        await go('three'); T_FIELDS.forEach(function (k) { setValue(q(doc, SEL[k]), was[k], L); });
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/模板隔离：图片两套各自成槽，切换互不清除', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await go('window');
+        await upload('left', 240, 180);
+        await go('three');
+        assert(!vis('left'), '切到三图竖排后不该还画着橱窗的左图');
+        assert(!photoEl('wide1'), '三图竖排这一份初始不应有图');
+        await upload('wide1', 300, 130);
+
+        await go('window');
+        assert(vis('left'), '切回橱窗应显示它自己的左图');
+        assert(!vis('wide1'), '橱窗模板下三图的图片一不该参与渲染');
+        assertDeepEq(Object.keys(t.captureImgs()).sort(), ['left'],
+          '橱窗下 captureImgs 只应采集它自己的图片键');
+
+        await go('three');
+        assert(vis('wide1'), '切回三图竖排应显示它自己的图片一');
+        assert(!vis('left'), '三图竖排下橱窗的左图不该参与渲染');
+        assertDeepEq(Object.keys(t.captureImgs()).sort(), ['wide1'],
+          '三图竖排下 captureImgs 只应采集它自己的图片键');
+      } finally {
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    // ---------- 一键清空 ----------
+
+    test('layout-unit/一键清空：只清当前模板，另一套模板与草稿箱不受影响，且可撤销', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      var btn = q(doc, '#tpl-clear-btn');
+      var was = {};
+      ALL_FIELDS.forEach(function (k) { was[k] = val(k); });
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        await go('window');
+        setValue(q(doc, SEL.summary), '橱窗摘要', L);
+        setValue(q(doc, SEL.keywords), '橱窗关键词', L);
+        await upload('left', 240, 180);
+        await go('three');
+        setValue(q(doc, SEL.summary), '三图摘要', L);
+        setValue(q(doc, SEL.cap1), '小标题一', L);
+        await upload('wide1', 300, 130);
+        assert((await t.saveDraft('清空用草稿')).ok, '前置：应能存一份三图草稿');
+
+        // 第一次清空：就地验证「撤销」（撤销提示条有 TTL，切来切去有过期风险）
+        await go('window');
+        assertEq(text(btn), '清空橱窗排版', '按钮文案应指向当前模板，实际：' + text(btn));
+        btn.click();
+        await until(modal, 3000, '清空应弹二次确认');
+        dialogButton(doc, /^清空$/).click();
+        await until(function () { return !modal(); }, 3000, '确认后应关闭弹层');
+        assertEq(val('summary'), '', '橱窗摘要应被清空');
+        assertEq(val('keywords'), '', '橱窗关键词应被清空');
+        assert(!photoEl('left'), '橱窗的图应被清空');
+
+        q(doc, '.lmt-undo-btn').click();
+        await sleep(120); // 撤销里含异步图片还原（restorePhoto 返回 Promise）
+        assertEq(val('summary'), '橱窗摘要', '撤销后橱窗摘要应原样恢复');
+        assertEq(val('keywords'), '橱窗关键词', '撤销后橱窗关键词应原样恢复');
+        await until(function () { return vis('left'); }, FILE_WAIT_MS, '撤销后橱窗的图应原样恢复');
+
+        // 第二次清空：验证清空范围（另一套模板与草稿箱都不受影响）
+        btn.click();
+        await until(modal, 3000, '清空应弹二次确认');
+        assertMatch(text(modal()), /另一套模板的内容、草稿箱里的草稿都不受影响/,
+          '二次确认应写明清空范围，实际：' + text(modal()));
+        dialogButton(doc, /^清空$/).click();
+        await until(function () { return !modal(); }, 3000, '确认后应关闭弹层');
+        assertEq(val('summary'), '', '橱窗摘要应被清空');
+        assert(!photoEl('left'), '橱窗的图应被清空');
+        assertMatch(text(q(doc, '#tpl-clear-msg')), /已清空「橱窗排版」/,
+          '清空回执必须写在块内 #tpl-clear-msg，实际：' + text(q(doc, '#tpl-clear-msg')));
+
+        await go('three');
+        assertEq(val('summary'), '三图摘要', '另一套模板的文案不得被一键清空波及');
+        assertEq(val('cap1'), '小标题一', '另一套模板的文案不得被一键清空波及');
+        assert(vis('wide1'), '另一套模板的图不得被一键清空波及');
+        assertEq(t.listDrafts().length, 1, '草稿箱不得被一键清空波及');
+      } finally {
+        await go('window');
+        t.clearPhoto('left');
+        t.clearPhoto('wide1');
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        W_FIELDS.forEach(function (k) { setValue(q(doc, SEL[k]), '', L); });
+        await go('three');
+        T_FIELDS.forEach(function (k) { setValue(q(doc, SEL[k]), '', L); });
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/一键清空：批量出图进行中按钮被置灰（与草稿锁同一把锁）', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      var real = L.html2canvas;
+      var btn = q(doc, '#tpl-clear-btn');
+      var batchBtn = q(doc, '#batch-btn');
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        setValue(q(doc, '#input-title'), '锁草稿甲', L);
+        assert((await t.saveDraft('锁草稿甲')).ok, '前置：应存入 1 份草稿');
+        setValue(q(doc, '#input-title'), '锁草稿乙', L);
+        assert((await t.saveDraft('锁草稿乙')).ok, '前置：应存入第 2 份草稿');
+        L.html2canvas = function () {
+          var cv = L.document.createElement('canvas');
+          cv.width = 40; cv.height = 60;
+          return Promise.resolve(cv);
+        };
+        qa(doc, '#batch-tasks input[type="checkbox"]').forEach(function (cb) {
+          cb.checked = true; fire(cb, 'change', L);
+        });
+        batchBtn.click();
+        // 置忙/加锁都发生在 performBatch 的第一个 await 之前，点击返回的同一拍即可检查
+        assert(btn.disabled, '批量出图进行中「一键清空」应被置灰（它同样会改当前内容）');
+        await waitBatchFinish(q(doc, '#batch-tip'), batchBtn, '批量收尾');
+        assert(!btn.disabled, '批量结束后「一键清空」应恢复可用');
+      } finally {
+        L.html2canvas = real;
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        setValue(q(doc, '#input-title'), '', L);
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    // ---------- 偏好记忆与分层重置 ----------
+
+    test('layout-unit/偏好记忆：两套模板的槽都能落盘与回灌', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      var remember = q(doc, '#pref-auto-remember');
+      var rememberWas = remember.checked;
+      var prefsWas = L.localStorage.getItem('lmt_layout_prefs_v1');
+      try {
+        await clearBothSlots();
+        remember.checked = true;
+        fire(remember, 'change', L);
+        await go('window');
+        setValue(q(doc, SEL.summary), 'W摘要', L);
+        setValue(q(doc, SEL.subtitle), 'W副标题', L);
+        await go('three');
+        setValue(q(doc, SEL.summary), 'T摘要', L);
+        setValue(q(doc, SEL.cap1), 'T小标题一', L);
+        t.savePrefs();
+
+        var raw = JSON.parse(L.localStorage.getItem('lmt_layout_prefs_v1') || '{}');
+        assert(raw.fieldsByTpl, '偏好应带两套模板的槽（fieldsByTpl）');
+        assertEq(raw.fieldsByTpl.window && raw.fieldsByTpl.window.summary, 'W摘要', '橱窗那一份应被落盘');
+        assertEq(raw.fieldsByTpl.three && raw.fieldsByTpl.three.cap1, 'T小标题一', '三图那一份应被落盘');
+        assert(!raw.fieldsByTpl.window.cap1, '橱窗那一份不该混进另一套模板的字段');
+        var savedPrefs = L.localStorage.getItem('lmt_layout_prefs_v1'); // 回灌用留底
+
+        // 打乱现场后回灌：两套模板各自的槽都必须回来
+        await go('window'); setValue(q(doc, SEL.summary), '乱写', L);
+        await go('three'); setValue(q(doc, SEL.cap1), '乱写', L);
+        // 「自动记忆」开着时，切模板本身就会立刻把「两套槽的最新值」重新落盘（control-panel 上的
+        // change → savePrefs），于是上面这份「乱写」已经覆盖了刚存的偏好。这是既定行为，
+        // 本用例要测的是「偏好里的两套槽能不能回灌」，故先把留底写回去再 loadPrefs，
+        // 否则测到的是「自动记忆覆盖了旧记忆」，与用例名不是一回事。
+        var autoSaved = JSON.parse(L.localStorage.getItem('lmt_layout_prefs_v1') || '{}');
+        assert(autoSaved.fieldsByTpl && autoSaved.fieldsByTpl.window && autoSaved.fieldsByTpl.three,
+          '自动记忆应始终把两套模板的槽一起落盘（切模板时重落一次）');
+        assertEq(autoSaved.fieldsByTpl.window.summary, '乱写', '切模板时的自动记忆落的是当前界面的最新值');
+        L.localStorage.setItem('lmt_layout_prefs_v1', savedPrefs);
+        t.loadPrefs();
+        await sleep(60);
+        assertEq(val('summary'), 'T摘要', 'loadPrefs 后当前（三图）这一份应回灌');
+        assertEq(val('cap1'), 'T小标题一', 'loadPrefs 后当前（三图）这一份应回灌');
+        await go('window');
+        assertEq(val('summary'), 'W摘要', '切到橱窗应看到它自己那份槽也被回灌');
+        assertEq(val('subtitle'), 'W副标题', '切到橱窗应看到它自己那份槽也被回灌');
+      } finally {
+        remember.checked = rememberWas;
+        fire(remember, 'change', L);
+        if (prefsWas == null) L.localStorage.removeItem('lmt_layout_prefs_v1');
+        else L.localStorage.setItem('lmt_layout_prefs_v1', prefsWas);
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/分层重置：drafts 不动两套槽，all 把两套槽一并清空', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        t.resetPrefs('all');
+        await sleep(60);
+        await go('window'); setValue(q(doc, SEL.summary), 'W摘要', L);
+        await go('three'); setValue(q(doc, SEL.cap1), 'T小标题一', L);
+
+        t.resetPrefs('drafts');
+        await sleep(60);
+        assertEq(val('cap1'), 'T小标题一', 'drafts 重置不得动当前（三图）那一份内容');
+        await go('window');
+        assertEq(val('summary'), 'W摘要', 'drafts 重置不得动另一套模板的槽');
+
+        t.resetPrefs('all');
+        await sleep(60);
+        assertEq(val('summary'), '', 'all 应清空橱窗这一份');
+        assertEq(tplEl().value, 'window', 'all 应回落橱窗模板');
+        await go('three');
+        assertEq(val('cap1'), '', 'all 应把三图那一份也清空（切过去不得冒出旧内容）');
+      } finally {
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    // ---------- 草稿 ----------
+
+    test('layout-unit/草稿：一份草稿只带当前模板的字段键与图片键', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        await go('window');
+        setValue(q(doc, SEL.summary), 'W摘要', L);
+        setValue(q(doc, SEL.keywords), 'W关键词', L);
+        await upload('left', 240, 180);
+        assert((await t.saveDraft('橱窗草稿')).ok, '应能保存橱窗草稿');
+
+        var d = t.listDrafts()[0];
+        assertEq(d.tpl, 'window', '草稿应记下保存时的模板');
+        assertDeepEq(Object.keys(d.fields).sort(), ['keywords', 'subtitle', 'summary', 'title'],
+          '橱窗草稿的字段键应只有橱窗这 4 项（左边是 .sort() 后的字典序，故不是界面上的排列顺序）');
+        assert(!d.fields.cap1, '橱窗草稿不该混进三图竖排的字段键');
+        assertEq(t.draftImageCount(d), 1, '橱窗草稿应带 1 张图');
+        assert(!d.imgs || !d.imgs.wide1, '橱窗草稿不该混进三图竖排的图片键');
+      } finally {
+        t.listDrafts().slice().forEach(function (x) { t.deleteDraft(x.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/草稿：载入本模板草稿只覆盖自己那一套，另一套槽原样保留', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        await go('window');
+        setValue(q(doc, SEL.title), '橱窗草稿标题', L);
+        assert((await t.saveDraft('橱窗草稿')).ok, '前置：应能存橱窗草稿');
+
+        // 三图竖排自己写一份、放一张图，再回头载入橱窗草稿
+        await go('three');
+        setValue(q(doc, SEL.cap1), '三图自己的小标题', L);
+        await upload('wide1', 300, 130);
+        var d = t.listDrafts()[0];
+        assertEq((await t.loadDraft(d.id)).ok, true, '载入橱窗草稿应成功');
+        assertEq(tplEl().value, 'window', '载入带 tpl 的草稿应自动切到它的模板');
+        assertEq(val('title'), '橱窗草稿标题', '载入后应还原草稿的文案');
+
+        await go('three');
+        assertEq(val('cap1'), '三图自己的小标题', '载入另一套模板的草稿不得覆盖三图那一份文案');
+        assert(vis('wide1'), '载入另一套模板的草稿不得清掉三图那一份的图');
+      } finally {
+        t.listDrafts().slice().forEach(function (x) { t.deleteDraft(x.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/草稿：载入另一套模板的草稿后，原模板的槽切回去仍在', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        await go('three');
+        setValue(q(doc, SEL.summary), '三图摘要', L);
+        setValue(q(doc, SEL.cap2), '小标题二', L);
+        assert((await t.saveDraft('三图草稿')).ok, '前置：应能存三图草稿');
+
+        // 切回橱窗写一份自己的内容，然后载入三图草稿（会自动切模板）
+        await go('window');
+        setValue(q(doc, SEL.summary), '橱窗摘要', L);
+        setValue(q(doc, SEL.keywords), '橱窗关键词', L);
+        var d = t.listDrafts()[0];
+        assertEq((await t.loadDraft(d.id)).ok, true, '载入三图草稿应成功');
+        assertEq(tplEl().value, 'three', '载入三图草稿应自动切到三图竖排');
+        assertEq(val('cap2'), '小标题二', '载入后应还原三图草稿的小标题二');
+
+        await go('window');
+        assertEq(val('summary'), '橱窗摘要', '切回橱窗，它自己那份摘要必须还在');
+        assertEq(val('keywords'), '橱窗关键词', '切回橱窗，它自己那份关键词必须还在');
+      } finally {
+        t.listDrafts().slice().forEach(function (x) { t.deleteDraft(x.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/草稿：载入下拉的选项带模板标注，两套模板的草稿都列出', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        await go('window');
+        setValue(q(doc, '#input-title'), '甲', L);
+        assert((await t.saveDraft('橱窗那一份')).ok, '前置：应能存橱窗草稿');
+        await go('three');
+        setValue(q(doc, '#input-title'), '乙', L);
+        assert((await t.saveDraft('三图那一份')).ok, '前置：应能存三图草稿');
+
+        var opts = qa(q(doc, '#draft-select'), 'option').filter(function (o) { return !!o.value; });
+        assertEq(opts.length, 2, '两套模板的草稿都应列出来（靠模板名区分，不做过滤）');
+        var winOpt = opts.filter(function (o) { return /橱窗那一份/.test(text(o)); })[0];
+        var threeOpt = opts.filter(function (o) { return /三图那一份/.test(text(o)); })[0];
+        assert(winOpt, '下拉里应有橱窗那一份');
+        assert(threeOpt, '下拉里应有三图那一份');
+        assertMatch(text(winOpt), /^【橱窗排版】/, '选项文案应以「【模板名】」开头，实际：' + text(winOpt));
+        assertMatch(text(threeOpt), /^【三图竖排】/, '选项文案应以「【模板名】」开头，实际：' + text(threeOpt));
+        // 落款模板名来自草稿自身，不跟着当前下拉走
+        await go('three');
+        var winOpt2 = qa(q(doc, '#draft-select'), 'option').filter(function (o) { return /橱窗那一份/.test(text(o)); })[0];
+        assertMatch(text(winOpt2), /^【橱窗排版】/, '切模板后选项文案仍应是草稿自己的模板名');
+      } finally {
+        t.listDrafts().slice().forEach(function (x) { t.deleteDraft(x.id); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    // ---------- 批量出图 ----------
+
+    test('layout-unit/批量：混有两套模板草稿时，逐张用各自模板与各自的图渲染', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      var real = L.html2canvas;
+      var seen = [];
+      var batchBtn = q(doc, '#batch-btn');
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        // 甲：橱窗排版 + 左图；乙：三图竖排 + 图片一
+        await go('window');
+        setValue(q(doc, SEL.title), '橱窗甲', L);
+        await upload('left', 240, 180);
+        assert((await t.saveDraft('混合甲')).ok, '前置：应能存橱窗草稿');
+        await go('three');
+        setValue(q(doc, SEL.title), '三图乙', L);
+        await upload('wide1', 300, 130);
+        assert((await t.saveDraft('混合乙')).ok, '前置：应能存三图草稿');
+        assertEq(t.listDrafts().length, 2, '前置：应有 2 份草稿');
+
+        // 截图桩：在「真正截图那一刻」记录当前模板与两套模板的图各在不在
+        L.html2canvas = function () {
+          seen.push({
+            tpl: q(doc, '#export-target').dataset.activeTpl,
+            left: vis('left'), wide1: vis('wide1')
+          });
+          var cv = L.document.createElement('canvas');
+          cv.width = 40; cv.height = 60;
+          return Promise.resolve(cv);
+        };
+
+        await go('window'); // 批量发起时的现场
+        qa(doc, '#batch-tasks input[type="checkbox"]').forEach(function (cb) {
+          cb.checked = true; fire(cb, 'change', L);
+        });
+        batchBtn.click();
+        await waitBatchFinish(q(doc, '#batch-tip'), batchBtn, '混合草稿批量收尾');
+
+        assertEq(seen.length, 2, '两份草稿应各截一次图');
+        var shotWin = seen.filter(function (s) { return s.tpl === 'window'; })[0];
+        var shotThree = seen.filter(function (s) { return s.tpl === 'three'; })[0];
+        assert(shotWin, '橱窗那份草稿应按橱窗模板渲染，实际截到：' + JSON.stringify(seen));
+        assert(shotThree, '三图那份草稿应按三图竖排渲染，实际截到：' + JSON.stringify(seen));
+        assert(shotWin.left && !shotWin.wide1,
+          '橱窗草稿出图时只该有它自己的左图：' + JSON.stringify(shotWin));
+        assert(shotThree.wide1 && !shotThree.left,
+          '三图草稿出图时只该有它自己的图片一：' + JSON.stringify(shotThree));
+
+        // 收尾：用户当前的模板与内容必须完全复原
+        assertEq(tplEl().value, 'window', '批量结束后应回到发起时的模板');
+        assertEq(val('title'), '橱窗甲', '批量结束后用户当前那一份内容应原样还原');
+      } finally {
+        L.html2canvas = real;
+        t.listDrafts().slice().forEach(function (x) { t.deleteDraft(x.id); });
+        ALL_IMGS.forEach(function (k) { t.clearPhoto(k); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/批量：0 勾选禁用 / 全选全不选 / ≥3 张才给「取消」', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      var real = L.html2canvas;
+      var batchBtn = q(doc, '#batch-btn');
+      var allBtn = q(doc, '#batch-select-all-btn');
+      var cancelBtn = q(doc, '#batch-cancel-btn');
+      try {
+        t.listDrafts().slice().forEach(function (d) { t.deleteDraft(d.id); });
+        setValue(q(doc, '#input-title'), '批量甲', L);
+        assert((await t.saveDraft('批量甲')).ok, '前置：应存入 1 份草稿');
+        setValue(q(doc, '#input-title'), '批量乙', L);
+        assert((await t.saveDraft('批量乙')).ok, '前置：应存入第 2 份草稿');
+
+        assert(batchBtn.disabled, '0 勾选时「批量出图」应直接禁用');
+        allBtn.click();
+        assertEq(qa(doc, '#batch-tasks input[type="checkbox"]:checked').length, 2, '「全选」应一次勾上全部草稿');
+        assertEq(text(allBtn), '全不选', '全选后按钮应变为「全不选」');
+        allBtn.click();
+        assertEq(qa(doc, '#batch-tasks input[type="checkbox"]:checked').length, 0, '「全不选」应一次取消全部勾选');
+        assert(batchBtn.disabled, '全部取消后应回到禁用');
+
+        L.html2canvas = function () {
+          var cv = L.document.createElement('canvas');
+          cv.width = 40; cv.height = 60;
+          return Promise.resolve(cv);
+        };
+        // 2 张是短批：不该出现「取消」
+        allBtn.click();
+        batchBtn.click();
+        assert(cancelBtn.hidden, '短批（少于 3 张）不应出现「取消」按钮');
+        await waitBatchFinish(q(doc, '#batch-tip'), batchBtn, '短批收尾');
+
+        // 补到 3 张：长批才给「取消」
+        setValue(q(doc, '#input-title'), '批量丙', L);
+        assert((await t.saveDraft('批量丙')).ok, '前置：应存入第 3 份草稿');
+        allBtn.click();
+        batchBtn.click();
+        assert(!cancelBtn.hidden, '3 张的批量应出现「取消」按钮');
+        await waitBatchFinish(q(doc, '#batch-tip'), batchBtn, '长批收尾');
+      } finally {
+        L.html2canvas = real;
+        t.listDrafts().slice().forEach(function (x) { t.deleteDraft(x.id); });
+        setValue(q(doc, '#input-title'), '', L);
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    // ---------- 常用文案库（片段按模板严格过滤） ----------
+
+    test('layout-unit/片段：三图下保存的片段在橱窗下不可见，切回去可见', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+        await go('three');
+        setValue(q(doc, SEL.cap1), '三图的片段内容', L);
+        assertEq(t.saveSnippet('cap1', '三图的片段内容'), true, '前置：应能保存 cap1 片段');
+        var id = t.listSnippets()[0].id;
+        assertEq(t.listSnippets()[0].tpl, 'three', '片段应记下保存时的模板');
+        assertDeepEq(snippetIds(), [id], '三图竖排下应能看到这条片段');
+
+        t.refreshSnippetOptions();
+        await go('window');
+        assertDeepEq(snippetIds(), [], '橱窗下不该看到三图竖排的片段');
+        await go('three');
+        assertDeepEq(snippetIds(), [id], '切回三图竖排应重新看到它');
+      } finally {
+        t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/片段：橱窗下保存的片段在三图下不可见', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+        await go('window');
+        setValue(q(doc, SEL.keywords), '橱窗的片段内容', L);
+        assertEq(t.saveSnippet('keywords', '橱窗的片段内容'), true, '前置：应能保存 keywords 片段');
+        var id = t.listSnippets()[0].id;
+        assertDeepEq(snippetIds(), [id], '橱窗下应能看到这条片段');
+
+        await go('three');
+        assertDeepEq(snippetIds(), [], '三图竖排下不该看到橱窗的片段');
+        await go('window');
+        assertDeepEq(snippetIds(), [id], '切回橱窗应重新看到它');
+      } finally {
+        t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/片段：旧片段（无 tpl）按绑定字段推断归属', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        // 旧数据形态：片段对象只有 { id, text, field }，没有 tpl（本次改动之前存下的）
+        L.localStorage.setItem(t.SNIPPET_KEY, JSON.stringify({ v: 1, items: [
+          { id: 'legacy_cap1', text: '旧片段-小标题', field: 'cap1' },
+          { id: 'legacy_kw', text: '旧片段-关键词', field: 'keywords' },
+          { id: 'legacy_title', text: '旧片段-主标题', field: 'title' }
+        ] }));
+        t.refreshSnippetOptions();
+        await go('three');
+        assertDeepEq(snippetIds().sort(), ['legacy_cap1', 'legacy_title'],
+          '三图竖排下应看到「小标题一」与「主标题」两条旧片段');
+        await go('window');
+        assertDeepEq(snippetIds().sort(), ['legacy_kw', 'legacy_title'],
+          '橱窗下应看到「关键词」与「主标题」两条旧片段（主标题两套模板都有）');
+      } finally {
+        t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/片段：选中即写入指定字段，回执在 #snippet-msg，且不会悄悄切模板', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+        await go('three');
+        setValue(q(doc, SEL.cap2), '小标题二片段', L);
+        assertEq(t.saveSnippet('cap2', '小标题二片段'), true, '前置：应能保存 cap2 片段');
+        var id = t.listSnippets()[0].id;
+
+        q(doc, '#snippet-field-select').value = 'cap2';
+        setValue(q(doc, SEL.cap2), '', L);
+        var sel = q(doc, '#snippet-select');
+        sel.value = id;
+        fire(sel, 'change', L);
+        assertEq(val('cap2'), '小标题二片段', '选中片段应立即写入目标字段（不再需要点「插入」）');
+        assertEq(text(q(doc, '#preview-cap-2')), '小标题二片段', '写入后预览应同步');
+        assertMatch(text(q(doc, '#snippet-msg')), /已写入/,
+          '回执必须写在块内 #snippet-msg，实际：' + text(q(doc, '#snippet-msg')));
+        assertEq(tplEl().value, 'three', '写入片段不得改变当前模板');
+
+        // 旧行为（为隐藏字段自动切模板）已删除：目标字段属于另一套模板时也必须原地不动。
+        // 这个状态在界面上到不了（目标字段下拉本身就按模板过滤），这里只防它被改回来。
+        await go('window');
+        var before = tplEl().value;
+        t.insertSnippet(id, 'cap2');
+        assertEq(tplEl().value, before, '插入片段不得悄悄把模板切走（旧的自动切模板逻辑已删除）');
+      } finally {
+        t.listSnippets().slice().forEach(function (s) { t.deleteSnippet(s.id); });
+        await clearBothSlots();
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    test('layout-unit/片段：三图竖排的目标字段下拉包含「顶部摘要」', async function () {
+      var t = app();
+      var tplWas = tplEl().value;
+      try {
+        await go('three');
+        var sel = q(doc, '#snippet-field-select');
+        var vals = qa(sel, 'option').map(function (o) { return o.value; });
+        assertDeepEq(vals, ['summary', 'title', 'cap1', 'cap2', 'cap3'],
+          '三图竖排的目标字段下拉应与 TPL_FIELD_KEYS.three 完全一致（含顶部摘要）');
+        assert(sel.querySelector('option[value="summary"]'), '「顶部摘要」必须能选（它确实有这一项文案）');
+
+        // 与模板数据隔离同源：下拉列出的就是该模板真正存下来的字段
+        assertDeepEq(vals, t.TPL_FIELD_KEYS.three,
+          '目标字段下拉不得与模板字段表各自维护（曾因两处漂移漏掉「顶部摘要」）');
+        await go('window');
+        assertDeepEq(qa(sel, 'option').map(function (o) { return o.value; }), t.TPL_FIELD_KEYS.window,
+          '橱窗的目标字段下拉同样应与模板字段表一致');
+      } finally {
+        await go(tplWas);
+        killToasts();
+      }
+    });
+
+    // ---------- 安全区几何与图片放大 ----------
+
+    test('layout-unit/安全区：下移 0.17cm 后尺寸不变，红线与内容同步下移', async function () {
+      var CM = 37.7953; // CSS 标准 96dpi 下 1cm 的像素数
+      var cs = L.getComputedStyle(doc.documentElement);
+      var top = parseFloat(cs.getPropertyValue('--safe-top'));
+      var bottom = parseFloat(cs.getPropertyValue('--safe-bottom'));
+      var left = parseFloat(cs.getPropertyValue('--safe-left'));
+      var right = parseFloat(cs.getPropertyValue('--safe-right'));
+      assert(Math.abs(top - (50 + 1.02 * CM)) < 0.02,
+        '上边距应为 50px + 1.02cm（0.85 + 本轮 0.17），实际 ' + top);
+      assert(Math.abs(bottom - (120 - 1.02 * CM)) < 0.02,
+        '下边距应为 120px - 1.02cm（0.85 + 本轮 0.17），实际 ' + bottom);
+      assert(Math.abs(left - (20 + 0.7 * CM)) < 0.02, '左边距应为 20px + 0.7cm，实际 ' + left);
+      assert(Math.abs(right - (80 - 0.7 * CM)) < 0.02, '右边距应为 80px - 0.7cm，实际 ' + right);
+
+      // 四条边距与固定宽高必须互相自洽：375×667 画布上安全区仍是 275×497
+      assert(Math.abs((375 - left - right) - 275) < 0.5, '安全区宽应仍为 275，实际 ' + (375 - left - right));
+      assert(Math.abs(top + 497 + bottom - 667) < 0.5,
+        '上下边距 + 497 应正好等于画布高 667（否则红线与内容会错位），实际 ' + (top + 497 + bottom));
+
+      var target = q(doc, '#export-target');
+      var r = target.getBoundingClientRect();
+      assert(Math.abs(r.width - 275) <= 1, '内容容器宽应仍为 275，实际 ' + r.width);
+      assert(Math.abs(r.height - 497) <= 1, '内容容器高应仍为 497，实际 ' + r.height);
+
+      // 红线 / 参考框 / 内容读的是同一组变量，故偏移量必须一致（这就是「一起下移」）
+      var lineTop = q(doc, '.line-top');
+      var lineBottom = q(doc, '.line-bottom');
+      var box = q(doc, '.main-area-box');
+      assert(Math.abs(target.offsetTop - top) <= 1,
+        '内容容器相对画布的偏移应等于 --safe-top，实际 ' + target.offsetTop);
+      assert(Math.abs(lineTop.offsetTop - top) <= 1,
+        '上红线应与内容同源（偏移 = --safe-top），实际 ' + lineTop.offsetTop);
+      assert(Math.abs(box.offsetTop - top) <= 1,
+        '安全区参考框应与内容同源（偏移 = --safe-top），实际 ' + box.offsetTop);
+      assert(Math.abs(lineBottom.getBoundingClientRect().bottom - r.bottom) <= 1,
+        '下红线应与内容下边界重合：红线 ' + lineBottom.getBoundingClientRect().bottom + ' vs 内容 ' + r.bottom);
+    });
+
+    test('layout-unit/橱窗图片：内容宽放大到 92%，图片真的变大且比例不变形、未被迫缩字号', async function () {
+      var tplWas = tplEl().value;
+      var target = q(doc, '#export-target');
+      try {
+        await go('window');
+        assertEq(L.getComputedStyle(target).getPropertyValue('--content-w').trim(), '92%',
+          '橱窗排版的内容宽应为 92%');
+        assertEq(L.getComputedStyle(target).getPropertyValue('--fit').trim(), '1',
+          '放大后不该被迫缩字号（--fit 必须仍是 1），实际 ' +
+          L.getComputedStyle(target).getPropertyValue('--fit'));
+        assert(!hasClass(q(doc, '#overflow-warn'), 'show'), '放大后不应出现「超出安全区」告警');
+        assert(hasClass(q(doc, '#fit-note'), 'show') && /按 100% 显示/.test(text(q(doc, '#fit-note'))),
+          '适配提示应写明按 100% 显示，实际：' + text(q(doc, '#fit-note')));
+        assertEq(q(doc, '#export-btn').disabled, false, '放大后导出按钮必须仍可用');
+
+        var row = q(doc, '.image-row[data-tpl="window"]');
+        var rowW = row.getBoundingClientRect().width;
+        var SAFE_W = 275;
+        assert(Math.abs(rowW - SAFE_W * 0.92) <= 2,
+          '图片行宽应为安全区宽的 92%（' + (SAFE_W * 0.92) + '），实际 ' + rowW);
+        assert(rowW > SAFE_W * 0.80 + 5,
+          '图片行必须比改动前（80% = ' + (SAFE_W * 0.80) + '）明显更宽，实际 ' + rowW);
+
+        // 图片与文案共用同一个 --content-w：长文案的摘要也应撑到同一宽度（等宽约束不破）
+        setValue(q(doc, '#input-summary'), '这是一句明显更长的顶部总结文案，用来把摘要撑到内容宽上限附近再多加一些字', L);
+        await sleep(60);
+        assert(Math.abs(q(doc, '#preview-summary').getBoundingClientRect().width - rowW) <= 1,
+          '摘要与图片行必须等宽：摘要 ' + q(doc, '#preview-summary').getBoundingClientRect().width + ' vs 图片行 ' + rowW);
+        setValue(q(doc, '#input-summary'), '', L);
+        await sleep(60);
+
+        // 宽高比锁死：图片只允许整体缩放，不得变形
+        var boxes = [['.image-row[data-tpl="window"] .image-box', 1], ['.screenshot-row[data-tpl="window"] .screenshot-box', 0.75]];
+        boxes.forEach(function (pair) {
+          var b = q(doc, pair[0]).getBoundingClientRect();
+          assert(b.width > 0 && b.height > 0, pair[0] + ' 应真的渲染出尺寸');
+          assert(Math.abs((b.width / b.height) - pair[1]) < 0.02,
+            pair[0] + ' 宽高比应保持 ' + pair[1] + '，实际 ' + (b.width / b.height));
+        });
+        var boxW = q(doc, '.image-row[data-tpl="window"] .image-box').getBoundingClientRect().width;
+        assert(boxW > SAFE_W * 0.80 * 0.48 + 2,
+          '单张 1:1 图应比改动前更大，实际 ' + boxW + '（改动前约 ' + (SAFE_W * 0.80 * 0.48) + '）');
+
+        // 三图竖排不套用这条覆盖，仍是 80%
+        await go('three');
+        assertEq(L.getComputedStyle(target).getPropertyValue('--content-w').trim(), '80%',
+          '三图竖排不套用橱窗的内容宽覆盖，应仍为 80%');
+      } finally {
+        setValue(q(doc, '#input-summary'), '', L);
+        await go(tplWas);
         killToasts();
       }
     });
@@ -2992,8 +3813,25 @@
     L.__license.deactivate();
 
     layoutCases(L, C);
+    layoutUnitCases(L, C);
     cardgenCases(C);
     crossCases(L, C);
+
+    // 单跑开关：只保留命中的用例组（默认全量）。命中 0 条直接报错，
+    // 避免「-Suite 写错一个字」被读成「全绿」。
+    var suite = '';
+    try { suite = new URLSearchParams(location.search).get('suite') || ''; } catch (e) { suite = ''; }
+    window.__entry = window.__entry || {};
+    window.__entry.suite = suite;
+    if (suite && suite !== 'all') {
+      CASES = CASES.filter(function (c) { return suiteMatch(c.name, suite); });
+      if (!CASES.length) throw new Error('单跑开关 suite=' + suite + ' 没有命中任何用例，请检查参数（不当成空绿）');
+      // 主程序要先用卡密激活才会 bootApp。单跑的那一组若不含「授权门」用例，
+      // 先按同一条路径把主程序启动起来，否则整组会以「前置未满足」假红。
+      var hitsLayout = CASES.some(function (c) { return suiteMatch(c.name, 'layout'); });
+      var hitsGate = CASES.some(function (c) { return c.name.indexOf('layout/授权门：错误卡密') === 0; });
+      if (hitsLayout && !hitsGate) await bootLayoutApp(L, C);
+    }
 
     for (var i = 0; i < CASES.length; i++) {
       var c = CASES[i];

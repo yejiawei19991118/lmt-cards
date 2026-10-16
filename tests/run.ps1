@@ -7,6 +7,8 @@
 #   powershell -ExecutionPolicy Bypass -File tests/run.ps1 `
 #       -LayoutTarget  ../../android/lmt-layout/src/main/assets/index.html `
 #       -CardgenTarget ../../android/lmt-cardgen/src/main/assets/index.html
+#   # 只跑某一组用例（layout / layout-unit / cardgen / cross），便于本地单跑：
+#   powershell -ExecutionPolicy Bypass -File tests/run.ps1 -Suite layout-unit
 #
 # 原理：用 --dump-dom 抓取 tests/harness.html 跑完全部用例后的最终 DOM，
 #       从 <title> 读 pass/fail 与计数，从 <pre id="report"> 打印逐条明细。
@@ -27,6 +29,10 @@ param(
     # 不指定则跑 docs/ 下的 PWA 副本；指定则跑对应副本，路径相对 tests/ 目录解析
     [string]$LayoutTarget = '',
     [string]$CardgenTarget = '',
+    # 只跑某一组用例，便于本地单跑（CI 仍跑默认的全量）：
+    #   all（默认，全量）/ layout（layout/ + layout-unit/）/ layout-unit（仅专项组）/ cardgen / cross
+    # 未知取值不静默变成「0 项全绿」，harness.js 会因「命中 0 条」直接抛错。
+    [string]$Suite = 'all',
     [switch]$KeepProfile,
     [switch]$ShowBrowserStderr
 )
@@ -85,6 +91,7 @@ $url = 'file:///' + ($harness -replace '\\', '/' -replace '^/', '')
 $query = @()
 if ($LayoutTarget) { $query += 'layout=' + [Uri]::EscapeDataString($LayoutTarget) }
 if ($CardgenTarget) { $query += 'cardgen=' + [Uri]::EscapeDataString($CardgenTarget) }
+if ($Suite -and $Suite -ne 'all') { $query += 'suite=' + [Uri]::EscapeDataString($Suite) }
 if ($query.Count -gt 0) { $url = $url + '?' + ($query -join '&') }
 
 # 注意：Arguments 是交给 Windows 解析的原始字符串，含空格的值必须自带引号，

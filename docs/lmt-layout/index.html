@@ -31,13 +31,15 @@
             --text-main: #1f2430;
             --text-sub: #5b6472;
             /* 安全区内边距（相对 375×667 画布的像素值）。
-               原始位置为上50/左20/右80/下120，累计整体右移 0.7cm、下移 0.85cm：
+               原始位置为上50/左20/右80/下120，累计整体右移 0.7cm、下移 0.85cm + 0.17cm：
                按 CSS 标准 96dpi 换算，1cm = 96/2.54 ≈ 37.7953px。
-               右移 = 左侧内边距 +Δ、右侧内边距 -Δ；下移同理调整上/下内边距，尺寸保持不变。 */
-            --safe-top: 82.126px;     /* 50 + 0.85cm  */
+               右移 = 左侧内边距 +Δ、右侧内边距 -Δ；下移同理调整上/下内边距，尺寸保持不变。
+               红线（.line-top/.line-bottom）、红字标签与内容容器读的是同一组变量，
+               故改这里＝红线与内容一起上下移动，安全区尺寸始终 275×497。 */
+            --safe-top: 88.551px;     /* 50 + 0.85cm + 0.17cm */
             --safe-left: 46.457px;    /* 20 + 0.7cm   */
             --safe-right: 53.543px;   /* 80 - 0.7cm   */
-            --safe-bottom: 87.874px;  /* 120 - 0.85cm */
+            --safe-bottom: 81.449px;  /* 120 - 0.85cm - 0.17cm */
 
             /* ===== 预览区可自定义样式（供「模板自定义 / 我的模板」覆盖）=====
                默认值与今天的实际渲染像素完全一致；叠加方式是在预览根节点上用
@@ -357,6 +359,15 @@
             justify-content: space-between; /* 自动均匀分布各部分 */
             z-index: 1;
             overflow: hidden;
+        }
+
+        /* 橱窗排版的 4 张图偏小：只把「内容宽」在这个模板下放大，图片行随之变大。
+           图片长宽比由 .image-box / .screenshot-box 锁死（1:1、3:4），宽度决定高度，
+           多出来的高度由 .safe-content-area 的 space-between 吸收，表现为图片行上下间隔变小。
+           仍然是同一个 --content-w（图片行与文案行共用），故「图片区域与文案区域等宽」不变；
+           三图竖排不套用这条覆盖，仍是 80%。 */
+        .safe-content-area[data-active-tpl="window"] {
+            --content-w: 92%;
         }
 
         /* 排版样式（紧凑排版，确保塞进497px高度） */
@@ -2961,6 +2972,7 @@
             document.querySelectorAll('[data-tpl]').forEach((el) => { el.hidden = el.dataset.tpl !== name; });
             exportTarget.dataset.activeTpl = name; // 供 CSS 区分模板（如三图竖排的加粗总结文案）
             refreshSnippetFieldOptions(name);      // 常用文案库的目标字段随模板动态过滤（P-36）
+            refreshSnippetOptions();               // 片段本身也按模板过滤（只列本模板的片段）
             refreshTplClearBtn();                  // 一键清空按钮的文案随当前模板变化
             checkContentFit();
         }
@@ -2971,15 +2983,14 @@
         }
         // 「常用文案库 → 目标字段」按当前模板过滤（P-36）：
         //   橱窗排版：顶部文案 / 主标题 / 关键词 / 副标题
-        //   三图竖排：主标题 / 小标题一 / 小标题二 / 小标题三
-        const TEMPLATE_FIELDS = {
-            window: ['summary', 'title', 'keywords', 'subtitle'],
-            three: ['title', 'cap1', 'cap2', 'cap3']
-        };
+        //   三图竖排：顶部文案 / 主标题 / 小标题一 / 小标题二 / 小标题三
+        // 表体用的就是 TPL_FIELD_KEYS（模板数据隔离与片段目标字段共用同一份数据，
+        // 避免两处各自维护而漂移 —— 三图竖排的「顶部摘要」就曾因此漏掉）。
+        // TPL_FIELD_KEYS 在下方定义，这里只在函数运行时读取，不存在暂时性死区问题。
         function refreshSnippetFieldOptions(tplName) {
             const sel = document.getElementById('snippet-field-select');
             if (!sel) return;
-            const keys = TEMPLATE_FIELDS[tplName === 'three' ? 'three' : 'window'];
+            const keys = TPL_FIELD_KEYS[tplName === 'three' ? 'three' : 'window'];
             const prev = sel.value;
             sel.textContent = '';
             keys.forEach((k) => {
@@ -3334,8 +3345,6 @@
             shotLeft: '左截图 (3:4)', shotRight: '右截图 (3:4)',
             wide1: '图片一 (1440×600)', wide2: '图片二 (1440×600)', wide3: '图片三 (1440×600)'
         };
-        // three 模板专属字段：在 window 模板下是隐藏的，插入/出图时需先切模板
-        const THREE_ONLY_FIELDS = { cap1: true, cap2: true, cap3: true };
 
         // 样式键 → CSS 变量名（变量定义在 :root，默认值=今天渲染出的实际值）
         const STYLE_VARS = {
@@ -4104,8 +4113,10 @@
             items.forEach((it) => {
                 const o = document.createElement('option');
                 o.value = it.id;
-                // 选项文案：名称 · 修改时间 · 体积
-                o.textContent = it.name + ' · ' + fmtDraftTime(it.updated) + ' · ' + fmtDraftBytes(it.bytes);
+                // 选项文案：模板 · 名称 · 修改时间 · 体积
+                // 两套模板的草稿都列出来，靠模板名区分（载入时会自动切到该草稿的模板）
+                o.textContent = '【' + tplLabelOf(it.tpl) + '】' + it.name + ' · '
+                    + fmtDraftTime(it.updated) + ' · ' + fmtDraftBytes(it.bytes);
                 draftSelect.appendChild(o);
             });
             if (Array.prototype.some.call(draftSelect.options, (o) => o.value === prev)) draftSelect.value = prev;
@@ -4123,11 +4134,24 @@
             const item = {
                 id: 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
                 text: String(text),
-                field: FIELD_INPUTS[field] ? field : 'summary'
+                field: FIELD_INPUTS[field] ? field : 'summary',
+                // 片段归属：在哪个模板下保存就属于哪个模板（列表按模板严格过滤）
+                tpl: currentSlotName()
             };
             if (!persistSnippets(listSnippets().concat([item]))) return false;
             refreshSnippetOptions();
             return true;
+        }
+        // 片段归属：新片段认自己保存时的 tpl；再早存的旧片段没有 tpl，
+        // 按它绑定的字段推断可归属的模板（关键词/副标题→橱窗；段落小标题→三图；
+        // 顶部摘要/主标题两套模板都有→两边都显示），无需迁移旧数据。
+        function fieldTplsOf(field) {
+            return TPL_SLOTS.filter((t) => (TPL_FIELD_KEYS[t] || []).indexOf(field) >= 0);
+        }
+        function snippetBelongsTo(s, tpl) {
+            if (!s || TPL_SLOTS.indexOf(tpl) < 0) return false;
+            if (TPL_SLOTS.indexOf(s.tpl) >= 0) return s.tpl === tpl;
+            return fieldTplsOf(s.field).indexOf(tpl) >= 0;
         }
         function deleteSnippet(id) {
             persistSnippets(listSnippets().filter((s) => s.id !== id));
@@ -4136,17 +4160,12 @@
         }
         // fieldOverride：目标字段由「常用文案库」的 #snippet-field-select 指定（先选字段 → 再选片段即写入）；
         // 不传时回落到片段自己记录的字段（保存时就绑定的那个），旧调用语义保持不变。
+        // 列表已按模板过滤、目标字段下拉也只列当前模板的字段，故这里不再有「为隐藏字段自动切模板」
+        // 那套逻辑（那会让用户莫名其妙被切走，而且片段与目标字段一定同属一个模板）。
         function insertSnippet(id, fieldOverride) {
             const s = listSnippets().filter((x) => x.id === id)[0];
             if (!s) return false;
             const field = (fieldOverride && FIELD_INPUTS[fieldOverride]) ? fieldOverride : s.field;
-            // three 专属字段在 window 模板下是隐藏的：先切到 three 再写，
-            // 否则用户看不到结果，会以为「点了没反应」。
-            if (THREE_ONLY_FIELDS[field] && (exportTarget.dataset.activeTpl !== 'three')) {
-                selectTemplateValue('three');
-                templateSelect.value = 'three';
-                onTemplateSelectChange('three');
-            }
             const input = FIELD_INPUTS[field];
             if (!input) return false;
             input.value = s.text;
@@ -4156,12 +4175,13 @@
             return true;
         }
         function refreshSnippetOptions() {
-            const items = listSnippets();
+            // 只列属于当前模板的片段（严格按保存时的模板；旧片段按字段推断归属）
+            const items = listSnippets().filter((s) => snippetBelongsTo(s, currentSlotName()));
             const prev = snippetSelect.value;
             snippetSelect.textContent = '';
             const ph = document.createElement('option');
             ph.value = '';
-            ph.textContent = '— 选择文案片段 —';
+            ph.textContent = items.length ? '— 选择文案片段 —' : '— 暂无本模板的片段 —';
             snippetSelect.appendChild(ph);
             items.forEach((s) => {
                 const o = document.createElement('option');
@@ -4962,7 +4982,15 @@
             saveSnippet: saveSnippet, listSnippets: listSnippets, insertSnippet: insertSnippet, deleteSnippet: deleteSnippet,
             // 新增：确认弹层 / 撤销提示 / 目标计数 / 模板字段过滤 / 导出倍率（供用例直接复用）
             confirmDialog: confirmDialog, showUndoToast: showUndoToast, updateBatchCount: updateBatchCount,
-            refreshSnippetFieldOptions: refreshSnippetFieldOptions, currentExportScale: currentExportScale
+            refreshSnippetFieldOptions: refreshSnippetFieldOptions, currentExportScale: currentExportScale,
+            // 专项用例组（layout-unit/）用到的模板隔离入口：
+            // 槽名 / 两套模板的字段与图片键 / 一键清空 / 片段列表刷新 / 切模板 / 批量清单。
+            // 表体是只读用途，直接给出引用（用例不会改它）。
+            currentSlotName: currentSlotName, TPL_FIELD_KEYS: TPL_FIELD_KEYS, TPL_IMG_KEYS: TPL_IMG_KEYS,
+            clearCurrentTemplate: clearCurrentTemplate, applyTemplate: applyTemplate,
+            refreshSnippetOptions: refreshSnippetOptions, buildBatchTasks: buildBatchTasks,
+            // 用例要构造「旧片段（无 tpl）」来验证按字段推断归属，需要直接写本地存储
+            SNIPPET_KEY: SNIPPET_KEY
         };
     }
 
