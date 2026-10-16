@@ -1,6 +1,6 @@
 // PWA Service Worker：缓存应用外壳，实现离线可用（仅同源资源，跨域请求直接走网络）
-const CACHE = 'lmt-layout-v40';
-// @index-hash: 8f6974ca  （index.html 归一化内容前 8 位；改完 index.html 运行 tools/web-sync.ps1 -Bump 自动升版）
+const CACHE = 'lmt-layout-v42';
+// @index-hash: 9ee13197  （index.html 归一化内容前 8 位；改完 index.html 运行 tools/web-sync.ps1 -Bump 自动升版）
 const ASSETS = [
   './index.html',
   './html2canvas.min.js',
@@ -61,7 +61,12 @@ self.addEventListener('fetch', function (e) {
         const copy = resp.clone();
         caches.open(CACHE).then(function (c) { c.put(req, copy); }).catch(function () {});
         return resp;
-      }).catch(function () { return caches.match('./index.html'); });
+      }).catch(function () {
+        // 非导航请求（JS/CSS/图片等）失败时不得回退 index.html：
+        // 那等于把 HTML 当成脚本/样式/图片返回，会造成 MIME 类型错乱（解析失败/控制台报错）。
+        // 返回网络错误，与未安装 SW 时行为一致。
+        return Response.error();
+      });
     })
   );
 });
