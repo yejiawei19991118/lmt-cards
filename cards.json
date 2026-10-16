@@ -1,7 +1,7 @@
 {
   "ver": 2,
-  "updated": "2026-10-16T23:40:12+08:00",
-  "rev": "8feb57ffc09b5ce1",
+  "updated": "2026-10-16T23:51:01+08:00",
+  "rev": "1e4d915ccc7f00a3",
   "cards": [
     {
       "card": "JYEB-9339-4V2R-S4GG-2JVJ",
@@ -16,6 +16,12 @@
       "exp": "2026-11-16"
     },
     {
+      "card": "27BQ-90Q1-0SP2-8QM7-VRCZ",
+      "mc": "QQEK-TXJ0-3VCP-28XM",
+      "note": "",
+      "exp": ""
+    },
+    {
       "card": "DFV7-54ZB-25TD-HCY4-R1QH",
       "mc": "S972-TX23-FBCM-6KNS",
       "note": "电脑",
@@ -23,5 +29,5 @@
     }
   ],
   "revoked": [],
-  "sig2": "MMAZBMDDR78M403NT3SFDYN2SNCP83ZXR89PWGKF1M86J2BBSMXDH7W6G5K5VAA6E13VSM28JBDAN3E83PMGDASBCQC07668RMAV22R"
+  "sig2": "3NG1355WNQF1WKM02YBTD9V3P8XFSTQ5S8NJJVZWB1BN5XS9HF81SRT7A6HMWAVX0H6MRDX6119Y36VZDCH2RN3GSSK61C7KC9B0A28"
 }
