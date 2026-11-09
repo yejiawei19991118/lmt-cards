@@ -841,6 +841,9 @@
             height: auto; min-height: var(--h-md);
             padding: 9px var(--sp-2); line-height: 1.3;
         }
+        /* 弹层内只有两个按钮时，全局的「危险按钮紧凑靠右」会把取消撑到满宽、一大一小明显失衡；
+           这里改回等宽，且视觉上「取消在左、操作在右」（DOM 顺序由 confirmDialog 保证） */
+        .lmt-modal-card .lmt-btn-row > .btn-danger { flex: 1 1 0; margin-left: 0; }
         .lmt-modal-card input[type="text"] {
             width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #dbe1ea;
             border-radius: 9px; font-size: 14px; font-family: inherit; background: #fbfcfe; color: var(--text-main);
@@ -2828,11 +2831,13 @@
             canvas.width = tw;
             canvas.height = th;
             const ctx = canvas.getContext('2d');
-            // 圆角半径与 CSS 保持一致(10px × EXPORT_SCALE)，直接烘焙进位图。
+            // 圆角半径跟随 --tpl-radius（默认 10px × EXPORT_SCALE），直接烘焙进位图。
             // 这样即使 html2canvas 不裁剪 <canvas> 子元素的 border-radius，
             // 导出图的圆角也一定正确（圆角外为透明，露出白色导出背景）。
             ctx.beginPath();
-            const r = 10 * EXPORT_SCALE;
+            // 圆角跟随「图片圆角」自定义（--tpl-radius）：早先硬编码 10px，
+            // 用户把圆角调成 0 或 30 时导出图与预览不一致
+            const r = Math.max(0, readCurrentStyle().radius * EXPORT_SCALE);
             ctx.moveTo(r, 0);
             ctx.arcTo(tw, 0, tw, th, r);
             ctx.arcTo(tw, th, 0, th, r);
@@ -2886,6 +2891,19 @@
                 e.target.value = '';
                 if (!file) return;
                 const token = ++uploadToken;
+                // 手动换图同时作废旧图恢复（草稿载入/批量渲染的 restorePhoto 可能还在解码），
+                // 否则后到的旧图会把刚选的图盖掉，photoSource 也被改回草稿那份
+                photoSeq[key] = (photoSeq[key] || 0) + 1;
+                // 基础校验：非图片或超大文件直接拒绝，避免数十 MB 照片全量读进内存把低端 WebView 压垮。
+                // file.type 在部分安卓相册为空串，只在「有值且不是图片」时才拦，避免误伤
+                if (file.type && file.type.indexOf('image/') !== 0) {
+                    if (label) { label.textContent = '请选择图片文件'; label.classList.remove('done'); }
+                    return;
+                }
+                if (file.size > 30 * 1024 * 1024) {
+                    if (label) { label.textContent = '图片过大（超过 30MB），请压缩后再传'; label.classList.remove('done'); }
+                    return;
+                }
                 // 大图解码需要时间，先给一个「读取中」反馈，避免用户以为点了没反应
                 if (label) { label.textContent = '读取中…'; label.classList.remove('done'); }
                 const reader = new FileReader();
@@ -3826,7 +3844,7 @@
         let idbPromise = null;
         function openImageDb() {
             if (idbPromise) return idbPromise;
-            idbPromise = new Promise((resolve) => {
+            const opening = new Promise((resolve) => {
                 let req = null;
                 try {
                     if (typeof indexedDB === 'undefined' || !indexedDB) { resolve(null); return; }
@@ -3843,6 +3861,9 @@
                 // 避免「保存草稿」一直停在等待里，用户以为点了没反应
                 setTimeout(() => resolve(null), 3000);
             });
+            // 失败（被拒/被旧连接阻塞/超时）不缓存结果：下次调用重新尝试，
+            // 否则一次失败后整个会话的带图草稿都静默退化为仅存文案
+            idbPromise = opening.then((db) => { if (!db) idbPromise = null; return db; });
             return idbPromise;
         }
         function idbPutImages(id, imgs) {
@@ -3957,7 +3978,9 @@
             const item = {
                 id: 'd_' + now.toString(36) + Math.random().toString(36).slice(2, 6),
                 name: sanitizeName(name || defaultName('草稿'), 24),
-                tpl: templateSelect.value,
+                // 记底层槽名而非下拉当前值：当前值可能是「我的模板」预设 id（t_*），
+                // 预设一旦被删，载入时模板静默回落成橱窗，三图竖排草稿的字段与宽图全部错位
+                tpl: currentSlotName(),
                 savedAt: now,
                 updated: now,
                 fields: captureFields(),
@@ -3977,14 +4000,19 @@
         }
         // 载入草稿：返回 { ok, imgsMissing }。imgsMissing=true 表示草稿记录了图片却一张都没取回
         //（IndexedDB 被拒或记录已丢），文案与样式照常载入，由调用方给出明确提示。
+        // loadDraftSeq：快速连选两份草稿时，慢的那份（IndexedDB 读图较慢）会后到，
+        // 没有令牌保护会覆盖掉后选草稿的字段，下拉显示与画布内容对不上
+        let loadDraftSeq = 0;
         async function loadDraft(id) {
             const d = listDrafts().filter((x) => x.id === id)[0];
             if (!d) return { ok: false, imgsMissing: false };
+            const seq = ++loadDraftSeq;
             if (d.tpl) {
                 selectTemplateValue(d.tpl);
                 onTemplateSelectChange(templateSelect.value);
             }
             const imgs = await hydrateDraftImages(d);
+            if (seq !== loadDraftSeq) return { ok: false, imgsMissing: false }; // 已被更新的选择取代
             await applySnapshot({ fields: d.fields, imgs: imgs, style: d.style });
             return { ok: true, imgsMissing: draftImageCount(d) > 0 && !Object.keys(imgs).length };
         }
@@ -4041,13 +4069,16 @@
             }
             // 带图导入（尤其一次多份）常超 localStorage 上限：逐份把图片挪进 IndexedDB 后重试
             let keptImgs = true;
+            const movedToIdb = [];
             for (const it of cleaned) {
                 if (!it.imgCount) continue;
-                if (await idbPutImages(it.id, it.imgs)) { it.imgs = {}; it.imgRef = 'idb'; }
+                if (await idbPutImages(it.id, it.imgs)) { it.imgs = {}; it.imgRef = 'idb'; movedToIdb.push(it.id); }
                 else { keptImgs = false; it.imgs = {}; }
                 it.bytes = approxDraftBytes(it);
             }
             if (!persistDrafts(listDrafts().concat(cleaned))) {
+                // 元数据最终没写进去：已搬进 IndexedDB 的图片永远不可达，回删避免孤儿记录占空间
+                movedToIdb.forEach((movedId) => idbDeleteImages(movedId));
                 setMsg(draftMsg, '导入失败：本地存储空间不足（可先删除部分草稿）');
                 return false;
             }
@@ -4533,9 +4564,14 @@
                 selectTemplateValue(beforeSnap.tpl);
                 onTemplateSelectChange(templateSelect.value);
                 fieldSlotLock = false;
-                // 两套模板的槽在批量期间被冻结、未被改写，文案照旧还原；
-                // 图片按当前模板作用域还原（另一套模板的图批量期间没被动过）
-                await applySnapshot({ fields: beforeSnap.fields, imgs: beforeSnap.imgs, style: beforeSnap.style });
+                // 两套模板的槽在批量期间被冻结、未被改写，文案照旧还原
+                await applySnapshot({ fields: beforeSnap.fields, style: beforeSnap.style });
+                // 图片必须按全量键还原：本批若混有另一套模板的草稿，渲染时那边槽位的图
+                // 已被覆盖/清除（renderBatchTask 按每张草稿切模板并应用快照），
+                // 只按「当前模板作用域」还原会把用户另一套模板的照片永久弄丢
+                await Promise.all(Object.keys(IMG_TARGETS).map((k) => (
+                    beforeSnap.imgs[k] ? restorePhoto(k, beforeSnap.imgs[k]) : Promise.resolve(clearPhoto(k))
+                )));
                 if (Array.prototype.some.call(fontSelect.options, (o) => o.value === beforeSnap.font)) {
                     fontSelect.value = beforeSnap.font;
                     applyHandwritingFont(fontSelect.selectedOptions[0]);
@@ -4611,8 +4647,9 @@
                 ok.addEventListener('click', () => finish((input.value || '').trim() || defaultValue || ''));
                 cancel.addEventListener('click', () => finish(null));
                 mask.addEventListener('click', (e) => { if (e.target === mask) finish(null); });
-                row.appendChild(ok);
+                // 取消在左、确定在右：与确认弹层（confirmDialog）保持同一套视觉顺序
                 row.appendChild(cancel);
+                row.appendChild(ok);
                 card.appendChild(h);
                 card.appendChild(input);
                 card.appendChild(row);
@@ -4664,6 +4701,8 @@
                 cancel.className = 'btn-ghost';
                 cancel.textContent = opts.cancelText || '取消';
                 cancel.addEventListener('click', () => finish(hasChoices ? null : false));
+                // 取消在左、操作在右：等宽布局下与手机端系统弹窗习惯一致
+                row.appendChild(cancel);
                 if (hasChoices) {
                     opts.choices.forEach((c) => {
                         const b = document.createElement('button');
@@ -4681,7 +4720,6 @@
                     ok.addEventListener('click', () => finish(true));
                     row.appendChild(ok);
                 }
-                row.appendChild(cancel);
                 card.appendChild(row);
                 mask.appendChild(card);
                 mask.addEventListener('click', (e) => { if (e.target === mask) finish(hasChoices ? null : false); });
@@ -4785,7 +4823,12 @@
             reader.readAsText(file);
         });
         // 草稿搜索：重渲染下拉与批量清单（两者共用 queryDrafts 的取数口径，保留当前选中项）
-        if (draftSearch) draftSearch.addEventListener('input', () => refreshDraftOptions());
+        // 草稿搜索防抖：草稿表可能含内联图 base64（数 MB），每击键全量解析 + 重建 DOM 会明显卡顿
+        let draftSearchTimer = 0;
+        if (draftSearch) draftSearch.addEventListener('input', () => {
+            clearTimeout(draftSearchTimer);
+            draftSearchTimer = setTimeout(refreshDraftOptions, 150);
+        });
         // 重命名草稿：复用命名浮层（标题「重命名草稿」），改完刷新下拉并保持选中
         draftRenameBtn.addEventListener('click', async () => {
             if (!draftSelect.value) { setMsg(draftMsg, '请先在下拉框选择要重命名的草稿'); return; }
@@ -4991,9 +5034,10 @@
         var hadController = !!navigator.serviceWorker.controller;
         var edited = false;
 
-        ['pointerdown', 'keydown', 'input'].forEach(function (t) {
-            document.addEventListener(t, function () { edited = true; }, { capture: true, once: true });
-        });
+        // 只有真正产生内容变化（输入文本、选择文件/选项）才阻止自动刷新；
+        // 纯点击按钮不该把本次版本更新永久挡掉（用户点过一次页面就一直跑旧版）
+        document.addEventListener('input', function () { edited = true; }, { capture: true, once: true });
+        document.addEventListener('change', function () { edited = true; }, { capture: true, once: true });
 
         function checkForUpdate() {
             if (swReg && swReg.update) { swReg.update().catch(function () {}); }
