@@ -2,22 +2,22 @@
   "updated": "2026-11-09",
   "apps": {
     "lmt-layout": {
-      "versionCode": 41,
-      "versionName": "1.40",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.40/lmt-layout-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=41", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=41", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=41"],
-      "sha256": "bd2f65eed9d109be036e636c4e39a8f539d55d182984f338858f3cc55fc23374",
-      "size": 160362,
-      "notes": "优化：清单更新时间改为可读格式，删除 jsDelivr @main 备用源\n\n时间显示：2026-10-31T13:54:00+08:00 → 2026-10-31 13:54（主程序状态条、卡密生成器诊断报告与同步差异报告统一）\n备用源：删除 https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json，仅保留不带 ref 的写法（@main 分支引用缓存约 12 小时且 purge 易失效，长期停在旧版本）\n修复：发版流水线的更新文案改经 UTF-8 文件传递，解决清单 notes 中文乱码（v1.39 曾出现整段乱码）"
+      "versionCode": 42,
+      "versionName": "1.41",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.41/lmt-layout-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=42", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=42", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=42"],
+      "sha256": "c7574b507a414a43937e06ebab43cc031f60c05d8b9e178e1ddcbe131260487d",
+      "size": 160326,
+      "notes": "清理死代码，全面复查两个 PWA 与安卓侧\n\n死代码：删除 lmt-layout 的 currentPubKey()、lmt-cardgen 的 latestSnapshot()，两者全文件零调用（对应逻辑已被内联/替代）\n\n复查范围：两个 PWA 共 379 个函数定义、顶层常量、DOM id 引用、Object URL 生命周期；安卓侧 Updater / MainActivity / ApkFileProvider / UpdaterTest\n\n结论：未再发现未引用的函数与常量；无悬空的 getElementById 引用；Object URL 均成对 revoke；无 setInterval 与重复的 window 监听；事件监听与定时器均配有清理。Java 侧报告项均为 ContentProvider 重写方法、@JavascriptInterface 与 JUnit 测试方法，由框架调用，非死代码\n\n验证：测试 89 项全通过（86 通过 / 3 跳过 / 0 失败）"
     },
     "lmt-cardgen": {
-      "versionCode": 41,
-      "versionName": "1.40",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.40/lmt-cardgen-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=41", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=41", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=41"],
-      "sha256": "29dbeb3494067b884e94e8df34a240bdc8a9df0a678c8c70ed70dec89c378b6b",
-      "size": 109907,
-      "notes": "优化：清单更新时间改为可读格式，删除 jsDelivr @main 备用源\n\n时间显示：2026-10-31T13:54:00+08:00 → 2026-10-31 13:54（主程序状态条、卡密生成器诊断报告与同步差异报告统一）\n备用源：删除 https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json，仅保留不带 ref 的写法（@main 分支引用缓存约 12 小时且 purge 易失效，长期停在旧版本）\n修复：发版流水线的更新文案改经 UTF-8 文件传递，解决清单 notes 中文乱码（v1.39 曾出现整段乱码）"
+      "versionCode": 42,
+      "versionName": "1.41",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.41/lmt-cardgen-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=42", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=42", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=42"],
+      "sha256": "f66554fd06a01d75747b532f0301a0c607e719c92a93de9b326d3d822c3572ea",
+      "size": 109879,
+      "notes": "清理死代码，全面复查两个 PWA 与安卓侧\n\n死代码：删除 lmt-layout 的 currentPubKey()、lmt-cardgen 的 latestSnapshot()，两者全文件零调用（对应逻辑已被内联/替代）\n\n复查范围：两个 PWA 共 379 个函数定义、顶层常量、DOM id 引用、Object URL 生命周期；安卓侧 Updater / MainActivity / ApkFileProvider / UpdaterTest\n\n结论：未再发现未引用的函数与常量；无悬空的 getElementById 引用；Object URL 均成对 revoke；无 setInterval 与重复的 window 监听；事件监听与定时器均配有清理。Java 侧报告项均为 ContentProvider 重写方法、@JavascriptInterface 与 JUnit 测试方法，由框架调用，非死代码\n\n验证：测试 89 项全通过（86 通过 / 3 跳过 / 0 失败）"
     }
   }
 }
