@@ -1,7 +1,7 @@
 {
   "ver": 2,
-  "updated": "2026-11-10T00:38:12+08:00",
-  "rev": "af0956df5a3cf7bb",
+  "updated": "2026-11-10T00:38:28+08:00",
+  "rev": "de388aefd1c59182",
   "cards": [
     {
       "card": "JYEB-9339-4V2R-S4GG-2JVJ",
@@ -48,10 +48,10 @@
     {
       "card": "ZQ5B-TCD3-7VNF-NFFJ-BS6A",
       "mc": "ZSY5-TQ3Z-889V-TCBT",
-      "note": "",
+      "note": "x300",
       "exp": ""
     }
   ],
   "revoked": [],
-  "sig2": "8BKDKEA832X7QPHP6XV4T3JA3XE9XDDYH4PNKBB2EGMKRS829CJ7JG651SH6WCPZ2T9Z2T48ERV406NX5AR3RCVCVS7H90NF3DV2P2G"
+  "sig2": "2CN26C7202VCNTZ1X3ZA6VDZS9JCD8GDB29ME1NK4YW0AY333VBS85346QMGNHKCYFNT7ZDQ8TGQYEPJXCJ52WBNAYGBPWWJNN08E2R"
 }
