@@ -1,23 +1,31 @@
 {
-  "updated": "2026-11-09",
-  "apps": {
-    "lmt-layout": {
-      "versionCode": 40,
-      "versionName": "1.39",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.39/lmt-layout-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=40", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=40", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=40"],
-      "sha256": "4df0267607f921e469b47c03c482fe56a9e91908960cc7fb7e43a19dbb8f41a7",
-      "size": 160358,
-      "notes": "fix: 娓呭崟鏇存柊鏃堕棿鏀逛负鍙鏍煎紡锛岀Щ闄?jsDelivr @main 澶囩敤婧?\n鏃堕棿鏄剧ず锛?026-10-31T13:54:00+08:00 鈫?2026-10-31 13:54锛堜富绋嬪簭鐘舵€佹潯涓庡崱瀵嗙敓鎴愬櫒璇婃柇鎶ュ憡鍚屾锛?澶囩敤婧愶細鍒犻櫎 https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json锛屼粎淇濈暀涓嶅甫 ref 鐨勫啓娉曪紙@main 鍒嗘敮寮曠敤缂撳瓨 12 灏忔椂涓?purge 鏄撳け鏁堬紝闀挎湡鍋滃湪鏃х増鏈級"
-    },
-    "lmt-cardgen": {
-      "versionCode": 40,
-      "versionName": "1.39",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.39/lmt-cardgen-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=40", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=40", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=40"],
-      "sha256": "161f49df0b65f1a7061601249f9f3e2240d937856397b7e670b5984108cb02ef",
-      "size": 109903,
-      "notes": "fix: 娓呭崟鏇存柊鏃堕棿鏀逛负鍙鏍煎紡锛岀Щ闄?jsDelivr @main 澶囩敤婧?\n鏃堕棿鏄剧ず锛?026-10-31T13:54:00+08:00 鈫?2026-10-31 13:54锛堜富绋嬪簭鐘舵€佹潯涓庡崱瀵嗙敓鎴愬櫒璇婃柇鎶ュ憡鍚屾锛?澶囩敤婧愶細鍒犻櫎 https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json锛屼粎淇濈暀涓嶅甫 ref 鐨勫啓娉曪紙@main 鍒嗘敮寮曠敤缂撳瓨 12 灏忔椂涓?purge 鏄撳け鏁堬紝闀挎湡鍋滃湪鏃х増鏈級"
-    }
-  }
+    "updated":  "2026-11-09",
+    "apps":  {
+                 "lmt-layout":  {
+                                    "versionCode":  40,
+                                    "versionName":  "1.39",
+                                    "url":  "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.39/lmt-layout-release.apk",
+                                    "mirrors":  [
+                                                    "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=40",
+                                                    "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=40",
+                                                    "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=40"
+                                                ],
+                                    "sha256":  "4df0267607f921e469b47c03c482fe56a9e91908960cc7fb7e43a19dbb8f41a7",
+                                    "size":  160358,
+                                    "notes":  "fix: 娓呭崟鏇存柊鏃堕棿鏀逛负鍙鏍煎紡锛岀Щ闄?jsDelivr @main 澶囩敤婧恅n\n鏃堕棿鏄剧ず锛?026-10-31T13:54:00+08:00 鈫?2026-10-31 13:54锛堜富绋嬪簭鐘舵€佹潯涓庡崱瀵嗙敓鎴愬櫒璇婃柇鎶ュ憡鍚屾锛塦n澶囩敤婧愶細鍒犻櫎 https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json锛屼粎淇濈暀涓嶅甫 ref 鐨勫啓娉曪紙@main 鍒嗘敮寮曠敤缂撳瓨 12 灏忔椂涓?purge 鏄撳け鏁堬紝闀挎湡鍋滃湪鏃х増鏈級"
+                                },
+                 "lmt-cardgen":  {
+                                     "versionCode":  40,
+                                     "versionName":  "1.39",
+                                     "url":  "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.39/lmt-cardgen-release.apk",
+                                     "mirrors":  [
+                                                     "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=40",
+                                                     "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=40",
+                                                     "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=40"
+                                                 ],
+                                     "sha256":  "161f49df0b65f1a7061601249f9f3e2240d937856397b7e670b5984108cb02ef",
+                                     "size":  109903,
+                                     "notes":  "fix: 娓呭崟鏇存柊鏃堕棿鏀逛负鍙鏍煎紡锛岀Щ闄?jsDelivr @main 澶囩敤婧恅n\n鏃堕棿鏄剧ず锛?026-10-31T13:54:00+08:00 鈫?2026-10-31 13:54锛堜富绋嬪簭鐘舵€佹潯涓庡崱瀵嗙敓鎴愬櫒璇婃柇鎶ュ憡鍚屾锛塦n澶囩敤婧愶細鍒犻櫎 https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json锛屼粎淇濈暀涓嶅甫 ref 鐨勫啓娉曪紙@main 鍒嗘敮寮曠敤缂撳瓨 12 灏忔椂涓?purge 鏄撳け鏁堬紝闀挎湡鍋滃湪鏃х増鏈級"
+                                 }
+             }
 }
