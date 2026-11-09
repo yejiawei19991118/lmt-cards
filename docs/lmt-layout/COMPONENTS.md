@@ -1,6 +1,6 @@
 # LMT 图文排版生成器 · 功能组件清单
 
-> 版本：v1.36（2026-11-09）
+> 版本：v1.37（2026-11-09）
 > 入口：`docs/lmt-layout/index.html`（PWA 单文件应用）
 
 ---
@@ -25,7 +25,7 @@
 | 元素 | 类型 | 说明 |
 |---|---|---|
 | `.upload-btn` label | 触发器 | 代理点击隐藏 input，显示「点击上传图片」/「已上传：文件名」 |
-| `input[type=file]` | 文件选择 | `accept="image/*"`，隐藏 |
+| `input[type=file]` | 文件选择 | `accept="image/*"`，隐藏；读取前校验类型（`image/` 前缀）与大小（≤30MB），超限直接拒绝并提示 |
 | `.clear-btn` | 清除按钮 | 上传成功后显示，点击触发 `clearPhoto()` |
 | `.preview-*` 容器 | 预览框 | 内含 `<canvas class="preview-photo">` |
 
@@ -33,12 +33,12 @@
 
 | 模式 | 包围盒 | 位图尺寸（×4） | 圆角 | 说明 |
 |---|---|---|---|---|
-| `cover` | 方形 | 528×528 | 10px | 等比放大铺满，居中裁剪 |
-| `contain` | 竖长 132:176 | 528×704 | 10px | 等比缩小完整放入，留白 `#fbfcfe` |
-| `wide` | 12:5 | 1100×458 | 10px | 等比放大铺满，居中裁剪 |
+| `cover` | 方形 | 528×528 | 跟随 `--tpl-radius` | 等比放大铺满，居中裁剪 |
+| `contain` | 竖长 132:176 | 528×704 | 跟随 `--tpl-radius` | 等比缩小完整放入，留白 `#fbfcfe` |
+| `wide` | 12:5 | 1100×458 | 跟随 `--tpl-radius` | 等比放大铺满，居中裁剪 |
 
 - 位图按 `EXPORT_SCALE = 4` 生成，html2canvas 复制时为降采样，保证清晰度
-- 圆角直接烘焙进位图，不依赖 CSS `border-radius`
+- 圆角读取 `readCurrentStyle().radius`（0–30px 可调）× 4 烘焙进位图，导出与预览始终一致，不依赖 CSS `border-radius`
 - `computeDrawRect()` 纯函数计算等比绘制矩形，绝不拉伸变形
 
 ### 2.3 原图存档（`photoSource`）
@@ -52,7 +52,8 @@
 | 机制 | 作用 |
 |---|---|
 | `uploadToken` | 连续换图时丢弃早发起晚完成的解码结果，防串图 |
-| `photoSeq[key]` | 清除/恢复时作废在途解码，防异步竞争 |
+| `photoSeq[key]` | 清除/恢复时作废在途解码；手动换图同样自增，防草稿恢复的旧图覆盖新选图 |
+| `loadDraftSeq` | 快速连选两份草稿时丢弃先到慢草稿的过期结果，防串内容 |
 
 ---
 
@@ -140,12 +141,12 @@
 | 功能 | 函数/组件 |
 |---|---|
 | 保存草稿 | `saveDraft(name)` |
-| 载入草稿 | `loadDraft(id)` → 返回 `{ ok, imgsMissing }` |
+| 载入草稿 | `loadDraft(id)` → 返回 `{ ok, imgsMissing }`；`loadDraftSeq` 令牌丢弃过期载入 |
 | 删除草稿 | `deleteDraft(id)` |
 | 重命名草稿 | `draft-rename-btn` → `promptName()` |
 | 导出草稿 | `exportDrafts()` → JSON 文件 |
-| 导入草稿 | `importDrafts(json)` |
-| 搜索草稿 | `draft-search` → `queryDrafts()` |
+| 导入草稿 | `importDrafts(json)`；最终持久化失败时回删已搬进 IndexedDB 的图片，不留孤儿记录 |
+| 搜索草稿 | `draft-search` → `queryDrafts()`（150ms 防抖，避免每击键全量解析草稿表） |
 | 刷新列表 | `refreshDraftOptions()` |
 | 格式化时间 | `fmtDraftTime(ts)` |
 | 格式化字节 | `fmtDraftBytes(b)` |
@@ -159,7 +160,7 @@
 | 容量估算 | `approxDraftBytes(item)` |
 | 图片计数 | `draftImageCount(d)` |
 | 图片水合 | `hydrateDraftImages(d)` |
-| 打开数据库 | `openImageDb()` |
+| 打开数据库 | `openImageDb()`（失败不缓存结果，下次调用自动重试） |
 | 持久化单项 | `persistDraftItem(item)` |
 
 ### 5.3 草稿数据结构
@@ -168,7 +169,7 @@
 {
   id: string,
   name: string,
-  tpl: 'window' | 'three',
+  tpl: 'window' | 'three',  // 底层槽名（非「我的模板」预设 id，避免预设删除后载入错位）
   fields: { summary, title, keywords, subtitle, cap1, cap2, cap3 },
   style: { titleColor, titleSize, summaryColor, summarySize, copyColor, copySize, radius, bg },
   imgs: { left?, right?, shotLeft?, shotRight?, wide1?, wide2?, wide3? }, // 存 IndexedDB
@@ -214,7 +215,7 @@
 | 渲染单个任务 | `renderBatchTask(task, d)` |
 | 设置进度 | `setBatchProgress(done, total)` |
 | 完成处理 | `finishBatch(res)` |
-| 执行批量 | `performBatch(tasks)` |
+| 执行批量 | `performBatch(tasks)`（收尾按两套模板全量图片键还原，混模板出图不丢图） |
 | 取消批量 | `batchCancelBtn` → `batchCancel = true` |
 | 重试失败 | `batchRetryBtn` |
 
@@ -275,7 +276,7 @@
 - `updateViaCache: 'none'`：SW 脚本不走 HTTP 缓存
 - 每次页面回到前台主动 `update()`：iOS 主屏 App 切回时发现新版本
 - `controllerchange` 时自动刷新：新 SW 接管后刷新页面（仅未编辑时）
-- `edited` 标志位：用户有输入时禁止自动刷新，防止丢内容
+- `edited` 标志位：仅 `input`/`change`（真实内容变化）置位阻止自动刷新，纯点击不阻止，防止丢内容
 
 ---
 
@@ -337,6 +338,8 @@
 | 撤销提示 | `showUndoToast(message, onUndo, ttlMs)` |
 | 轻提示 | `showToast(message, ttlMs)` |
 | 手动复制弹窗 | `showManualCopy(text, title)` |
+
+- 弹层按钮统一等宽布局，「取消」固定在左、操作按钮在右（含危险操作），与手机系统弹窗习惯一致
 
 ### 12.2 工具函数
 
