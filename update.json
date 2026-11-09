@@ -1,31 +1,23 @@
 {
-    "updated":  "2026-11-09",
-    "apps":  {
-                 "lmt-layout":  {
-                                    "versionCode":  39,
-                                    "versionName":  "1.38",
-                                    "url":  "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.38/lmt-layout-release.apk",
-                                    "mirrors":  [
-                                                    "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=39",
-                                                    "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=39",
-                                                    "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=39"
-                                                ],
-                                    "sha256":  "d2eaf19af320d3556bd99ec76b2fc431020dee60b292b5882da208b95a305dc7",
-                                    "size":  160218,
-                                    "notes":  "UI：确认/输入弹层按钮等宽、取消在左操作在右\n修复：批量出图混模板时另一套模板照片被永久清除；图片圆角烘焙跟随自定义；草稿记录底层槽名避免预设删除后错位；手动换图作废在途恢复防串图；载入草稿加令牌防快速连选串内容；导入失败回删 IndexedDB 孤儿图片；IndexedDB 打开失败不再永久缓存；上传校验类型与 30MB 上限\n优化：草稿搜索 150ms 防抖；SW 更新仅在实际输入后阻止自动刷新"
-                                },
-                 "lmt-cardgen":  {
-                                     "versionCode":  39,
-                                     "versionName":  "1.38",
-                                     "url":  "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.38/lmt-cardgen-release.apk",
-                                     "mirrors":  [
-                                                     "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=39",
-                                                     "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=39",
-                                                     "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=39"
-                                                 ],
-                                     "sha256":  "2c5dad58ce3b03b1f0ebe82f307eb751cec985b657e3d5f1c617f4b0dd3bf83e",
-                                     "size":  109783,
-                                     "notes":  "UI：确认/输入弹层按钮等宽、取消在左操作在右\n修复：批量出图混模板时另一套模板照片被永久清除；图片圆角烘焙跟随自定义；草稿记录底层槽名避免预设删除后错位；手动换图作废在途恢复防串图；载入草稿加令牌防快速连选串内容；导入失败回删 IndexedDB 孤儿图片；IndexedDB 打开失败不再永久缓存；上传校验类型与 30MB 上限\n优化：草稿搜索 150ms 防抖；SW 更新仅在实际输入后阻止自动刷新"
-                                 }
-             }
+  "updated": "2026-11-09",
+  "apps": {
+    "lmt-layout": {
+      "versionCode": 40,
+      "versionName": "1.39",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.39/lmt-layout-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=40", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=40", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=40"],
+      "sha256": "4df0267607f921e469b47c03c482fe56a9e91908960cc7fb7e43a19dbb8f41a7",
+      "size": 160358,
+      "notes": "fix: 娓呭崟鏇存柊鏃堕棿鏀逛负鍙鏍煎紡锛岀Щ闄?jsDelivr @main 澶囩敤婧?\n鏃堕棿鏄剧ず锛?026-10-31T13:54:00+08:00 鈫?2026-10-31 13:54锛堜富绋嬪簭鐘舵€佹潯涓庡崱瀵嗙敓鎴愬櫒璇婃柇鎶ュ憡鍚屾锛?澶囩敤婧愶細鍒犻櫎 https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json锛屼粎淇濈暀涓嶅甫 ref 鐨勫啓娉曪紙@main 鍒嗘敮寮曠敤缂撳瓨 12 灏忔椂涓?purge 鏄撳け鏁堬紝闀挎湡鍋滃湪鏃х増鏈級"
+    },
+    "lmt-cardgen": {
+      "versionCode": 40,
+      "versionName": "1.39",
+      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.39/lmt-cardgen-release.apk",
+      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=40", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=40", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=40"],
+      "sha256": "161f49df0b65f1a7061601249f9f3e2240d937856397b7e670b5984108cb02ef",
+      "size": 109903,
+      "notes": "fix: 娓呭崟鏇存柊鏃堕棿鏀逛负鍙鏍煎紡锛岀Щ闄?jsDelivr @main 澶囩敤婧?\n鏃堕棿鏄剧ず锛?026-10-31T13:54:00+08:00 鈫?2026-10-31 13:54锛堜富绋嬪簭鐘舵€佹潯涓庡崱瀵嗙敓鎴愬櫒璇婃柇鎶ュ憡鍚屾锛?澶囩敤婧愶細鍒犻櫎 https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json锛屼粎淇濈暀涓嶅甫 ref 鐨勫啓娉曪紙@main 鍒嗘敮寮曠敤缂撳瓨 12 灏忔椂涓?purge 鏄撳け鏁堬紝闀挎湡鍋滃湪鏃х増鏈級"
+    }
+  }
 }
