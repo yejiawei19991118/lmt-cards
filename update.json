@@ -1,23 +1,31 @@
 {
-  "updated": "2026-11-09",
-  "apps": {
-    "lmt-layout": {
-      "versionCode": 39,
-      "versionName": "1.38",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.38/lmt-layout-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=39", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=39", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=39"],
-      "sha256": "d2eaf19af320d3556bd99ec76b2fc431020dee60b292b5882da208b95a305dc7",
-      "size": 160218,
-      "notes": "自动发版：共享核心随 lmt-cards b6d32325 更新"
-    },
-    "lmt-cardgen": {
-      "versionCode": 39,
-      "versionName": "1.38",
-      "url": "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.38/lmt-cardgen-release.apk",
-      "mirrors": ["https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=39", "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=39", "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=39"],
-      "sha256": "2c5dad58ce3b03b1f0ebe82f307eb751cec985b657e3d5f1c617f4b0dd3bf83e",
-      "size": 109783,
-      "notes": "自动发版：共享核心随 lmt-cards b6d32325 更新"
-    }
-  }
+    "updated":  "2026-11-09",
+    "apps":  {
+                 "lmt-layout":  {
+                                    "versionCode":  39,
+                                    "versionName":  "1.38",
+                                    "url":  "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.38/lmt-layout-release.apk",
+                                    "mirrors":  [
+                                                    "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-layout-release.apk?v=39",
+                                                    "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-layout-release.apk?v=39",
+                                                    "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-layout-release.apk?v=39"
+                                                ],
+                                    "sha256":  "d2eaf19af320d3556bd99ec76b2fc431020dee60b292b5882da208b95a305dc7",
+                                    "size":  160218,
+                                    "notes":  "UI：确认/输入弹层按钮等宽、取消在左操作在右\n修复：批量出图混模板时另一套模板照片被永久清除；图片圆角烘焙跟随自定义；草稿记录底层槽名避免预设删除后错位；手动换图作废在途恢复防串图；载入草稿加令牌防快速连选串内容；导入失败回删 IndexedDB 孤儿图片；IndexedDB 打开失败不再永久缓存；上传校验类型与 30MB 上限\n优化：草稿搜索 150ms 防抖；SW 更新仅在实际输入后阻止自动刷新"
+                                },
+                 "lmt-cardgen":  {
+                                     "versionCode":  39,
+                                     "versionName":  "1.38",
+                                     "url":  "https://github.com/yejiawei19991118/lmt-cards/releases/download/apk-v1.38/lmt-cardgen-release.apk",
+                                     "mirrors":  [
+                                                     "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/docs/apk/lmt-cardgen-release.apk?v=39",
+                                                     "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/docs/apk/lmt-cardgen-release.apk?v=39",
+                                                     "https://yejiawei19991118.github.io/lmt-cards/apk/lmt-cardgen-release.apk?v=39"
+                                                 ],
+                                     "sha256":  "2c5dad58ce3b03b1f0ebe82f307eb751cec985b657e3d5f1c617f4b0dd3bf83e",
+                                     "size":  109783,
+                                     "notes":  "UI：确认/输入弹层按钮等宽、取消在左操作在右\n修复：批量出图混模板时另一套模板照片被永久清除；图片圆角烘焙跟随自定义；草稿记录底层槽名避免预设删除后错位；手动换图作废在途恢复防串图；载入草稿加令牌防快速连选串内容；导入失败回删 IndexedDB 孤儿图片；IndexedDB 打开失败不再永久缓存；上传校验类型与 30MB 上限\n优化：草稿搜索 150ms 防抖；SW 更新仅在实际输入后阻止自动刷新"
+                                 }
+             }
 }
