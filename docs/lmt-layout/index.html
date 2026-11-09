@@ -1874,7 +1874,6 @@
             LICENSE_PUBKEY = String(b32 == null ? '' : b32);
             pubKeyBytes = LICENSE_PUBKEY ? base32Decode(LICENSE_PUBKEY, 32) : null;
         }
-        function currentPubKey() { return pubKeyBytes; }
         setPubKey(LICENSE_PUBKEY);
 
         // 验签结果缓存：Ed25519 是纯 BigInt 同步计算（一次约数百 ms 级），而 parseManifest

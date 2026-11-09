@@ -3089,10 +3089,6 @@ YYYY-YYYY-YYYY-YYYY,李四" spellcheck="false"></textarea>
         if (snapshotTimer) clearTimeout(snapshotTimer);
         snapshotTimer = setTimeout(function () { snapshotTimer = null; saveSnapshot(); }, 5000);
     }
-    function latestSnapshot() {
-        var items = loadSnapshots().items;
-        return items.length ? items[items.length - 1] : null;
-    }
     // 当前选中的时间点快照；没有列表选中时退化为最新一份。
     function selectedSnapshot() {
         var items = loadSnapshots().items;
