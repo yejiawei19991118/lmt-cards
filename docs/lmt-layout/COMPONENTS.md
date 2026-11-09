@@ -1,6 +1,6 @@
 # LMT 图文排版生成器 · 功能组件清单
 
-> 版本：v1.40（2026-11-09）
+> 版本：v1.41（2026-11-10）
 > 入口：`docs/lmt-layout/index.html`（PWA 单文件应用）
 
 ---
@@ -440,6 +440,25 @@ docs/lmt-layout/
 ├── handwriting.ttf     # 手写字体（或内嵌）
 └── html2canvas.min.js  # 导出引擎
 ```
+
+---
+
+## 十七、代码健康与维护约定
+
+**规模**：`index.html` 约 203 个函数定义，`lmt-cardgen/index.html` 约 176 个。
+
+**已清理的死代码**（v1.41）：
+- `currentPubKey()` — 调用方直接读 `pubKeyBytes`，函数无人调用
+- `latestSnapshot()` — 逻辑已被 `selectedSnapshot()` 内联替代
+
+**排查结论**（v1.41 全量复查）：无未引用的顶层常量、无悬空的 `getElementById`、`createObjectURL` 与 `revokeObjectURL` 全部成对、无 `setInterval`、`window` 监听均在 IIFE 顶层单次注册、弹层 ESC 监听在 `dispose()` 中解绑、输入高频路径均走防抖。
+
+**判定死代码时不要误删**：
+- `window.__layoutTool` 导出的函数（§十五）供测试 harness 调用，静态分析看不到调用点
+- Android 侧 `ContentProvider` 的重写方法（`getType` / `openFile` / `query` / `insert` / `delete` / `update`）由系统调用
+- Android 侧带 `@JavascriptInterface` 的方法由 WebView 通过 JS 调用
+- JUnit `@Test` 方法由测试框架反射调用
+
 
 ---
 
