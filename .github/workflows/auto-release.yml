@@ -132,8 +132,10 @@ jobs:
           # 版本号由 release.ps1 以 update.json 的 versionCode +1 推算，无需人工指定；
           # 构建后它会把新版本回写 android/version.properties，并在下面随安卓副本一并提交。
           # -WithTests 让单测与 assembleRelease 并入同一次 Gradle 调用，省一次冷启动。
-          pwsh lmt-cards/tools/release.ps1 -WithTests \
-            -Notes "自动发版：共享核心随 lmt-cards ${GITHUB_SHA:0:8} 更新"
+          # 更新文案取触发提交的完整提交信息（含正文），APK 更新弹窗直接展示，
+          # 不再用「自动发版：共享核心随 xxx 更新」这种对用户无意义的占位文案。
+          NOTES="$(git -C lmt-cards log -1 --pretty=%B)"
+          pwsh lmt-cards/tools/release.ps1 -WithTests -Notes "$NOTES"
 
       - name: 独立复核发版产物与登记值
         # release.ps1 内部已有产物断言；这里再做一次「不信任脚本内存状态」的复核：直接用命令行工具重算
