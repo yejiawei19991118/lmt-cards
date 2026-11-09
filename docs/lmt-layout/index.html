@@ -1412,11 +1412,9 @@
 
         // 备用镜像：主源拉取失败（国内直连 raw.githubusercontent.com 常被重置/挂起）时按顺序回退。
         // 任一源成功返回清单即视为成功；全部失败才算「拉取失败」（此时按规则拒绝激活）。
-        // jsDelivr 的分支引用（@main）约 12 小时缓存，且查询串不参与它的缓存键；发版时的 purge 偶尔会对
-        // 个别文件静默失效。故这里同时保留「带 ref」与「不带 ref」两种写法——它们落在两个互不相同的缓存键上，
-        // 一条被旧内容卡住时另一条仍能取到新清单。两条都只作兜底，不建议设为主源。
+        // 只用不带 ref 的写法（jsDelivr 的分支引用 @main 约 12 小时缓存，发版 purge 又偶尔静默失效，
+        // 实测长期停在旧版本，留着反而可能用旧清单覆盖新结果，故已移除）。
         var MANIFEST_MIRRORS = [
-            'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json',
             'https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/cards.json'
         ];
 
@@ -2426,13 +2424,21 @@
             // 在线清单正在拉取中：此时既不能报「已同步」，也不该报「连接失败」，
             // 否则联网正常的用户会在首屏几秒内看到「无法激活」而误以为卡密或网络有问题。
             var manifestSyncing = false;
+            // 清单里的更新时间形如 2026-10-31T13:54:00+08:00，直接显示没人看得懂。
+            // 按字符串取年月日时分，不做时区换算：清单时间是发布时写定的事实，
+            // 换算成本机时区反而让用户对不上自己的发布时间。
+            function fmtManifestTime(s) {
+                var m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(s || ''));
+                if (!m) return String(s || '');
+                return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5];
+            }
             function updateNetStatus() {
                 if (netEl) {
                     if (!MANIFEST_URL) {
                         netEl.textContent = '校验方式：未配置在线清单（无法激活）';
                     } else if (manifest) {
                         netEl.textContent = '校验方式：' + (manifestFromNetwork ? '在线清单已同步' : '离线凭证（本地缓存清单）') +
-                            (manifest.updated ? '（更新于 ' + manifest.updated + '）' : '');
+                            (manifest.updated ? '（更新于 ' + fmtManifestTime(manifest.updated) + '）' : '');
                     } else if (manifestSyncing) {
                         netEl.textContent = '校验方式：正在同步在线清单…';
                     } else {
