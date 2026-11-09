@@ -25,6 +25,9 @@ param(
     [string]$Version = '',
     [string[]]$App = @('lmt-layout', 'lmt-cardgen'),
     [string]$Notes = '',
+    # 从 UTF-8 文件读更新文案。命令行参数传中文在 CI 上会被按非 UTF-8 编码解码成乱码
+    # （git log 输出的 UTF-8 字节 → pwsh 按 locale 解码），故 CI 走文件传递；-Notes 保留给人手本地调用。
+    [string]$NotesFile = '',
     [switch]$DryRun,
     # 与构建并入同一次 Gradle 调用跑单测：省掉一次 Gradle 冷启动（CI 上尤其明显）。
     [switch]$WithTests
@@ -237,6 +240,11 @@ if (-not $Version) {
     $last = [int]$parts[$parts.Length - 1]
     $parts[$parts.Length - 1] = [string]($last + 1)
     $Version = ($parts -join '.')
+}
+# 更新文案优先取文件（CI 走这条，避开命令行参数编码问题），文件内容按 UTF-8 显式解码
+if ($NotesFile) {
+    if (-not (Test-Path $NotesFile)) { throw "NotesFile 不存在：$NotesFile" }
+    $Notes = [System.IO.File]::ReadAllText((Resolve-Path $NotesFile).Path, [System.Text.Encoding]::UTF8).Trim()
 }
 if (-not $Notes) { $Notes = "版本 $Version" }
 $newCodes = @{}

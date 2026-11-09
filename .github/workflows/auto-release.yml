@@ -134,8 +134,10 @@ jobs:
           # -WithTests 让单测与 assembleRelease 并入同一次 Gradle 调用，省一次冷启动。
           # 更新文案取触发提交的完整提交信息（含正文），APK 更新弹窗直接展示，
           # 不再用「自动发版：共享核心随 xxx 更新」这种对用户无意义的占位文案。
-          NOTES="$(git -C lmt-cards log -1 --pretty=%B)"
-          pwsh lmt-cards/tools/release.ps1 -WithTests -Notes "$NOTES"
+          # 中文必须经文件传递：命令行参数在 CI 上会被按非 UTF-8 编码解码，实测导致清单里的
+          # notes 变成「娓呭崟鏇存柊」这类乱码（v1.39 就踩过）。bash 重定向是字节级的，不经过编码转换。
+          git -C lmt-cards log -1 --pretty=%B > "$RUNNER_TEMP/release-notes.txt"
+          pwsh lmt-cards/tools/release.ps1 -WithTests -NotesFile "$RUNNER_TEMP/release-notes.txt"
 
       - name: 独立复核发版产物与登记值
         # release.ps1 内部已有产物断言；这里再做一次「不信任脚本内存状态」的复核：直接用命令行工具重算
