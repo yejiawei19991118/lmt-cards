@@ -440,7 +440,7 @@
       var jobs = [
         ['#upload-left', '#preview-img-left', 'cover', 528, 528],
         ['#upload-screenshot-left', '#preview-screenshot-left', 'contain', 528, 704],
-        ['#upload-wide-1', '#preview-wide-1', 'notch', 1100, 458]
+        ['#upload-wide-1', '#preview-wide-1', 'wide', 1100, 458]
       ];
       for (var i = 0; i < jobs.length; i++) {
         var input = q(doc, jobs[i][0]);
@@ -603,7 +603,7 @@
       var t = app();
       assertEq(t.escapeHtml('a<b>&"\''), 'a&lt;b&gt;&amp;"\'', 'escapeHtml 应只转义 & < >');
       var img = { w: 400, h: 200 };
-      [['cover', 528, 528], ['contain', 528, 704], ['notch', 1100, 458]].forEach(function (c) {
+      [['cover', 528, 528], ['contain', 528, 704], ['wide', 1100, 458]].forEach(function (c) {
         var r = t.computeDrawRect(img.w, img.h, c[1], c[2], c[0]);
         assertEq(r.dw / r.dh, img.w / img.h, c[0] + ' 模式不得变形（宽高比必须保持）');
         if (c[0] === 'contain') {

@@ -507,7 +507,7 @@
         .control-group[hidden],
         .safe-content-area [hidden] { display: none !important; }
 
-        /* 模板二：三图竖排（每项 = 一张 1440×600 宽图 + 一行小标题）
+        /* 模板二：三图竖排（每项 = 一张 12:5 宽图 + 一行小标题）
            宽度取共享内容宽 --content-w 并随 --fit 等比缩放，与文案等宽且自动适配安全区。 */
         .three-list {
             display: flex;
@@ -519,7 +519,7 @@
         .wide-box {
             box-sizing: border-box;
             width: 100%;
-            aspect-ratio: 1440 / 600;
+            aspect-ratio: 12 / 5;
             background-color: #f4f6f9;
             border-radius: var(--tpl-radius);
             display: flex;
@@ -2799,8 +2799,8 @@
         const BOX_SIZE = {
             cover: [132 * EXPORT_SCALE, 132 * EXPORT_SCALE],   // 模特图：铺满方框
             contain: [132 * EXPORT_SCALE, 176 * EXPORT_SCALE], // 截图：完整显示不裁剪
-            // 模板二缺角图：包围盒 1440×600，按“安全区整宽”预留分辨率，显示更小时自动降采样
-            notch: [275 * EXPORT_SCALE, Math.round(275 * 600 / 1440 * EXPORT_SCALE)]
+            // 模板二宽图：12:5 包围盒，按“安全区整宽”预留分辨率，显示更小时自动降采样
+            wide: [275 * EXPORT_SCALE, Math.round(275 * 5 / 12 * EXPORT_SCALE)]
         };
         // 导出倍率固定为 4×（375×667 × 4 = 1500×2668，P-33）：画质档位已移除，不再受界面选择影响。
         // 仅影响最终导出分辨率，不影响图片框位图（那由 BOX_SIZE 固定按 EXPORT_SCALE 生成）。
@@ -2819,7 +2819,7 @@
             return { dx: (boxW - dw) / 2, dy: (boxH - dh) / 2, dw: dw, dh: dh };
         }
 
-        // 把已解码的 <img> 裁切/裁角后绘制进目标预览框（草稿恢复与批量出图都要复用）。
+        // 把已解码的 <img> 裁切后绘制进目标预览框（草稿恢复与批量出图都要复用）。
         // 之所以抽成独立函数而非内联在 onload 里：草稿/批量恢复图片时手上只有 dataURL，
         // 需要一个「给我图片和目标框就能画上去」的稳定入口，避免三处各写一遍裁切逻辑。
         // 返回 true 表示绘制成功，false 表示图片无效（尺寸为 0）。
@@ -2834,34 +2834,12 @@
             // 这样即使 html2canvas 不裁剪 <canvas> 子元素的 border-radius，
             // 导出图的圆角也一定正确（圆角外为透明，露出白色导出背景）。
             ctx.beginPath();
-            if (mode === 'notch') {
-                // 缺角图：包围盒 1440×600。
-                //  1) 顶部整宽保留 1440×160，缺口从其下方开始；
-                //  2) 截掉右边 790×165（即 x 650~1440、y 160~325）；
-                //  3) 截掉右下角 800×175（即 x 640~1440、y 425~600）。
-                const yTop = th * (160 / 600);      // 顶部整宽保留条高度
-                const xRight1 = tw * (650 / 1440);  // 上缺口左边界（右边截掉 790）
-                const yRight1 = th * (325 / 600);   // 上缺口下边界（160 + 165）
-                const xRight2 = tw * (640 / 1440);  // 下缺口左边界（右下截掉 800）
-                const yRight2 = th * (425 / 600);   // 下缺口上边界（600 − 175）
-                ctx.moveTo(0, 0);
-                ctx.lineTo(tw, 0);
-                ctx.lineTo(tw, yTop);
-                ctx.lineTo(xRight1, yTop);
-                ctx.lineTo(xRight1, yRight1);
-                ctx.lineTo(tw, yRight1);
-                ctx.lineTo(tw, yRight2);
-                ctx.lineTo(xRight2, yRight2);
-                ctx.lineTo(xRight2, th);
-                ctx.lineTo(0, th);
-            } else {
-                const r = 10 * EXPORT_SCALE;
-                ctx.moveTo(r, 0);
-                ctx.arcTo(tw, 0, tw, th, r);
-                ctx.arcTo(tw, th, 0, th, r);
-                ctx.arcTo(0, th, 0, 0, r);
-                ctx.arcTo(0, 0, tw, 0, r);
-            }
+            const r = 10 * EXPORT_SCALE;
+            ctx.moveTo(r, 0);
+            ctx.arcTo(tw, 0, tw, th, r);
+            ctx.arcTo(tw, th, 0, th, r);
+            ctx.arcTo(0, th, 0, 0, r);
+            ctx.arcTo(0, 0, tw, 0, r);
             ctx.closePath();
             ctx.clip();
             if (mode === 'contain') {
@@ -2951,9 +2929,9 @@
         handleImageUpload(uploadRight, previewImgRight, 'cover', 'right');
         handleImageUpload(uploadScreenshotLeft, previewScreenshotLeft, 'contain', 'shotLeft');
         handleImageUpload(uploadScreenshotRight, previewScreenshotRight, 'contain', 'shotRight');
-        handleImageUpload(uploadWide1, previewWide1, 'notch', 'wide1');
-        handleImageUpload(uploadWide2, previewWide2, 'notch', 'wide2');
-        handleImageUpload(uploadWide3, previewWide3, 'notch', 'wide3');
+        handleImageUpload(uploadWide1, previewWide1, 'wide', 'wide1');
+        handleImageUpload(uploadWide2, previewWide2, 'wide', 'wide2');
+        handleImageUpload(uploadWide3, previewWide3, 'wide', 'wide3');
 
         // 模板切换：只显示当前模板的预览元素与控制面板分组（其余置 hidden）
         // P-30：专属字段「隐藏但保留值」——只切 hidden，不清空 input.value，
@@ -3328,7 +3306,7 @@
         const IMG_TARGETS = {
             left: [previewImgLeft, 'cover'], right: [previewImgRight, 'cover'],
             shotLeft: [previewScreenshotLeft, 'contain'], shotRight: [previewScreenshotRight, 'contain'],
-            wide1: [previewWide1, 'notch'], wide2: [previewWide2, 'notch'], wide3: [previewWide3, 'notch']
+            wide1: [previewWide1, 'wide'], wide2: [previewWide2, 'wide'], wide3: [previewWide3, 'wide']
         };
         // 每格「原图」的 JPEG dataURL（键与 IMG_TARGETS 一致）。草稿保存的就是这份原图，
         // 而不是按图片框烘焙好的小位图：
