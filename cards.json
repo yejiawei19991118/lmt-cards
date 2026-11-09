@@ -1,7 +1,7 @@
 {
   "ver": 2,
-  "updated": "2026-10-31T13:54:00+08:00",
-  "rev": "f719d627f1313839",
+  "updated": "2026-11-09T22:53:41+08:00",
+  "rev": "903172f04d16a442",
   "cards": [
     {
       "card": "JYEB-9339-4V2R-S4GG-2JVJ",
@@ -38,8 +38,14 @@
       "mc": "XSXK-8D33-0279-0EKP",
       "note": "菜头安卓",
       "exp": ""
+    },
+    {
+      "card": "D167-ERTS-XN23-SR97-CGTP",
+      "mc": "YERG-Y6XK-TJAV-9VHT",
+      "note": "",
+      "exp": ""
     }
   ],
   "revoked": [],
-  "sig2": "MDEGBX13R1Y957170HR687EKADF5Z1VWTFQQ7TTX89CJ2YGG312XY9YYSJ6D3Q9J7SX753BTAXFKAYBPJ8X27F8FXZCTFEC7A4QYJ00"
+  "sig2": "1H73ZNV7FV608AF1XYWNJAP88FAHV5GD8Q80XNJW12DNQAJQVK18TXH0Q35SNXVHAB9SH714BCB1D9FJ1PY5V7G281DKESFZ5JJCC1R"
 }
