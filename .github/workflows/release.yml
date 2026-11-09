@@ -68,4 +68,6 @@ jobs:
           set -euo pipefail
           chmod +x android/gradlew
           VERSION="${GITHUB_REF_NAME#apk-v}"
-          pwsh lmt-cards/tools/release.ps1 -Version "$VERSION" -Notes "GitHub Actions 自动发布（$GITHUB_REF_NAME）"
+          # 与 auto-release 一致：中文文案经文件传递，避免命令行参数按非 UTF-8 解码成乱码
+          git -C lmt-cards log -1 --pretty=%B > "$RUNNER_TEMP/release-notes.txt"
+          pwsh lmt-cards/tools/release.ps1 -Version "$VERSION" -NotesFile "$RUNNER_TEMP/release-notes.txt"

@@ -1,6 +1,6 @@
 # LMT 图文排版生成器 · 功能组件清单
 
-> 版本：v1.37（2026-11-09）
+> 版本：v1.40（2026-11-09）
 > 入口：`docs/lmt-layout/index.html`（PWA 单文件应用）
 
 ---
@@ -313,6 +313,8 @@
 | 功能 | 函数 |
 |---|---|
 | 清单 URL | `MANIFEST_URL`（主源）+ `MANIFEST_MIRRORS`（备用镜像） |
+| 备用镜像 | 仅 1 条：`cdn.jsdelivr.net/gh/.../lmt-cards/cards.json`（不带 ref）。`@main` 写法已删除：分支引用约 12 小时缓存、发版 purge 偶尔静默失效，长期停在旧版本 |
+| 清单时间显示 | `fmtManifestTime(s)`：`2026-10-31T13:54:00+08:00` → `2026-10-31 13:54`，按字符串取年月日时分，不做时区换算 |
 | 获取清单 | `getManifest()` / `fetchManifest(url)` / `fetchOneManifest(u, token)` |
 | 清单解析 | `parseManifest(data)` |
 | 在线决策 | `onlineDecision(card)` |
@@ -402,6 +404,9 @@
 
 - 更新文案（APK 更新弹窗的 notes）取触发提交的完整提交信息（`git log -1 --pretty=%B`，含正文多行），
   提交信息写什么用户就看到什么；不再使用「自动发版：共享核心随 xxx 更新」占位文案
+- 中文文案必须经文件传递：workflow 用 bash 重定向写 `release-notes.txt`（字节级、不转码），
+  `release.ps1 -NotesFile` 用 `[IO.File]::ReadAllText(path, UTF8)` 显式解码。
+  早期用 `-Notes "$NOTES"` 走命令行参数，UTF-8 字节被按非 UTF-8 解码，v1.39 清单 notes 因此整段乱码
 
 ---
 
