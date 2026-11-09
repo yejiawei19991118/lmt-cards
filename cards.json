@@ -1,7 +1,7 @@
 {
   "ver": 2,
-  "updated": "2026-11-09T22:53:41+08:00",
-  "rev": "903172f04d16a442",
+  "updated": "2026-11-09T22:53:58+08:00",
+  "rev": "3f0e37fdff54d91a",
   "cards": [
     {
       "card": "JYEB-9339-4V2R-S4GG-2JVJ",
@@ -42,10 +42,10 @@
     {
       "card": "D167-ERTS-XN23-SR97-CGTP",
       "mc": "YERG-Y6XK-TJAV-9VHT",
-      "note": "",
+      "note": "人群捉取",
       "exp": ""
     }
   ],
   "revoked": [],
-  "sig2": "1H73ZNV7FV608AF1XYWNJAP88FAHV5GD8Q80XNJW12DNQAJQVK18TXH0Q35SNXVHAB9SH714BCB1D9FJ1PY5V7G281DKESFZ5JJCC1R"
+  "sig2": "WYNV6A66TTFPZCMRVA5GSBF1P26X6VXZFEC7MMNW04DHQQ3NHJ1MAB6A2Y2400AQHH0QTS98JR9M4SN0HG95NWBQYZ38H74FWBY2A1R"
 }
