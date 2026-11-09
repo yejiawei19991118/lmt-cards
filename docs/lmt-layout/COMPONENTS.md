@@ -400,6 +400,9 @@
 | `web-check.yml` | 定时 / 手动 | sw-hash 校验 / web-tests / cross-repo-sync / android-unit-tests |
 | `release.yml` | 手动 | 独立发版（不经过 auto-release 全流程） |
 
+- 更新文案（APK 更新弹窗的 notes）取触发提交的完整提交信息（`git log -1 --pretty=%B`，含正文多行），
+  提交信息写什么用户就看到什么；不再使用「自动发版：共享核心随 xxx 更新」占位文案
+
 ---
 
 ## 十五、测试钩子（`window.__layoutTool`）
