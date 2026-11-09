@@ -9,11 +9,12 @@
 
 | 模板 | 标识 | 用途 | 图片槽位 | 文案字段 |
 |---|---|---|---|---|
-| 橱窗 | `tpl-window` | 左右双图 + 文案 | 模特图×2（cover 方形）、截图×2（contain 竖长） | 标题、副标题、正文、标签 |
-| 三图竖排 | `tpl-three` | 三张大图竖排 + 小标题 | 宽图×3（wide 12:5） | 标题、副标题、正文、标签、三图各自小标题 |
+| 橱窗 | `tpl-window` | 左右双图 + 文案 | 模特图×2（cover 方形）、截图×2（contain 竖长） | 顶部摘要、主标题、关键词、副标题 |
+| 三图竖排 | `tpl-three` | 三张大图竖排 + 小标题 | 宽图×3（wide 12:5） | 顶部摘要、主标题、三图小标题×3 |
 | 自定义模板 | `tpl-custom-*` | 用户保存的样式组合 | 继承基模板槽位 | 继承基模板字段 |
 
-模板切换仅切换 `hidden` 属性，不清空已填内容；导出仅截取当前可见画布。
+- 模板切换仅切换 `hidden` 属性，不清空已填内容；导出仅截取当前可见画布
+- `TPL_FIELD_KEYS` / `TPL_IMG_KEYS` 表驱动隔离：两套模板各有独立文案与图片存储
 
 ---
 
@@ -34,10 +35,11 @@
 |---|---|---|---|---|
 | `cover` | 方形 | 528×528 | 10px | 等比放大铺满，居中裁剪 |
 | `contain` | 竖长 132:176 | 528×704 | 10px | 等比缩小完整放入，留白 `#fbfcfe` |
-| `wide` | 12:5 | 1100×458 | 10px | 等比放大铺满，居中裁剪（原 notch 已移除） |
+| `wide` | 12:5 | 1100×458 | 10px | 等比放大铺满，居中裁剪 |
 
 - 位图按 `EXPORT_SCALE = 4` 生成，html2canvas 复制时为降采样，保证清晰度
 - 圆角直接烘焙进位图，不依赖 CSS `border-radius`
+- `computeDrawRect()` 纯函数计算等比绘制矩形，绝不拉伸变形
 
 ### 2.3 原图存档（`photoSource`）
 
@@ -60,8 +62,8 @@
 
 | 字段 | 输入控件 | 预览元素 | 样式特点 |
 |---|---|---|---|
-| 摘要 | `input-summary` | `preview-summary` | 手写体，顶部区域 |
-| 标题 | `input-title` | `preview-title` | 手写体，大字号 |
+| 顶部摘要 | `input-summary` | `preview-summary` | 手写体，支持换行（`\n` 转 `<br>`） |
+| 主标题 | `input-title` | `preview-title` | 手写体，大字号 |
 | 关键词 | `input-keywords` | `preview-keywords` | 手写体，高亮标签样式 |
 | 副标题 | `input-subtitle` | `preview-subtitle` | 手写体，中字号 |
 | 三图小标题 | `input-cap-1/2/3` | `preview-cap-1/2/3` | 手写体，位于每图下方 |
@@ -72,12 +74,24 @@
 - 超限时自动计算缩放比例 `--fit`，提示「已自动适配安全区：当前按 XX% 缩放」
 - 使用 `requestAnimationFrame` 合并连续输入的重排，避免抖动
 - `FIT_GRID` 二分查找最优缩放比例
+- `fit-lock` 开关：勾选「自动适配字号」时启用缩放，取消则不缩放
 
 ### 3.3 手写字体
 
-- 字体文件：`handwriting.ttf`（base64 内嵌或异步加载）
+| 字体 | 来源 | 类型 |
+|---|---|---|
+| 站酷快乐体（默认） | Google Fonts | 手写体 |
+| 小赖字体 | 中文网字计划（jsDelivr） | 手写楷 |
+| 悠哉手写体 | 中文网字计划（jsDelivr） | 手写风 |
+| 猫啃珠圆体 | 中文网字计划（jsDelivr） | 可爱标题 |
+| 霞鹜文楷 | Google Fonts | 开源楷体 |
+| 站酷小薇体 | Google Fonts | 文艺细楷 |
+| 站酷庆科黄油体 | Google Fonts | 粗展板 |
+
 - 加载状态跟踪：`fontReady` 标志位，未就绪时禁用导出按钮
 - 支持多字体源 fallback（`fontCssSources` / `loadWebFont` / `applyHandwritingFont`）
+- 超时兜底：单个字体源 6 秒超时，自动切到镜像源
+- 加载失败仍允许导出（回退系统字体），但明示 error 状态
 
 ---
 
@@ -87,14 +101,14 @@
 
 | 控件 | 变量 | 说明 |
 |---|---|---|
-| `style-color-title` | `--style-color-title` | 标题颜色 |
-| `style-size-title` | `--style-size-title` | 标题字号 |
-| `style-color-summary` | `--style-color-summary` | 摘要颜色 |
-| `style-size-summary` | `--style-size-summary` | 摘要字号 |
-| `style-color-keywords` | `--style-color-keywords` | 关键词颜色 |
-| `style-size-keywords` | `--style-size-keywords` | 关键词字号 |
-| `style-radius` | `--tpl-radius` | 圆角大小 |
-| `style-color-bg` | `--style-color-bg` | 背景色 |
+| `style-color-title` | `--tpl-title-color` | 标题颜色 |
+| `style-size-title` | `--tpl-title-size` | 标题字号（16~40px） |
+| `style-color-summary` | `--tpl-summary-color` | 文案颜色 |
+| `style-size-summary` | `--tpl-summary-size` | 文案字号（9~22px） |
+| `style-color-keywords` | `--tpl-copy-color` | 关键词颜色 |
+| `style-size-keywords` | `--tpl-copy-size` | 关键词字号（9~22px） |
+| `style-radius` | `--tpl-radius` | 图片圆角（0~30px） |
+| `style-color-bg` | `--tpl-bg` | 画布底色（参与导出） |
 
 ### 4.2 样式操作
 
@@ -115,6 +129,7 @@
 | 刷新模板选项 | `refreshMyTemplateOptions()` |
 | 按 ID 查找 | `myTemplateById(id)` |
 | 列出全部 | `listMyTemplates()` |
+| 持久化 | `persistMyTemplates(items)` |
 
 ---
 
@@ -125,23 +140,27 @@
 | 功能 | 函数/组件 |
 |---|---|
 | 保存草稿 | `saveDraft(name)` |
-| 载入草稿 | `loadDraft(id)` |
+| 载入草稿 | `loadDraft(id)` → 返回 `{ ok, imgsMissing }` |
 | 删除草稿 | `deleteDraft(id)` |
 | 重命名草稿 | `draft-rename-btn` → `promptName()` |
 | 导出草稿 | `exportDrafts()` → JSON 文件 |
 | 导入草稿 | `importDrafts(json)` |
 | 搜索草稿 | `draft-search` → `queryDrafts()` |
 | 刷新列表 | `refreshDraftOptions()` |
+| 格式化时间 | `fmtDraftTime(ts)` |
+| 格式化字节 | `fmtDraftBytes(b)` |
 
 ### 5.2 草稿存储
 
 | 层级 | 机制 |
 |---|---|
-| 元数据 | localStorage `DRAFT_KEY`（含字段、样式、时间戳、字节数估算） |
+| 元数据 | localStorage `lmt_drafts_v1`（含字段、样式、时间戳、字节数估算） |
 | 图片数据 | IndexedDB（`idbPutImages` / `idbGetImages` / `idbDeleteImages`） |
 | 容量估算 | `approxDraftBytes(item)` |
 | 图片计数 | `draftImageCount(d)` |
 | 图片水合 | `hydrateDraftImages(d)` |
+| 打开数据库 | `openImageDb()` |
+| 持久化单项 | `persistDraftItem(item)` |
 
 ### 5.3 草稿数据结构
 
@@ -151,7 +170,7 @@
   name: string,
   tpl: 'window' | 'three',
   fields: { summary, title, keywords, subtitle, cap1, cap2, cap3 },
-  style: { colorTitle, sizeTitle, colorSummary, sizeSummary, colorKeywords, sizeKeywords, radius, colorBg },
+  style: { titleColor, titleSize, summaryColor, summarySize, copyColor, copySize, radius, bg },
   imgs: { left?, right?, shotLeft?, shotRight?, wide1?, wide2?, wide3? }, // 存 IndexedDB
   bytes: number,
   updatedAt: timestamp
@@ -167,8 +186,10 @@
 | 保存片段 | `saveSnippet(field, text)` |
 | 删除片段 | `deleteSnippet(id)` |
 | 插入片段 | `insertSnippet(id, fieldOverride)` |
-| 刷新片段选项 | `refreshSnippetOptions()` |
+| 刷新片段选项 | `refreshSnippetOptions()` / `refreshSnippetFieldOptions(tplName)` |
 | 按字段筛选 | `fieldTplsOf(field)` / `snippetBelongsTo(s, tpl)` |
+| 列出全部 | `listSnippets()` |
+| 持久化 | `persistSnippets(items)` |
 
 片段绑定字段（`FIELD_INPUTS` / `FIELD_LABELS`），支持跨模板复用。
 
@@ -184,6 +205,7 @@
 | 刷新任务列表 UI | `refreshBatchList()` |
 | 更新选中计数 | `updateBatchCount()` |
 | 全选/全不选 | `toggleBatchSelectAll()` |
+| 模板标签 | `tplLabelOf(v)` |
 
 ### 7.2 批量执行
 
@@ -210,13 +232,14 @@
 | 组件 | 说明 |
 |---|---|
 | 导出按钮 | `export-btn`，内容适配安全区且字体就绪后可用 |
-| 导出引擎 | html2canvas 截取 `#canvas-root` |
+| 导出引擎 | html2canvas 截取 `#export-target` |
 | 导出尺寸 | 375×667 × 4 = **1500×2668**（PNG） |
 | 导出文件名 | `lmt-layout-{timestamp}.png` |
 | 画布捕获 | `captureCanvas()` → `canvasToUrl()` → `canvasToPngBytes()` |
 | 原生保存 | `tryNativeSave(dataUrl, fileName, mime)`（支持 Web Share API / 下载） |
 | 字节保存 | `saveBytes(b, fileName, mime)` / `saveText(text, fileName, mime)` |
 | 图片预览 | `showImagePreview(dataUrl, fileName, onClose)` |
+| 导出消息 | `setExportMsg(t)` |
 
 ---
 
@@ -234,6 +257,7 @@
 | 防抖保存 | `scheduleSavePrefs()` |
 | 加载偏好 | `loadPrefs()` |
 | 重置偏好 | `resetPrefs(scope)` |
+| 自动同步开关 | `prefAutoSyncOn()` |
 
 ---
 
@@ -245,6 +269,13 @@
 | 缓存版本 | `@index-hash` | 与 `index.html` 内容哈希绑定，变更时自动更新缓存 |
 | 安装引导 | `index.html` | iOS Safari「添加到主屏幕」提示 |
 | 激活页 | `activate.html` | 卡密验证入口，验证通过后跳转主应用 |
+
+### SW 更新机制
+
+- `updateViaCache: 'none'`：SW 脚本不走 HTTP 缓存
+- 每次页面回到前台主动 `update()`：iOS 主屏 App 切回时发现新版本
+- `controllerchange` 时自动刷新：新 SW 接管后刷新页面（仅未编辑时）
+- `edited` 标志位：用户有输入时禁止自动刷新，防止丢内容
 
 ---
 
@@ -259,6 +290,8 @@
 | 签名验证 | Ed25519 验签 `cards.json` 清单 |
 | 离线凭证 | 验签通过后缓存凭证（TTL 14 天），支持离线使用 |
 | 白名单 | 当前 6 张有效卡密，绑定机器码，部分有到期日 |
+| 激活状态 | `isActivated()` / `activate(card)` / `deactivate()` |
+| 状态读写 | `readStat()` / `writeStat(o)` / `clearStat()` |
 
 ### 11.2 加密原语（纯 JS 实现）
 
@@ -269,17 +302,27 @@
 | HMAC-SHA256 | `hmacSha256Hex()` |
 | Base32 | `base32Encode()` / `base32Decode()` / `base32EncodeFull()` |
 | Ed25519 | `ed25519PublicKey()` / `ed25519Sign()` / `ed25519Verify()` |
+| 公钥管理 | `setPubKey(b32)` / `currentPubKey()` / `verifySigCached()` |
+| 64 位运算 | `lmtAnd64()` / `lmtXor64()` / `lmtNot64()` / `lmtAdd64()` / `lmtShr64()` / `lmtRotr64()` |
+| 大数运算 | `edMod()` / `edPowMod()` / `edInvMod()` / `edLEToBig()` / `edBigToLE()` |
+| 椭圆曲线 | `edRecoverX()` / `edDecodePoint()` / `edCompressPoint()` / `edAdd()` / `edDouble()` / `edScalarMult()` |
 
 ### 11.3 清单管理
 
 | 功能 | 函数 |
 |---|---|
-| 获取清单 | `getManifest()` / `fetchManifest(url)` |
+| 清单 URL | `MANIFEST_URL`（主源）+ `MANIFEST_MIRRORS`（备用镜像） |
+| 获取清单 | `getManifest()` / `fetchManifest(url)` / `fetchOneManifest(u, token)` |
+| 清单解析 | `parseManifest(data)` |
 | 在线决策 | `onlineDecision(card)` |
 | 读取缓存 | `loadCachedManifest()` / `readCache()` |
 | 写入缓存 | `writeCache(data)` |
 | 清除缓存 | `clearCache()` |
 | 凭证时效 | `credAgeMs()` / `credFresh()` |
+| 清单规范化 | `manifestCardsLines()` / `manifestRevokedStr()` / `canonicalManifestString()` |
+| 卡密格式 | `cardFormatOk(card)` / `normalize(code)` |
+| 过期判断 | `isExpired(exp)` |
+| 同步清单 | `syncManifestOnline()` |
 
 ---
 
@@ -329,6 +372,10 @@
 | 字段快照 | `snapshotFieldsTo(tpl)` |
 | 字段恢复 | `loadFieldsFrom(tpl)` / `restoreFieldStore(s)` |
 | 清空字段存储 | `clearFieldStore()` |
+| 同步字段预览 | `syncFieldPreview()` |
+| 捕获字段 | `captureFields()` |
+| 捕获图片 | `captureImgs()` / `captureImgsAll()` / `captureImgsOf(keys)` |
+| 应用快照 | `applySnapshot(snap)` |
 
 ---
 
@@ -352,7 +399,27 @@
 
 ---
 
-## 十五、文件清单
+## 十五、测试钩子（`window.__layoutTool`）
+
+暴露给 `tests/harness.html` 的 iframe 直接复用，包含：
+
+- 纯函数：`escapeHtml` / `computeDrawRect` / `isMobileUA` / `isTouchPrimary` / `crc32` / `paintPhoto`
+- 批量出图：`zipStore` / `zipBlob` / `captureFields` / `captureImgs` / `captureCanvas`
+- 图片管理：`restorePhoto` / `clearPhoto`
+- 草稿箱：`saveDraft` / `loadDraft` / `listDrafts` / `deleteDraft` / `exportDrafts` / `importDrafts`
+- IndexedDB：`hydrateDraftImages` / `draftImageCount`
+- 样式：`applyCustomStyle` / `resetCustomStyle`
+- 模板：`saveMyTemplate` / `listMyTemplates` / `deleteMyTemplate`
+- 偏好：`savePrefs` / `loadPrefs` / `resetPrefs`
+- 片段：`saveSnippet` / `listSnippets` / `insertSnippet` / `deleteSnippet`
+- 对话框：`confirmDialog` / `showUndoToast`
+- 批量：`updateBatchCount` / `refreshSnippetFieldOptions` / `currentExportScale`
+- 模板隔离：`currentSlotName` / `TPL_FIELD_KEYS` / `TPL_IMG_KEYS` / `clearCurrentTemplate` / `applyTemplate`
+- 存储键：`SNIPPET_KEY`
+
+---
+
+## 十六、文件清单
 
 ```
 docs/lmt-layout/
