@@ -1082,7 +1082,7 @@
 
             <div class="img-cap-pair" data-tpl="three">
                 <div class="control-group">
-                    <label>图片一 (1440×600)</label>
+                    <label>图片一 (12:5)</label>
                     <label for="upload-wide-1" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-wide-1" class="file-upload" accept="image/*">
                     <button type="button" class="btn-link" data-clear-img="upload-wide-1" hidden>清除</button>
@@ -1095,7 +1095,7 @@
 
             <div class="img-cap-pair" data-tpl="three">
                 <div class="control-group">
-                    <label>图片二 (1440×600)</label>
+                    <label>图片二 (12:5)</label>
                     <label for="upload-wide-2" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-wide-2" class="file-upload" accept="image/*">
                     <button type="button" class="btn-link" data-clear-img="upload-wide-2" hidden>清除</button>
@@ -1108,7 +1108,7 @@
 
             <div class="img-cap-pair" data-tpl="three">
                 <div class="control-group">
-                    <label>图片三 (1440×600)</label>
+                    <label>图片三 (12:5)</label>
                     <label for="upload-wide-3" class="upload-btn">点击上传图片</label>
                     <input type="file" id="upload-wide-3" class="file-upload" accept="image/*">
                     <button type="button" class="btn-link" data-clear-img="upload-wide-3" hidden>清除</button>
@@ -1131,15 +1131,13 @@
                     <!-- 国内 CDN（中文网字计划 cn-fontsource，jsDelivr 托管，子集化 woff2 按需下载）：
                          data-cdn 指向该字体的 font.css（内部用相对路径引用 woff2），data-family 必须与 CSS 内的 font-family 一致，
                          否则 document.fonts.load 找不到字形，导出时会静默回退成系统字体。 -->
-                    <option value="'slideyouran', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-slideyouran-regular@1.0.3/font.css" data-family="slideyouran">演示悠然小楷（毛笔小楷）</option>
-                    <option value="'Slideqiuhong', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-slideqiuhong-regular@1.0.6/font.css" data-family="Slideqiuhong">演示秋鸿楷（手写楷）</option>
-                    <option value="'Xiaolai SC', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-xiaolai-sc-regular@1.0.2/font.css" data-family="Xiaolai SC">小赖字体（手写楷·开源）</option>
-                    <option value="'Yozai', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-yozai-regular@1.0.9/font.css" data-family="Yozai">悠哉手写体（手写风·开源）</option>
-                    <option value="'MaokenZhuyuanTi', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-maoken-zhuyuan-ti-regular@1.0.1/font.css" data-family="MaokenZhuyuanTi">猫啃珠圆体（可爱标题）</option>
+                    <option value="'Xiaolai SC', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-xiaolai-sc-regular@1.0.2/font.css" data-family="Xiaolai SC">小赖字体</option>
+                    <option value="'Yozai', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-yozai-regular@1.0.9/font.css" data-family="Yozai">悠哉手写体</option>
+                    <option value="'MaokenZhuyuanTi', 'KaiTi', cursive" data-cdn="https://cdn.jsdelivr.net/npm/cn-fontsource-maoken-zhuyuan-ti-regular@1.0.1/font.css" data-family="MaokenZhuyuanTi">猫啃珠圆体</option>
                     <!-- Google Fonts（原链路，含 fonts.loli.net 国内镜像兜底） -->
-                    <option value="'LXGW WenKai TC', 'KaiTi', serif" data-web="LXGW+WenKai+TC" data-family="LXGW WenKai TC">霞鹜文楷（开源楷体）</option>
-                    <option value="'ZCOOL XiaoWei', 'KaiTi', serif" data-web="ZCOOL+XiaoWei" data-family="ZCOOL XiaoWei">站酷小薇体（文艺细楷）</option>
-                    <option value="'ZCOOL QingKe HuangYou', 'KaiTi', cursive" data-web="ZCOOL+QingKe+HuangYou" data-family="ZCOOL QingKe HuangYou">站酷庆科黄油体（粗展板）</option>
+                    <option value="'LXGW WenKai TC', 'KaiTi', serif" data-web="LXGW+WenKai+TC" data-family="LXGW WenKai TC">霞鹜文楷</option>
+                    <option value="'ZCOOL XiaoWei', 'KaiTi', serif" data-web="ZCOOL+XiaoWei" data-family="ZCOOL XiaoWei">站酷小薇体</option>
+                    <option value="'ZCOOL QingKe HuangYou', 'KaiTi', cursive" data-web="ZCOOL+QingKe+HuangYou" data-family="ZCOOL QingKe HuangYou">站酷庆科黄油体</option>
                 </select>
                 <div class="font-status" id="font-status" role="status" aria-live="polite">正在加载在线字体…</div>
             </div>
@@ -1325,18 +1323,18 @@
                     <div class="screenshot-box" id="preview-screenshot-right">右截图 (3:4)</div>
                 </div>
 
-                <!-- 模板二：三图竖排（每项 = 一张 1440×600 宽图 + 一行小标题） -->
+                <!-- 模板二：三图竖排（每项 = 一张 12:5 宽图 + 一行小标题） -->
                 <div class="three-list" data-tpl="three">
                     <div class="three-item">
-                        <div class="wide-box" id="preview-wide-1">图片一 (1440×600)</div>
+                        <div class="wide-box" id="preview-wide-1">图片一 (12:5)</div>
                         <div class="wide-caption handwriting-font" id="preview-cap-1">关键词🔍 黑色原牛复古直筒裤</div>
                     </div>
                     <div class="three-item">
-                        <div class="wide-box" id="preview-wide-2">图片二 (1440×600)</div>
+                        <div class="wide-box" id="preview-wide-2">图片二 (12:5)</div>
                         <div class="wide-caption handwriting-font" id="preview-cap-2">关键词🔍 黑色原牛复古直筒裤</div>
                     </div>
                     <div class="three-item">
-                        <div class="wide-box" id="preview-wide-3">图片三 (1440×600)</div>
+                        <div class="wide-box" id="preview-wide-3">图片三 (12:5)</div>
                         <div class="wide-caption handwriting-font" id="preview-cap-3">关键词🔍 黑色原牛复古直筒裤</div>
                     </div>
                 </div>
@@ -3321,7 +3319,7 @@
         const PHOTO_PLACEHOLDER = {
             left: '左图 (1:1)', right: '右图 (1:1)',
             shotLeft: '左截图 (3:4)', shotRight: '右截图 (3:4)',
-            wide1: '图片一 (1440×600)', wide2: '图片二 (1440×600)', wide3: '图片三 (1440×600)'
+            wide1: '图片一 (12:5)', wide2: '图片二 (12:5)', wide3: '图片三 (12:5)'
         };
 
         // 样式键 → CSS 变量名（变量定义在 :root，默认值=今天渲染出的实际值）
